@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.schemas.benchmark import BenchmarkPoint, BenchmarkResponse
-from app.services.webull_market_data import WebullMarketDataService
+from app.connectors.webull_connector import WebullConnector
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -31,47 +31,29 @@ def get_benchmark_performance(
         )
 
     try:
-        svc = WebullMarketDataService()
-        if not svc.app_key or not svc.app_secret:
+        connector = WebullConnector()
+        if not connector.is_configured():
             return BenchmarkResponse(
                 ticker=ticker,
                 timeseries=[],
-                warning="Webull API credentials not configured — benchmark unavailable",
+                warning="Benchmark data source not configured — benchmark unavailable",
             )
 
-        bars = svc.get_historical_bars(ticker, timespan="W", count=260)
-        if not bars:
+        series = connector.fetch_price_series(ticker, weeks=260)
+        if not series:
             return BenchmarkResponse(
                 ticker=ticker,
                 timeseries=[],
-                warning=f"No data returned from Webull for {ticker}",
+                warning=f"No benchmark data returned for {ticker}",
             )
 
-        points: list[BenchmarkPoint] = []
-        for bar in bars:
-            if not isinstance(bar, dict):
-                continue
-            raw_date = bar.get("date") or bar.get("time") or bar.get("timestamp")
-            raw_close = bar.get("close") or bar.get("vwap") or bar.get("open")
-            if raw_date is None or raw_close is None:
-                continue
-            try:
-                if isinstance(raw_date, str):
-                    bar_date = date.fromisoformat(raw_date[:10])
-                else:
-                    bar_date = date.fromtimestamp(int(raw_date) / 1000)
-                close_val = float(raw_close)
-            except (ValueError, TypeError, OSError):
-                continue
-
-            if start_date and bar_date < start_date:
-                continue
-            if end_date and bar_date > end_date:
-                continue
-            points.append(BenchmarkPoint(date=bar_date, close=close_val))
-
-        # Webull returns most-recent-first; reverse for ascending chronological order
-        points.sort(key=lambda p: p.date)
+        # Series is already (date, close), oldest first; apply the date window.
+        points: list[BenchmarkPoint] = [
+            BenchmarkPoint(date=bar_date, close=close_val)
+            for bar_date, close_val in series
+            if not (start_date and bar_date < start_date)
+            and not (end_date and bar_date > end_date)
+        ]
 
         return BenchmarkResponse(ticker=ticker, timeseries=points)
 

@@ -1,13 +1,16 @@
-"""Reusable daily sync logic shared by the route handler and the scheduler job."""
-import csv
-import io
+"""Reusable daily sync logic shared by the route handler and the scheduler job.
+
+Sits on the connector seam: the ``SheetsConnector`` fetches and normalizes the
+sheet, then the shared ``IngestionService`` validates/dedups/persists — the same
+pipeline every other source uses.
+"""
 import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.services.google_sheets_sync import GoogleSheetsService
-from app.services.trade_import import TradeImportService
+from app.connectors.sheets_connector import SheetsConnector
+from app.services.ingestion_service import IngestionService
 from app.models.sheet_sync_config import SheetSyncConfig
 
 logger = logging.getLogger(__name__)
@@ -22,15 +25,15 @@ def run_daily_sync(
     """
     Fetch trades from a Google Sheet and import new ones into the given sleeve.
 
-    Returns the same result dict as TradeImportService.import_from_file, plus
-    a top-level 'sheet_rows' key with the raw row count fetched.
+    Returns the same result dict as the ingestion pipeline, plus a top-level
+    'sheet_rows' key with the raw row count fetched.
 
-    Raises ValueError / ConnectionError so callers can translate to HTTP errors.
+    Raises ValueError / RuntimeError so callers can translate to HTTP errors.
     """
-    sheets_service = GoogleSheetsService()
-    rows = sheets_service.fetch_sheet_data(sheet_id, range_name)
+    connector = SheetsConnector()
+    trades, errors, sheet_rows = connector.fetch_sheet(sheet_id, range_name)
 
-    if not rows:
+    if sheet_rows == 0:
         return {
             "success": True,
             "total": 0,
@@ -38,20 +41,21 @@ def run_daily_sync(
             "duplicates": 0,
             "errors": [],
             "sync_log_id": None,
+            "affected_sleeve_ids": [],
             "sheet_rows": 0,
         }
 
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=rows[0].keys())
-    writer.writeheader()
-    writer.writerows(rows)
-    file_content = output.getvalue().encode("utf-8")
-
-    import_service = TradeImportService(db)
-    result = import_service.import_from_file(
-        file_content, sleeve_id, mode="IMPORT", import_type="DAILY"
+    ingestion = IngestionService(db)
+    result = ingestion.ingest_to_sleeve(
+        trades,
+        sleeve_id,
+        mode="IMPORT",
+        import_type="DAILY",
+        total_rows=sheet_rows,
+        prior_error_count=len(errors),
     )
-    result["sheet_rows"] = len(rows)
+    result["errors"].extend(errors)
+    result["sheet_rows"] = sheet_rows
     return result
 
 

@@ -19,7 +19,7 @@ from app.models.trade import Trade
 from app.models.position import Position as PositionModel
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.market_price import MarketPriceService
-from app.services.webull_market_data import WebullMarketDataService
+from app.connectors.webull_connector import WebullConnector
 from app.services.performance_service import PerformanceService
 from app.api.schemas.position import (
     PositionResponse,
@@ -410,16 +410,16 @@ def fetch_market_prices_from_webull(
 
     symbols = list(set(t.symbol for t in trades))
 
-    # Fetch from Webull
-    webull_service = WebullMarketDataService()
+    # Fetch live prices through the connector layer (vendor stays sealed inside).
+    connector = WebullConnector()
     fetched_prices = {}
     failed_symbols = []
 
     for symbol in symbols:
         try:
-            price = webull_service.get_current_price(symbol)
-            if price:
-                fetched_prices[symbol] = price
+            price = connector.get_price(symbol)
+            if price is not None:
+                fetched_prices[symbol] = float(price)
             else:
                 failed_symbols.append(symbol)
         except Exception as e:

@@ -21,7 +21,7 @@ from app.models.trade import Trade
 from app.services.mwr_calculation import MWRCalculationService
 from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.webull_market_data import WebullMarketDataService
+from app.connectors.webull_connector import WebullConnector
 
 import logging
 
@@ -91,13 +91,13 @@ class PerformanceService:
             # Keep one representative Position row per symbol for persistence.
             seen_symbols.setdefault(p.symbol, p)
 
-        webull = WebullMarketDataService()
-        if not webull.app_key or not webull.app_secret:
+        connector = WebullConnector()
+        if not connector.is_configured():
             return prices
 
         for symbol, pos in seen_symbols.items():
             try:
-                live = webull.get_current_price(symbol)
+                live = connector.get_price(symbol)
                 if live is not None:
                     live_decimal = Decimal(str(live))
                     prices[symbol] = live_decimal
@@ -224,10 +224,14 @@ class PerformanceService:
         open_pos = pos_result["open"]
 
         open_position_rows = (
-            self.db.query(Position)
-            .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
-            .all()
-        ) if sleeve_ids else []
+            (
+                self.db.query(Position)
+                .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
+                .all()
+            )
+            if sleeve_ids
+            else []
+        )
 
         raw_prices = self.fetch_and_persist_prices(open_position_rows)
         prices = {sym: float(p) for sym, p in raw_prices.items()}
@@ -246,7 +250,9 @@ class PerformanceService:
                 price = Decimal(str(prices[symbol]))
                 market_value = qty * price
                 unrealized_gain = market_value - cost
-                unrealized_gain_pct = float(unrealized_gain / cost * 100) if cost > 0 else 0.0
+                unrealized_gain_pct = (
+                    float(unrealized_gain / cost * 100) if cost > 0 else 0.0
+                )
             else:
                 price = None
                 market_value = cost
@@ -329,7 +335,9 @@ class PerformanceService:
         for p in all_closed:
             if p["closed_at"]:
                 key = (p["closed_at"].year, p["closed_at"].month)
-                realized_by_month[key] = realized_by_month.get(key, 0.0) + float(p["realized_gain"])
+                realized_by_month[key] = realized_by_month.get(key, 0.0) + float(
+                    p["realized_gain"]
+                )
 
         prev_end_value = 0.0  # value carried from previous month
 
@@ -345,22 +353,25 @@ class PerformanceService:
 
             # Cash flows within this month
             month_trades = [
-                t for t in trades
+                t
+                for t in trades
                 if date(year, month, 1) <= t.trade_date <= effective_end
             ]
             cash_in = sum(
                 float(t.quantity) * float(t.price) + float(t.commission)
-                for t in month_trades if t.action == "BUY"
+                for t in month_trades
+                if t.action == "BUY"
             )
             cash_out = sum(
                 float(t.quantity) * float(t.price) - float(t.commission)
-                for t in month_trades if t.action == "SELL"
+                for t in month_trades
+                if t.action == "SELL"
             )
 
             realized_this_month = realized_by_month.get((year, month), 0.0)
 
             # Modified Dietz return
-            is_inception = (year == first_date.year and month == first_date.month)
+            is_inception = year == first_date.year and month == first_date.month
             net_invested = cash_in - cash_out
             if is_inception:
                 # No prior value — can't compute a return
@@ -368,25 +379,33 @@ class PerformanceService:
             elif prev_end_value == 0 and cash_in > 0:
                 # Portfolio was fully liquidated; treat cash_in as the opening base
                 # so fresh deployments show their gain rather than null
-                return_pct = ((end_value - net_invested) / cash_in * 100) if cash_in else None
+                return_pct = (
+                    ((end_value - net_invested) / cash_in * 100) if cash_in else None
+                )
             elif prev_end_value > 0:
-                return_pct = ((end_value - prev_end_value - net_invested) / prev_end_value * 100)
+                return_pct = (
+                    (end_value - prev_end_value - net_invested) / prev_end_value * 100
+                )
             else:
                 return_pct = None
 
             month_label = date(year, month, 1).strftime("%b %Y")
-            months.append({
-                "year": year,
-                "month": month,
-                "month_label": month_label,
-                "start_value": prev_end_value,
-                "end_value": end_value,
-                "cash_in": cash_in,
-                "cash_out": cash_out,
-                "net_cash_flow": cash_in - cash_out,
-                "realized_gain": realized_this_month,
-                "return_pct": round(return_pct, 2) if return_pct is not None else None,
-            })
+            months.append(
+                {
+                    "year": year,
+                    "month": month,
+                    "month_label": month_label,
+                    "start_value": prev_end_value,
+                    "end_value": end_value,
+                    "cash_in": cash_in,
+                    "cash_out": cash_out,
+                    "net_cash_flow": cash_in - cash_out,
+                    "realized_gain": realized_this_month,
+                    "return_pct": round(return_pct, 2)
+                    if return_pct is not None
+                    else None,
+                }
+            )
 
             prev_end_value = end_value
 

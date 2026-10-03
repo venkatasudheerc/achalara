@@ -82,3 +82,71 @@
 - Tech debt: migrate Pydantic `class Config` → `model_config = ConfigDict(...)`.
 - Replace Postgres-only `DISTINCT ON` in `twr_calculation.py` for portability.
 - Exercise live Google Sheets sync end-to-end once a `SheetSyncConfig` is registered.
+
+## Phase — Bridge (universal brokerage connectivity)
+
+> Bridge brings trade/position data into Achalara from any source. Today that's CSV, Google
+> Sheets, and Webull prices living in `app/services/`. This phase formalizes them behind one
+> `BrokerageConnector` interface so any vendor (starting with SnapTrade) is a swappable adapter,
+> and CSV/manual remain the permanent universal fallback.
+>
+> Strategy decided: **aggregator-first, not build-your-own** (per-broker integrations don't
+> scale and "any broker in the world" can't be built solo). First adapter: **SnapTrade**
+> (US-first, read + trade on one API, so it carries us from performance now to Grow later).
+> Architecture guardrails live in `backend/app/connectors/CONNECTORS.md`.
+
+### Pre-work (do first)
+
+- [ ] **Rotate the exposed Webull secrets** and confirm no `.env` is in git history (repo is
+      public). Blast radius only grows once SnapTrade keys + per-client tokens arrive.
+
+### B1 — Formalize the interface ✅ COMPLETE
+
+- [x] Add `app/connectors/` with `base.py` (`BrokerageConnector` + `ConnectorCapabilities`),
+      `models.py` (normalized types), `registry.py`.
+- [x] Add `fake_connector.py` for tests.
+- [x] Write `app/connectors/CONNECTORS.md` (the "no vendor SDK escapes this layer" rule).
+
+### B2 — Refactor existing sources behind the interface ✅ COMPLETE
+
+- [x] `csv_connector.py` — existing CSV import, now producing `NormalizedTrade[]`.
+- [x] `sheets_connector.py` — existing Google Sheets sync, same.
+- [x] `webull_connector.py` — existing price fetch, normalized.
+- [x] Extract the shared VALIDATE→IMPORT/dedup/route/persist path into
+      `services/ingestion_service.py`; every source feeds it. Proves the abstraction against
+      code we already trust.
+
+### B3 — SnapTrade spike ~~(throwaway separate repo)~~ — SUPERSEDED
+
+Original plan was a throwaway repo. Dropped after reading SnapTrade's live docs: the auth flow,
+endpoints, `UniversalActivity` shape, daily-batch freshness model, rate limits and webhook events
+are now documented in `app/connectors/SNAPTRADE_PLAN.md`, so the unknowns are narrow and
+Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
+addition rather than a bet.
+
+Replaced by: build the connector in this repo, exercise it against a real Vanguard account with a
+throwaway script in the scratchpad, then sanitize those payloads into CI fixtures. Execution order
+lives in `app/connectors/SNAPTRADE_BUILD_PLAN.md`.
+
+### B4 — SnapTrade adapter (production, in main repo)
+
+- [ ] `snaptrade_connector.py` implementing the interface: linking + read first.
+- [ ] App-level keys in `.env`; per-client connection tokens **encrypted at rest in the DB**.
+- [ ] Add link/callback/connection-management endpoints to root `openapi.yaml`.
+- [ ] Recorded-fixture tests (no live network in CI).
+
+### B5 — Real-time freshness
+
+- [ ] Wire SnapTrade webhooks to trigger `ingestion_service.sync_connection`, so connected
+      accounts stay current without manual refresh.
+
+### B6 — Trading (deferred — enables Grow)
+
+- [ ] Implement `place_order` on the SnapTrade adapter; flip `capabilities.can_trade`.
+- [ ] Do not start until Grow is on the active roadmap.
+
+### Definition of done (Bridge MVP = B1–B4)
+
+A US client links a brokerage account via SnapTrade; transactions flow through the **same**
+ingestion pipeline as CSV, dedup idempotently by `external_id`, and appear in performance
+(MWR/TWR) with no manual upload — while CSV/Sheets remain available for any unsupported broker.

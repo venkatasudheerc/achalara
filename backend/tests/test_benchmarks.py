@@ -17,8 +17,8 @@ class TestBenchmarkEndpoints:
         assert data["timeseries"] == []
         assert data["warning"] is not None
         assert (
-            "credentials" in data["warning"].lower()
-            or "webull" in data["warning"].lower()
+            "not configured" in data["warning"].lower()
+            or "unavailable" in data["warning"].lower()
         )
 
     def test_benchmark_invalid_ticker(self, client):
@@ -65,7 +65,7 @@ class TestBenchmarkEndpoints:
         ]
 
         with patch(
-            "app.api.routes.benchmarks.WebullMarketDataService.get_historical_bars",
+            "app.services.webull_market_data.WebullMarketDataService.get_historical_bars",
             return_value=mock_bars,
         ):
             response = client.get(
@@ -96,7 +96,7 @@ class TestBenchmarkEndpoints:
         ]
 
         with patch(
-            "app.api.routes.benchmarks.WebullMarketDataService.get_historical_bars",
+            "app.services.webull_market_data.WebullMarketDataService.get_historical_bars",
             return_value=mock_bars,
         ):
             response = client.get("/api/v1/benchmarks/SPY/performance")
@@ -114,7 +114,7 @@ class TestBenchmarkEndpoints:
         monkeypatch.setattr(settings, "webull_app_secret", "test-secret")
 
         with patch(
-            "app.api.routes.benchmarks.WebullMarketDataService.get_historical_bars",
+            "app.services.webull_market_data.WebullMarketDataService.get_historical_bars",
             side_effect=RuntimeError("network error"),
         ):
             response = client.get("/api/v1/benchmarks/SPY/performance")

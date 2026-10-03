@@ -38,7 +38,7 @@ def test_run_daily_sync_imports_new_trades(client, db):
     _client_id, _account_id, sleeve_id = _make_sleeve(client)
 
     with patch(
-        "app.services.daily_sync.GoogleSheetsService.fetch_sheet_data",
+        "app.services.google_sheets_sync.GoogleSheetsService.fetch_sheet_data",
         return_value=_SAMPLE_ROWS,
     ):
         result = run_daily_sync(
@@ -61,7 +61,7 @@ def test_run_daily_sync_deduplicates(client, db):
     _client_id, _account_id, sleeve_id = _make_sleeve(client)
 
     with patch(
-        "app.services.daily_sync.GoogleSheetsService.fetch_sheet_data",
+        "app.services.google_sheets_sync.GoogleSheetsService.fetch_sheet_data",
         return_value=_SAMPLE_ROWS,
     ):
         run_daily_sync(db=db, sleeve_id=sleeve_id, sheet_id="fake")
@@ -75,7 +75,7 @@ def test_run_daily_sync_empty_sheet_returns_zero(client, db):
     _client_id, _account_id, sleeve_id = _make_sleeve(client)
 
     with patch(
-        "app.services.daily_sync.GoogleSheetsService.fetch_sheet_data",
+        "app.services.google_sheets_sync.GoogleSheetsService.fetch_sheet_data",
         return_value=[],
     ):
         result = run_daily_sync(db=db, sleeve_id=sleeve_id, sheet_id="fake")
@@ -98,7 +98,7 @@ def test_run_all_enabled_syncs_updates_last_synced_at(client, db):
     db.commit()
 
     with patch(
-        "app.services.daily_sync.GoogleSheetsService.fetch_sheet_data",
+        "app.services.google_sheets_sync.GoogleSheetsService.fetch_sheet_data",
         return_value=_SAMPLE_ROWS,
     ):
         run_all_enabled_syncs(db)

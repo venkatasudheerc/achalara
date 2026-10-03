@@ -1,7 +1,7 @@
 # CLAUDE.md — Backend
 
 This file provides guidance to Claude Code when working in `backend/`.
-Read the root `../CLAUDE.md` first for shared context (project overview, Sleeve model, monorepo layout).
+Read the root `../CLAUDE.md` first for shared context (project overview, Sleeve model, monorepo layout) and `./connectors/CONNECTORS.md` for universal brokerage connector guidance.
 
 ## Tech Stack
 
@@ -48,36 +48,36 @@ flake8 app/
 
 Request flow: **route → service → ORM model**. Routes are registered in `app/main.py`:
 
-| Prefix | Router |
-|---|---|
-| `/api/v1/clients` | `clients`, `accounts`, `sleeves` (nested under clients) |
-| `/api/v1/strategies` | `strategies` (firm-wide definitions) |
-| `/api/v1/trades` | `trades` |
-| `/api/v1/admin` | `admin` (import, sync-daily, sync-logs, sync-configs) |
+| Prefix               | Router                                                  |
+| -------------------- | ------------------------------------------------------- |
+| `/api/v1/clients`    | `clients`, `accounts`, `sleeves` (nested under clients) |
+| `/api/v1/strategies` | `strategies` (firm-wide definitions)                    |
+| `/api/v1/trades`     | `trades`                                                |
+| `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 
-**Performance roll-ups** (`services/performance_service.py`): a level resolves to a *set of sleeve ids*, then one calc runs over the **merged** trade stream — returns are NOT averaged from child returns. Account = all sleeves in the account; Client = all sleeves under the client's accounts; Strategy = all sleeves for that strategy. Each response is `{ level, id, name, summary, timeseries, children }`.
+**Performance roll-ups** (`services/performance_service.py`): a level resolves to a _set of sleeve ids_, then one calc runs over the **merged** trade stream — returns are NOT averaged from child returns. Account = all sleeves in the account; Client = all sleeves under the client's accounts; Strategy = all sleeves for that strategy. Each response is `{ level, id, name, summary, timeseries, children }`.
 
 ### Key files
 
-| File | Purpose |
-|---|---|
-| `app/main.py` | App startup, router registration, lifespan (scheduler start/stop) |
-| `app/config.py` | `Settings` reads `.env` (`database_url`, `redis_url`, `scheduler_enabled`, Webull keys) |
-| `app/db/database.py` | Sync engine, `SessionLocal`, `get_db()` dependency |
-| `app/services/performance_service.py` | Resolves sleeve sets and dispatches MWR/TWR calc |
-| `app/services/mwr_calculation.py` | IRR solver (Money Weighted Return) |
-| `app/services/twr_calculation.py` | Geometric linking (Time Weighted Return) |
-| `app/services/portfolio_calculation.py` | Position tracking, weighted-avg cost basis, `persist_positions` |
-| `app/services/trade_ingestion.py` | Row validation + **duplicate detection** (intentional — do not skip) |
-| `app/services/trade_import.py` | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes) |
-| `app/services/google_sheets_sync.py` | Fetches public sheets via CSV export (no credentials) |
-| `app/services/daily_sync.py` | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`) |
-| `app/services/scheduler.py` | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`) |
-| `app/services/market_price.py` | Position price updates / persistence |
-| `app/services/webull_market_data.py` | Webull API client |
-| `app/models/sleeve.py` | The account × strategy join that owns trades/positions/sync configs |
-| `app/models/sync_log.py` | Standalone import/sync audit trail (no FK to the hierarchy) |
-| `tests/conftest.py` | Shared fixtures (DB session, `TestClient`) |
+| File                                    | Purpose                                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `app/main.py`                           | App startup, router registration, lifespan (scheduler start/stop)                       |
+| `app/config.py`                         | `Settings` reads `.env` (`database_url`, `redis_url`, `scheduler_enabled`, Webull keys) |
+| `app/db/database.py`                    | Sync engine, `SessionLocal`, `get_db()` dependency                                      |
+| `app/services/performance_service.py`   | Resolves sleeve sets and dispatches MWR/TWR calc                                        |
+| `app/services/mwr_calculation.py`       | IRR solver (Money Weighted Return)                                                      |
+| `app/services/twr_calculation.py`       | Geometric linking (Time Weighted Return)                                                |
+| `app/services/portfolio_calculation.py` | Position tracking, weighted-avg cost basis, `persist_positions`                         |
+| `app/services/trade_ingestion.py`       | Row validation + **duplicate detection** (intentional — do not skip)                    |
+| `app/services/trade_import.py`          | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes)                    |
+| `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
+| `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
+| `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
+| `app/services/market_price.py`          | Position price updates / persistence                                                    |
+| `app/services/webull_market_data.py`    | Webull API client                                                                       |
+| `app/models/sleeve.py`                  | The account × strategy join that owns trades/positions/sync configs                     |
+| `app/models/sync_log.py`                | Standalone import/sync audit trail (no FK to the hierarchy)                             |
+| `tests/conftest.py`                     | Shared fixtures (DB session, `TestClient`)                                              |
 
 ## Coding Conventions
 
