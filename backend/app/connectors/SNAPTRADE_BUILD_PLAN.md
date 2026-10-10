@@ -32,11 +32,13 @@ store. Nothing in steps 2+ runs without these.
 
 ## Step 1 — Dependencies + config
 
-- Add to `backend/requirements.txt`: `snaptrade-python-sdk`, and `cryptography` (for Fernet
-  token encryption — not currently a dependency).
-- Extend `app/config.py` `Settings` with `snaptrade_client_id`, `snaptrade_consumer_key`,
-  `connection_encryption_key` (all defaulting to `""`, matching the existing `webull_app_key`
-  pattern).
+- Add to `backend/requirements.txt`: `snaptrade-python-sdk`, and pin `cryptography` (already
+  pulled in transitively by `google-auth` and the SnapTrade SDK).
+- Extend `app/config.py` `Settings` with `snaptrade_client_id` and `snaptrade_consumer_key`
+  (defaulting to `""`, matching the existing `webull_app_key` pattern).
+- **No encryption key.** Deliberately deferred: nothing stores a secret until the Commercial
+  flow is adopted, so introducing key management now would add an unrecoverable-loss hazard
+  with nothing to protect. See "Secret storage is deferred" in Step 5.
 - Update `backend/.env.example`.
 
 **Verify:** `python -c "from app.config import settings; print(bool(settings.snaptrade_client_id))"`
@@ -118,8 +120,18 @@ account numbers or holdings.
 - Nullable `brokerage_connection_id` + `external_account_ref` on `accounts`, so an `Account` can
   be backed by a live connection instead of being CSV-only.
 - Alembic migration (`alembic revision --autogenerate`).
-- Fernet encrypt/decrypt for the secret column, used **only** inside the connector module.
 - Update `backend/DATA_MODEL.md`.
+
+**Secret storage is deferred.** The Personal flow issues no `userSecret`, so there is nothing
+to encrypt and no `user_secret_encrypted` column yet. Introducing an encryption key before it
+protects anything would add the one irreversible failure mode in this design — lose the key and
+every client re-links — for no benefit.
+
+When the Commercial flow is adopted, that column and its key arrive together, as one change:
+add `user_secret_encrypted`, add the key setting, encrypt/decrypt **only** inside the connector
+module, and decide then how non-production environments get a key (a throwaway per-environment
+key keeps the crypto path exercised everywhere, which matters because a path that only runs in
+production fails first against real client secrets).
 
 **Verify:** `alembic upgrade head` clean on Postgres; `alembic downgrade -1` also clean;
 tests still green (SQLite `create_all` picks up the new model).

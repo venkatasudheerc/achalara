@@ -1,0 +1,32 @@
+meta {
+  name: Delete Connection (DESTRUCTIVE)
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{snaptradeBaseUrl}}/authorizations/{{snaptradeConnectionId}}?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+docs {
+  # Destructive — read before running
+
+  Revokes a brokerage connection at SnapTrade. **This cannot be undone.**
+
+  After this, every account under that connection stops returning data, and
+  restoring it means re-linking through the Connection Portal in a browser and
+  waiting for the initial holdings and transaction syncs again — the
+  transaction backfill is the slow part.
+
+  Set `snaptradeConnectionId` deliberately from **List Connections**; do not
+  rely on a leftover value. There is no assert and no post-response var here on
+  purpose, so this request does nothing useful by accident and is never part of
+  a folder run.
+
+  It is included because exposing connection removal to end users is required
+  by SnapTrade's launch checklist, so the endpoint needs to be exercised at
+  least once — ideally against a throwaway connection rather than your real
+  Vanguard link.
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Refresh Connection
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{snaptradeBaseUrl}}/authorizations/{{snaptradeConnectionId}}/refresh?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+docs {
+  Forces an intraday holdings re-pull for one connection, instead of waiting
+  for the daily sync.
+
+  Set `snaptradeConnectionId` from **List Connections** first (it is an
+  authorization id, not an account id).
+
+  Two reasons to use this sparingly:
+
+  - **It may be billed per call** on Daily plans.
+  - It does not help with transactions. Those are cached, refreshed once a day
+    and delayed by a day regardless — this only freshens holdings.
+
+  No assert on status: the endpoint is only available on some plans, so a
+  non-200 here is a plan limitation rather than a failure worth flagging.
+}

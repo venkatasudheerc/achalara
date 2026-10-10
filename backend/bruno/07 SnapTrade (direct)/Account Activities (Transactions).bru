@@ -1,0 +1,68 @@
+meta {
+  name: Account Activities (Transactions)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{snaptradeBaseUrl}}/accounts/{{snaptradeAccountId}}/activities?userId={{snaptradeUserId}}&startDate=1990-01-01&limit=1000&offset=0
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Transaction history for the account in `snaptradeAccountId` — the feed that
+  becomes `Trade` rows. Set that env var yourself; **List Accounts** lists the
+  available ids.
+
+  **Respect the limit: SnapTrade asks for >= 24h between calls per account.**
+  This is the most rate-limited endpoint in the folder.
+
+  ## Seeing full history
+
+  Rows are newest first, so a small `limit` shows only recent activity and
+  looks like "no history". This request asks for the max page (1000) from
+  1990 onward. Compare `pagination.total` with the rows returned — if total is
+  larger, bump `offset` by 1000 to read the next page.
+
+  ## Params
+
+  - `limit` — default and max **1000**
+  - `offset` — pagination cursor; response carries `pagination: {offset, limit, total}`
+  - `startDate` / `endDate` — `YYYY-MM-DD`, inclusive
+  - `type` — comma-separated filter, e.g. `BUY,SELL`
+
+  Rows come back **newest first**; our connector re-sorts to chronological
+  because ingestion assumes that order.
+
+  ## Empty result is often not an error
+
+  If `data` is `[]`, check `sync_status.transactions.initial_sync_completed`
+  from **List Accounts**. SnapTrade backfills transactions separately from
+  holdings and the initial sync can lag well behind the link; until it
+  finishes this endpoint legitimately returns nothing.
+
+  ## What we map
+
+  Only `type` of `BUY` or `SELL` becomes a trade. `DIVIDEND`, `FEE`,
+  `CONTRIBUTION`, `WITHDRAWAL` and friends are skipped — a known accuracy gap,
+  since dividends do affect real returns.
+
+  Two field behaviors to watch:
+
+  - `units` is **negative for SELL**. Direction comes from `type`; we take the
+    absolute value for quantity.
+  - `trade_date` is **nullable**, and its granularity varies by brokerage. A
+    row without one cannot be placed on the performance timeline, so it is
+    skipped.
+
+  `id` is documented as changeable if an activity is reprocessed, which is why
+  our dedup key is derived from trade economics instead. If two distinct fills
+  share (account, date, symbol, units, price), that key collides — use this
+  request to look for such pairs, and mix in `external_reference_id` if any
+  turn up.
+}

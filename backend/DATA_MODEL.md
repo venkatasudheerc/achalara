@@ -164,22 +164,30 @@ sleeves. Relationships: `account`, `strategy` (N→1); `trades`, `positions` (1�
 | id | String(36) PK | uuid |
 | sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
 | trade_date | Date | not null |
-| symbol | String(20) | not null |
+| symbol | String(50) | not null; wide enough for `NYSEARCA:VOO`-style prefixes |
 | action | String(10) | not null; check `IN ('BUY','SELL')` |
-| quantity | Numeric(15,6) | not null; check `> 0` |
+| quantity | Numeric(18,8) | not null; check `> 0`; 8 dp holds fractional shares |
 | price | Numeric(15,6) | not null; check `> 0` |
 | commission | Numeric(15,6) | default 0 |
-| notes | String(500) | nullable |
+| notes | Text | nullable (broker descriptions are unbounded) |
 | google_sheet_row_id | String(255) | **unique**; null for CSV-sourced trades |
+| external_id | String(255) | indexed, nullable; **unique per sleeve** — see below |
+
+`external_id` is the source-derived idempotency key from
+`connectors/models.NormalizedTrade`, persisted so `UNIQUE(sleeve_id, external_id)`
+enforces idempotency in the database rather than only in the ingesting process.
+It is nullable: trades created directly through the API, and any predating the
+column, have none. Dedup therefore accepts **either** identity — the
+`external_id`, or the legacy `(date, symbol, qty, price)` tuple.
 
 ### `positions`
 | Column | Type | Notes |
 |---|---|---|
 | id | String(36) PK | uuid |
 | sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
-| symbol | String(20) | not null |
+| symbol | String(50) | not null; tracks `trades.symbol` |
 | status | String(10) | not null, default `OPEN`; `OPEN` or `CLOSED` |
-| quantity | Numeric(15,6) | not null (0 for closed rows) |
+| quantity | Numeric(18,8) | not null (0 for closed rows); tracks `trades.quantity` |
 | cost_basis | Numeric(18,2) | not null (0 for closed rows) |
 | current_price | Numeric(15,6) | nullable (persisted market price) |
 | market_value | Numeric(18,2) | nullable |
@@ -278,8 +286,13 @@ Rebuild all snapshots: `POST /admin/rebuild-snapshots` (pass `sleeve_id` to scop
   `lower(name)`). The auto-route CSV import and `POST /strategies` both resolve names
   case-insensitively, so "Growth"/"growth" map to one definition (first-seen casing is kept).
   `POST /strategies` returns 409 on a case-insensitive duplicate.
-- **`google_sheet_row_id` only dedups sheet-sourced trades** (multiple NULLs allowed). CSV
-  imports dedup on `(date, symbol, qty, price)` per sleeve in the import pipeline.
+- **`UNIQUE(sleeve_id, external_id)` is the primary trade dedup** (multiple NULLs allowed, so
+  API-entered trades are unaffected). `IngestionService` treats a matching `external_id` **or**
+  a matching `(date, symbol, qty, price)` tuple as a duplicate, so trades without an
+  `external_id` still dedup as before. Quantity and price compare as normalized `Decimal`s,
+  not floats, so fractional share counts compare exactly.
+- **`google_sheet_row_id` is retained but no longer the dedup path** (sheet trades go through
+  `external_id` like every other source); it stays available for a future row-id-keyed source.
 - **Migration `fe521b07fb54` is Postgres-guarded** and preserves each old strategy id as its
   sleeve id so child FK values didn't need rewriting. SQLite/tests build from the models via
   `create_all`. The follow-up migration `95798c4a2a9a` adds the case-insensitive unique index

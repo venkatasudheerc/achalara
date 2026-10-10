@@ -1,0 +1,42 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{snaptradeBaseUrl}}/accounts?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Every account under the linked brokerage logins. One Vanguard login commonly
+  exposes several (brokerage, Roth IRA, UTMA, Cash Plus), each with its own
+  `id` — that id is what the positions and activities calls take.
+
+  **This request does not set `snaptradeAccountId`.** Pick the account you want
+  from the response and put its `id` in the environment yourself, so running
+  this never silently repoints the other requests at a different account.
+
+  Each account carries a `sync_status` worth reading before chasing empty data:
+
+  ```
+  sync_status.holdings.initial_sync_completed
+  sync_status.transactions.initial_sync_completed
+  sync_status.transactions.last_successful_sync
+  sync_status.transactions.first_transaction_date
+  ```
+
+  `first_transaction_date` is how far back SnapTrade's history for the account
+  actually reaches — the brokerage, not SnapTrade, decides that depth.
+
+  Holdings and transactions sync independently. Transactions can still be
+  pending (`initial_sync_completed: false`) while holdings are already
+  populated — in that state the activities endpoint correctly returns an empty
+  list, and the fix is to wait, not to debug.
+}

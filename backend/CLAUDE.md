@@ -27,11 +27,15 @@ cd backend && docker-compose up -d
 # Run the server (from backend/, with venv active)
 uvicorn app.main:app --reload --port 8000      # Swagger UI at /docs
 
-# Tests
+# Tests (offline by default — never hits a third-party API)
 backend/venv/bin/pytest backend/tests -v
 backend/venv/bin/pytest backend/tests --cov=backend/app          # with coverage
 backend/venv/bin/pytest backend/tests/test_sleeves.py -v         # single file
 backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # single test
+
+# Live API tests — opt-in only, read-only, need real credentials in .env
+export SNAPTRADE_TEST_USER_ID=<the userId you linked>
+backend/venv/bin/pytest backend/tests/integration -m live -v -s
 
 # Migrations (run from backend/)
 alembic upgrade head
@@ -88,6 +92,22 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 - **Config via `.env`** through `config.py` — no hardcoded secrets/connection strings/API keys.
 - **Schema changes go through Alembic** (`alembic revision --autogenerate`) — never edit tables directly.
 - **Update `../openapi.yaml`** whenever an endpoint is added or its contract changes.
+
+## Offline vs Live Tests
+
+`pytest.ini` sets `addopts = -m "not live"`, so **the default run and CI never reach a
+third-party API**. Tests that do are marked `@pytest.mark.live`, live in `tests/integration/`,
+and additionally skip themselves unless real credentials are present — so they cannot run by
+accident on a machine that lacks them.
+
+- **Offline (default):** stub clients and recorded payloads. Deterministic, no network, no
+  rate limit spent. Every mapping rule and dedup behavior is covered here.
+- **Live (`-m live`):** answers only what offline tests cannot — what a real brokerage actually
+  returns. Treated as exploratory, not regression cover: third-party payloads change outside
+  our control, so asserting exact values there would make the suite flaky.
+
+Live tests must stay **read-only**. Respect SnapTrade's limits (>=24h between transaction calls
+per account, <=4 background holdings calls per user per day) — never loop them.
 
 ## Dedup Rules (don't bypass)
 

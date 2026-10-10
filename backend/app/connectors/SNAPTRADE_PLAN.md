@@ -148,8 +148,51 @@ fills with identical `(date, symbol, units, price)`? If yes, this key collapses 
 - `trade_date` can be null → skip those rows with a logged validation error, rather than guessing
   from `settlement_date`.
 - Symbol normalization: our trades store `BATS:IGE`-style prefixed tickers; SnapTrade returns a
-  `symbol` object. Resolve the raw ticker in the connector. This intersects the existing open
-  roadmap item about symbol normalization.
+  bare ticker. Resolve it in the connector. This intersects the existing open roadmap item about
+  symbol normalization.
+
+### Symbol shapes — resolved from the SDK's generated models
+
+Confirmed by reading `snaptrade_client/model/*.pyi` (generated from SnapTrade's OpenAPI spec, so
+authoritative). **Activities and positions nest symbols differently:**
+
+| Context | Path to the ticker |
+|---|---|
+| Activity | `activity.symbol` → `SymbolNullable` → `.raw_symbol` / `.symbol` (flat strings) |
+| Position | `position.symbol` → `PositionSymbol` → `.symbol` → `UniversalSymbol` → `.raw_symbol` / `.symbol` |
+
+`raw_symbol` is the brokerage's own ticker; `symbol` may be SnapTrade's normalized form — prefer
+`raw_symbol`. On `SymbolNullable` both are optional, so a fallback is needed.
+
+`AccountUniversalActivity` field names are also confirmed exactly as designed above
+(`units`, `price`, `amount`, `fee`, `trade_date` nullable, `currency`, `type`, `description`,
+`external_reference_id`, `fx_rate`, `institution`, `option_symbol`, `currency_universal_symbol`).
+
+`Position` additionally exposes `fractional_units` and `tax_lots` — relevant for Vanguard mutual
+funds, and `tax_lots` is a potential input to the roadmap's tax-lot tracking item.
+
+### Verified against a real Vanguard capture (2026-10-09, 8 accounts, ~12k activities)
+
+- **History depth:** 2020-01 to 2023-10 depending on the account (`sync_status.transactions.first_transaction_date`).
+  An account mid initial sync (`initial_sync_completed: false`) returns no activity at all while
+  its holdings are already populated.
+- **Types Vanguard emits:** `BUY`, `SELL`, `REI`, `DIVIDEND`, `INTEREST`, `INCOME`, `FEE`,
+  `WITHHOLDING`, `CONTRIBUTION`, `DEPOSIT`, `WITHDRAWAL`, `WIRE OUT`, `SWEEP IN`/`SWEEP OUT`,
+  `TRANSFER (INCOMING)`/`(OUTGOING)`, `SPLIT`, `CORP ACTION (MERGER)`, `CORP ACTION (CASH IN LIEU)`,
+  `ASSIGNMENT`, `EXPIRED`, `INTEREST CHARGE`.
+- **`REI` with units > 0 is a share purchase** (symbol + per-share price) → mapped as BUY.
+  `REI` with 0 units is a Cash Plus sweep reinvestment → cash, skipped.
+- **`trade_date` is date-only** (`05:00Z`, i.e. midnight US/Eastern).
+- **~3% of BUY/SELL rows have a null `symbol`** (mostly delisted/acquired names; ticker only in
+  `description`) → skipped with a warning.
+- **Dedup collisions are real:** same-day buy+sell round trips at one price (key now includes
+  action), and identical repeated fills with distinct ids (now get an occurrence suffix).
+  `external_reference_id` is always null, so it cannot disambiguate.
+- **Options appear** as OCC symbols (`BULL270115P00020000`) with per-share price and contract
+  units; there is no ×100 multiplier applied. Open question.
+- **Positions** live shape is `instrument` + per-unit `cost_basis`; `cost_basis` is missing for
+  lots newer than the last transaction sync. Holdings reconcile to summed trades except for those
+  lots (transactions lag holdings by several days).
 
 ---
 
@@ -191,7 +234,6 @@ Two notes on fit:
 | `client_id` | `String(36)` FK → `clients.id` | |
 | `source` | `String` | `"snaptrade"` — generic for future aggregators |
 | `external_user_id` | `String` | what we sent as SnapTrade `userId` |
-| `user_secret_encrypted` | `Text` | **Commercial flow only.** Encrypted at rest. Unrecoverable if lost. |
 | `external_connection_id` | `String` | SnapTrade connection/authorization id |
 | `institution` | `String` | `"Vanguard"` |
 | `status` | `String` | `active` / `broken` / `deleted` |
@@ -202,8 +244,15 @@ Two notes on fit:
 Plus on `accounts`: nullable `brokerage_connection_id` + `external_account_ref`, so an
 `Account` can be backed by a live connection instead of being CSV-only.
 
-Encryption: `Fernet` (`cryptography`) with a key from `.env` via `config.py`, matching the
-existing Webull-settings pattern. Encrypt/decrypt only inside the connector module.
+**No secret column, and no encryption key — deliberately.** The Personal flow issues no
+`userSecret`, so there is nothing to store. Adding key management before it protects anything
+would introduce this design's only irreversible failure mode (lose the key → every client
+re-links) for no benefit.
+
+The Commercial flow changes that. When it is adopted, `user_secret_encrypted` (`Text`) and its
+key arrive as one change: encrypt/decrypt only inside the connector module, and give
+non-production environments their own throwaway key rather than skipping encryption there — a
+crypto path that runs only in production fails first against real client secrets.
 
 ### New routes (thin; delegate to a `connections` service) + `openapi.yaml`
 
@@ -274,8 +323,10 @@ is actually on the roadmap.
 ## 6. Decisions needed before coding
 
 1. **Personal vs Commercial** for production. Commercial is the real answer for a multi-client
-   advisory product, but it means storing per-client `userSecret` (encrypted, unrecoverable if
-   lost). Personal is fine for the spike.
+   advisory product, but it is what forces secret storage: a per-client `userSecret`, encrypted,
+   unrecoverable if the key is lost. Personal (current choice) issues none, which is why no
+   encryption key exists yet. Adopting Commercial means adding the column, the key, and a
+   per-environment key policy together.
 2. **Real-time vs Daily plan.** Daily is sufficient for performance tracking and cheaper;
    transactions are day-delayed on both, so Real-time only buys fresher *holdings*.
 3. **Non-trade activity** (dividends, fees, contributions). Dropped in B4 — but dividends do

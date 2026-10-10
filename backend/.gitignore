@@ -60,3 +60,10 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Bruno local environments.
+# Bruno writes secret var VALUES inline into the environment file, so any env
+# holding real credentials must stay untracked. Local.bru is tracked and must
+# contain placeholders only.
+bruno/environments/*.local.bru
+bruno/environments/Local.private.bru
