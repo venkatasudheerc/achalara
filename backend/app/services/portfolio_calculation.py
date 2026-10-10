@@ -348,7 +348,7 @@ class PortfolioCalculationService:
         market_value = qty * current_price
         unrealized_gain = market_value - cost_basis
         unrealized_gain_pct = (
-            (unrealized_gain / cost_basis * 100) if cost_basis > 0 else Decimal(0)
+            (unrealized_gain / abs(cost_basis) * 100) if cost_basis != 0 else Decimal(0)
         )
         return {
             **position,

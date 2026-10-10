@@ -4,6 +4,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useSleeve, useSleeves, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useSleeveCashActivities, useFetchMarketPrices } from '@/hooks/useSleeves'
 import { useScope } from '@/context/ScopeContext'
 import { useCreateTrade, useReassignTrades } from '@/hooks/useTrades'
+import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
@@ -94,7 +95,7 @@ export function SleeveDetailPage() {
   ]
 
   const openPosCols: Column<PositionResponse>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
     { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
     { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), sortValue: (r) => r.cost_basis, numeric: true },

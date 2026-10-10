@@ -83,6 +83,7 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `DataTable` | Generic sortable table; columns declare `sortValue?: (row) => string\|number` for client-side sort |
 | `EmptyState` / `ErrorState` | Consistent empty and error treatments; every screen uses these |
 | `Skeleton` | Loading placeholders; every data-fetching screen shows skeletons |
+| `ShortBadge` | "Short" tag beside a symbol when a position's quantity is negative |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
 
 ### Features (`src/features/`)

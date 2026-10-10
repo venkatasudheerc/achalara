@@ -5,6 +5,7 @@ import { useAccount, useAccountPositions } from '@/hooks/useAccounts'
 import { useSleeves, useCreateSleeve } from '@/hooks/useSleeves'
 import { useStrategies } from '@/hooks/useStrategies'
 import { useScope } from '@/context/ScopeContext'
+import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
@@ -56,7 +57,7 @@ export function AccountDetailPage() {
   ]
 
   const posCols: Column<AggregatedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
     { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (

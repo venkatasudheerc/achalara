@@ -248,14 +248,16 @@ class PerformanceService:
             symbol = pos["symbol"]
             cost = pos["cost_basis"]
             qty = pos["quantity"]
-            avg_cost = cost / qty if qty > 0 else Decimal(0)
+            # A short carries negative quantity and negative cost (the proceeds
+            # received), so the ratio is still its per-share price.
+            avg_cost = cost / qty if qty != 0 else Decimal(0)
 
             if symbol in prices:
                 price = Decimal(str(prices[symbol]))
                 market_value = qty * price
                 unrealized_gain = market_value - cost
                 unrealized_gain_pct = (
-                    float(unrealized_gain / cost * 100) if cost > 0 else 0.0
+                    float(unrealized_gain / abs(cost) * 100) if cost != 0 else 0.0
                 )
             else:
                 price = None

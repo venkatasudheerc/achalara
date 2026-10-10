@@ -856,8 +856,35 @@ def test_a_short_position_is_valued_as_a_liability(db, client):
     )
 
     assert valued["total_market_value"] == -400.0
-    # Sold at 50, now 40: the short is up 100.
+    # Sold at 50, now 40: the short is up 100, a 20% gain on the 500 received.
     assert valued["total_unrealized_gain"] == 100.0
+    assert valued["positions"][0]["unrealized_gain_pct"] == 20.0
+
+
+def test_roll_up_positions_report_a_shorts_price_and_gain(db, client, monkeypatch):
+    from app.models.position import Position
+    from app.services import performance_service
+    from app.services.performance_service import PerformanceService
+
+    # Keep to the persisted price: no live market-data call from a test.
+    monkeypatch.setattr(
+        performance_service.WebullConnector, "is_configured", lambda self: False
+    )
+
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "SELL", "10", "50")
+    PortfolioCalculationService(db).persist_all_positions(sleeve_id)
+    db.query(Position).filter(Position.sleeve_id == sleeve_id).update(
+        {"current_price": Decimal("40")}
+    )
+    db.commit()
+
+    (short,) = PerformanceService(db).positions_payload([sleeve_id])["positions"]
+
+    assert short["quantity"] == -10.0
+    assert short["avg_cost"] == 50.0
+    assert short["unrealized_gain"] == 100.0
+    assert short["unrealized_gain_pct"] == 20.0
 
 
 def test_round_trip_sleeves_still_ignore_a_partial_sell(db, client):
