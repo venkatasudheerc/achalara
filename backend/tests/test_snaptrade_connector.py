@@ -521,12 +521,14 @@ def test_option_legs_are_skipped_not_ingested_at_share_economics():
     page = {
         "data": [
             _activity(symbol="BULL270115P00020000", units=2, price="1.35"),
+            # A root renumbered by a corporate action carries a digit.
+            _activity(activity_id="act-3", symbol="NFE1270115P00000500", units=10),
             _activity(activity_id="act-2", symbol="AAPL"),
         ]
     }
     batch = _connector([page]).fetch_activities("c", ACCOUNT, credentials=CREDS)
     assert [t.symbol for t in batch.trades] == ["AAPL"]
-    assert batch.skipped == {"option": 1}
+    assert batch.skipped == {"option": 2}
 
 
 def test_cash_types_map_onto_ours_and_keep_the_source_sign():

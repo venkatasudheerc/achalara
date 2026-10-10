@@ -2427,7 +2427,7 @@ components:
             $ref: "#/components/schemas/ReconciliationDrift"
         unmatched_sells:
           type: integer
-          description: Sells with no shares left to sell (history starts mid-position)
+          description: Symbols left net short by the trades on file (a real short, or a sale of shares bought before the history starts)
         skipped_rows:
           type: object
           additionalProperties:

@@ -490,8 +490,10 @@ def test_reconciliation_lists_symbols_where_holdings_and_trades_disagree(
     assert drift["CIBR"]["derived_quantity"] == 0
     assert drift["USO"]["brokerage_quantity"] == 0
     assert drift["USO"]["difference"] == -10
-    # The FRDM sell has no buy in the captured history.
+    # The FRDM sell has no buy in the captured history, so it reads as a
+    # short the brokerage does not hold.
     assert report["unmatched_sells"] == 1
+    assert drift["FRDM"]["derived_quantity"] == -10
     assert report["skipped_rows"]["corporate_action"] == 1
 
 
@@ -558,7 +560,7 @@ def test_reassign_moves_a_symbols_whole_history(db, client, client_id, sdk):
             Position.sleeve_id == growth.id, Position.status == "OPEN"
         )
     }
-    assert open_symbols == {"MU"}
+    assert open_symbols == {"MU", "FRDM"}
     assert db.query(CashActivity).one().sleeve_id == growth.id
 
 
@@ -654,16 +656,62 @@ def test_fifo_handles_fractional_reinvested_lots(db, client):
     assert sum(p["matched_quantity"] for p in result["closed"]) == pytest.approx(10.632)
 
 
-def test_fifo_counts_a_sell_with_nothing_to_sell(db, client):
+def test_fifo_sell_beyond_holdings_closes_the_long_and_opens_a_short(db, client):
     sleeve_id = _fifo_sleeve(db, client)
     _trade(db, sleeve_id, date(2025, 1, 2), "BUY", "10", "100")
     _trade(db, sleeve_id, date(2025, 2, 3), "SELL", "25", "110")
 
     result = PortfolioCalculationService(db).calculate_positions(sleeve_id)
 
-    assert result["open"] == []
+    (short,) = result["open"]
+    assert short["quantity"] == Decimal("-15")
+    # A short's basis is the proceeds received, carried negative.
+    assert short["cost_basis"] == Decimal("-1650")
     assert result["unmatched_sells"] == 1
     assert result["closed"][0]["matched_quantity"] == 10.0
+
+
+def test_fifo_short_sale_is_closed_by_the_buy_that_covers_it(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 7, 29), "SELL", "1000", "11", commission="10")
+    _trade(db, sleeve_id, date(2025, 8, 15), "BUY", "1000", "10", commission="10")
+
+    result = PortfolioCalculationService(db).calculate_positions(sleeve_id)
+
+    # No phantom holding from the covering buy, and nothing left short.
+    assert result["open"] == []
+    assert result["unmatched_sells"] == 0
+    (closed,) = result["closed"]
+    assert closed["opened_at"] == date(2025, 7, 29)
+    assert closed["closed_at"] == date(2025, 8, 15)
+    # Sold at 11, bought back at 10, less both commissions.
+    assert closed["realized_gain"] == Decimal("980")
+
+
+def test_fifo_buy_covers_a_short_then_goes_long_with_the_rest(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "SELL", "40", "50")
+    _trade(db, sleeve_id, date(2025, 1, 9), "BUY", "100", "45")
+
+    result = PortfolioCalculationService(db).calculate_positions(sleeve_id)
+
+    (long_pos,) = result["open"]
+    assert long_pos["quantity"] == Decimal("60")
+    assert long_pos["cost_basis"] == Decimal("2700")
+    assert result["closed"][0]["realized_gain"] == Decimal("200")
+
+
+def test_a_short_position_is_valued_as_a_liability(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "SELL", "10", "50")
+
+    valued = PortfolioCalculationService(db).calculate_account_value(
+        sleeve_id, {"VTI": Decimal("40")}
+    )
+
+    assert valued["total_market_value"] == -400.0
+    # Sold at 50, now 40: the short is up 100.
+    assert valued["total_unrealized_gain"] == 100.0
 
 
 def test_round_trip_sleeves_still_ignore_a_partial_sell(db, client):

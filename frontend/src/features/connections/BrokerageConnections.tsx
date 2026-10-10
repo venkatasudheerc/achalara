@@ -336,11 +336,11 @@ function BrokerageAccountRow({
           )}
           {(skipped.length > 0 || reconciliation.unmatched_sells > 0) && (
             <p className="text-stone mt-2">
-              Not imported in the last sync:{' '}
+              Not fully covered by the last sync:{' '}
               {[
                 ...skipped.map(([reason, count]) => `${count} ${SKIPPED_ROW_LABELS[reason]}`),
                 ...(reconciliation.unmatched_sells > 0
-                  ? [`${reconciliation.unmatched_sells} sells of shares bought before the history starts`]
+                  ? [`${reconciliation.unmatched_sells} symbols left net short (a short sale, or shares bought before the history starts)`]
                   : []),
               ].join(', ')}
               .

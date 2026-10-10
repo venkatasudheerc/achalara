@@ -33,6 +33,7 @@ class Reconciliation(BaseModel):
 
     matched: int = 0
     drifted: List[ReconciliationDrift] = []
+    # Symbols the trades on file leave net short.
     unmatched_sells: int = 0
     skipped_rows: Dict[str, int] = {}
 

@@ -161,7 +161,9 @@ and "growth" are the same definition. Relationships: `sleeves` (1→N). No
 `accounting_method` decides how SELLs are matched to BUYs when deriving positions:
 `ROUND_TRIP` pairs equal quantities (strategy sheets record discrete round trips, and a SELL
 with no equal-quantity BUY is ignored); `FIFO` consumes the oldest lots and splits them on a
-partial sell, which real brokerage activity needs. A sleeve set mixing both is matched sleeve
+partial sell, which real brokerage activity needs. FIFO also handles **short sales**: a SELL
+beyond the shares held opens a short lot, a later BUY covers the oldest short lots first, and
+an open short is a position with negative quantity and negative cost basis. A sleeve set mixing both is matched sleeve
 by sleeve and rolled up per symbol.
 
 Constraints: `UNIQUE(account_id, strategy_id)` — one sleeve per strategy per account.

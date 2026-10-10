@@ -35,9 +35,9 @@ class PortfolioCalculationService:
         ``_fifo_positions``). Open positions are then rolled up per symbol.
 
         Returns a dict with keys:
-            open   — list of position dicts (quantity > 0)
+            open   — list of position dicts (quantity < 0 is a short)
             closed — list of closed-lot dicts (one per matched buy/sell pair)
-            unmatched_sells — count of FIFO SELLs with no shares to sell
+            unmatched_sells — count of symbols a FIFO sleeve is left net short
         """
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
         if as_of_date is None:
@@ -70,27 +70,33 @@ class PortfolioCalculationService:
                     continue
                 agg["quantity"] += pos["quantity"]
                 agg["cost_basis"] += pos["cost_basis"]
-                agg["avg_cost"] = agg["cost_basis"] / agg["quantity"]
                 agg["trades_count"] += pos["trades_count"]
+                if agg["quantity"] != 0:
+                    agg["avg_cost"] = agg["cost_basis"] / agg["quantity"]
 
         closed.sort(key=lambda p: p["closed_at"])
         return {
-            "open": list(open_by_symbol.values()),
+            # A long in one sleeve and an equal short in another net to nothing.
+            "open": [p for p in open_by_symbol.values() if p["quantity"] != 0],
             "closed": closed,
             "unmatched_sells": unmatched,
         }
 
     def _fifo_positions(self, sleeve_id: str, as_of_date: date) -> Dict:
         """
-        Positions for one sleeve using first-in-first-out lots.
+        Positions for one sleeve using first-in-first-out lots, long and short.
 
-        Each SELL consumes the oldest open lots of its symbol, splitting a lot
-        when it is only partly sold. Every lot (or part of one) a SELL consumes
-        is one closed entry, with both commissions apportioned by quantity.
+        A SELL consumes the oldest long lots of its symbol; whatever it cannot
+        cover opens a short lot. A BUY covers the oldest short lots first, and
+        the rest opens a long lot. Lots are split when only partly consumed,
+        and every lot (or part of one) closed is one closed entry, with both
+        commissions apportioned by quantity.
 
-        A SELL with no shares left to sell — history that starts mid-position,
-        or shares that arrived by transfer or split — is counted in
-        ``unmatched_sells`` rather than matched against nothing.
+        An open short is reported as an open position with negative quantity
+        and negative cost basis (the proceeds received). ``unmatched_sells``
+        counts the symbols left net short. A sale of shares bought before the
+        history starts looks the same as a short sale here; reconciling against
+        the brokerage's holdings is what tells them apart.
         """
         trades = (
             self.db.query(Trade)
@@ -102,64 +108,108 @@ class PortfolioCalculationService:
         # so a same-day round trip must not see its sell first.
         trades.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
 
-        # Per symbol: open lots, oldest first, as [qty_left, unit_cost, opened_at].
-        lots: Dict[str, List[list]] = {}
+        # Per symbol, oldest first, as [qty_left, unit_value, opened_at]:
+        # unit cost for a long lot, unit proceeds for a short one.
+        longs: Dict[str, List[list]] = {}
+        shorts: Dict[str, List[list]] = {}
         closed_positions: List[Dict] = []
         trades_count: Dict[str, int] = {}
-        unmatched_sells = 0
+
+        def close(symbol, qty, entry, exit_price, opened_at, closed_at, realized):
+            basis = qty * entry
+            rg_pct = (realized / basis * 100) if basis > 0 else Decimal(0)
+            closed_positions.append(
+                {
+                    "symbol": symbol,
+                    "status": "CLOSED",
+                    "quantity": Decimal(0),
+                    "cost_basis": Decimal(0),
+                    "avg_cost": Decimal(0),
+                    "entry_price": float(entry),
+                    "exit_price": float(exit_price),
+                    "matched_quantity": float(qty),
+                    "realized_gain": realized,
+                    "realized_gain_pct": float(rg_pct),
+                    "opened_at": opened_at,
+                    "closed_at": closed_at,
+                    "trades_count": 2,
+                }
+            )
 
         for trade in trades:
             symbol = trade.symbol
             trades_count[symbol] = trades_count.get(symbol, 0) + 1
             qty = Decimal(str(trade.quantity))
             price = Decimal(str(trade.price))
-            comm = Decimal(str(trade.commission or 0))
+            per_share_comm = Decimal(str(trade.commission or 0)) / qty
+            remaining = qty
 
             if trade.action == "BUY":
-                unit_cost = price + comm / qty
-                lots.setdefault(symbol, []).append([qty, unit_cost, trade.trade_date])
+                unit_cost = price + per_share_comm
+                open_shorts = shorts.get(symbol, [])
+                while remaining > 0 and open_shorts:
+                    lot = open_shorts[0]
+                    matched = min(remaining, lot[0])
+                    # Sold first at lot[1], bought back now at unit_cost.
+                    close(
+                        symbol,
+                        matched,
+                        lot[1],
+                        price,
+                        lot[2],
+                        trade.trade_date,
+                        matched * (lot[1] - unit_cost),
+                    )
+                    lot[0] -= matched
+                    remaining -= matched
+                    if lot[0] <= 0:
+                        open_shorts.pop(0)
+                if remaining > 0:
+                    longs.setdefault(symbol, []).append(
+                        [remaining, unit_cost, trade.trade_date]
+                    )
                 continue
 
-            remaining = qty
-            sell_comm_per_share = comm / qty
-            symbol_lots = lots.get(symbol, [])
-            while remaining > 0 and symbol_lots:
-                lot = symbol_lots[0]
+            unit_proceeds = price - per_share_comm
+            open_longs = longs.get(symbol, [])
+            while remaining > 0 and open_longs:
+                lot = open_longs[0]
                 matched = min(remaining, lot[0])
-                cost_basis = matched * lot[1]
-                proceeds = matched * (price - sell_comm_per_share)
-                realized = proceeds - cost_basis
-                rg_pct = (realized / cost_basis * 100) if cost_basis > 0 else Decimal(0)
-                closed_positions.append(
-                    {
-                        "symbol": symbol,
-                        "status": "CLOSED",
-                        "quantity": Decimal(0),
-                        "cost_basis": Decimal(0),
-                        "avg_cost": Decimal(0),
-                        "entry_price": float(lot[1]),
-                        "exit_price": float(price),
-                        "matched_quantity": float(matched),
-                        "realized_gain": realized,
-                        "realized_gain_pct": float(rg_pct),
-                        "opened_at": lot[2],
-                        "closed_at": trade.trade_date,
-                        "trades_count": 2,
-                    }
+                close(
+                    symbol,
+                    matched,
+                    lot[1],
+                    price,
+                    lot[2],
+                    trade.trade_date,
+                    matched * (unit_proceeds - lot[1]),
                 )
                 lot[0] -= matched
                 remaining -= matched
                 if lot[0] <= 0:
-                    symbol_lots.pop(0)
+                    open_longs.pop(0)
             if remaining > 0:
-                unmatched_sells += 1
+                shorts.setdefault(symbol, []).append(
+                    [remaining, unit_proceeds, trade.trade_date]
+                )
 
         open_positions = []
-        for symbol, symbol_lots in lots.items():
-            total_qty = sum((lot[0] for lot in symbol_lots), Decimal(0))
-            if total_qty <= 0:
+        net_short_symbols = 0
+        for symbol in sorted(set(longs) | set(shorts)):
+            # A symbol never holds long and short lots at once: each side is
+            # only opened after the other is exhausted.
+            long_lots = longs.get(symbol, [])
+            short_lots = shorts.get(symbol, [])
+            total_qty = sum((lot[0] for lot in long_lots), Decimal(0)) - sum(
+                (lot[0] for lot in short_lots), Decimal(0)
+            )
+            if total_qty == 0:
                 continue
-            total_cost = sum((lot[0] * lot[1] for lot in symbol_lots), Decimal(0))
+            total_cost = sum((lot[0] * lot[1] for lot in long_lots), Decimal(0)) - sum(
+                (lot[0] * lot[1] for lot in short_lots), Decimal(0)
+            )
+            if total_qty < 0:
+                net_short_symbols += 1
             open_positions.append(
                 {
                     "symbol": symbol,
@@ -174,7 +224,7 @@ class PortfolioCalculationService:
         return {
             "open": open_positions,
             "closed": closed_positions,
-            "unmatched_sells": unmatched_sells,
+            "unmatched_sells": net_short_symbols,
         }
 
     def _round_trip_positions(self, sleeve_ids: List[str], as_of_date: date) -> Dict:

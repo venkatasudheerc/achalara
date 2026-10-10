@@ -98,7 +98,8 @@ _CORPORATE_ACTION_TYPES = {
 _SWEEP_TYPES = {"SWEEP IN", "SWEEP OUT"}
 
 # OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
-_OCC_SYMBOL = re.compile(r"^[A-Z.]{1,6}\d{6}[CP]\d{8}$")
+# The root can carry a digit after a corporate action ("NFE1270115P00000500").
+_OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
 
 # SnapTrade caps this endpoint at 1000 rows per call.
 _MAX_PAGE = 1000
