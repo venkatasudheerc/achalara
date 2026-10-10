@@ -3,13 +3,18 @@ import type {
   SleeveCreate, SleeveResponse,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse,
   PortfolioValueResponse, ClosedPositionsResponse,
-  SleeveTradesResponse, MarketPriceUpdate, FetchMarketPricesResponse,
+  SleeveTradesResponse, MarketPriceUpdate, FetchMarketPricesResponse, CashActivity,
 } from '../types'
 
 const base = (clientId: string, accountId: string) =>
   `/api/v1/clients/${clientId}/accounts/${accountId}/sleeves`
 
 export const sleevesApi = {
+  getCashActivities: (clientId: string, accountId: string, sleeveId: string) =>
+    apiClient
+      .get<CashActivity[]>(`${base(clientId, accountId)}/${sleeveId}/cash-activities`)
+      .then((r) => r.data),
+
   create: (clientId: string, accountId: string, body: SleeveCreate) =>
     apiClient
       .post<SleeveResponse>(`${base(clientId, accountId)}`, body)

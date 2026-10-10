@@ -18,6 +18,8 @@ export const sleeveKeys = {
     ['sleeves', clientId, accountId, sleeveId, 'positions', 'closed'] as const,
   trades: (clientId: string, accountId: string, sleeveId: string, skip?: number) =>
     ['sleeves', clientId, accountId, sleeveId, 'trades', skip] as const,
+  cashActivities: (clientId: string, accountId: string, sleeveId: string) =>
+    ['sleeves', clientId, accountId, sleeveId, 'cash-activities'] as const,
 }
 
 export function useSleeves(clientId: string, accountId: string) {
@@ -89,6 +91,14 @@ export function useSleeveTrades(
   return useQuery({
     queryKey: sleeveKeys.trades(clientId, accountId, sleeveId, skip),
     queryFn: () => sleevesApi.getTrades(clientId, accountId, sleeveId, { skip, limit }),
+    enabled: !!clientId && !!accountId && !!sleeveId,
+  })
+}
+
+export function useSleeveCashActivities(clientId: string, accountId: string, sleeveId: string) {
+  return useQuery({
+    queryKey: sleeveKeys.cashActivities(clientId, accountId, sleeveId),
+    queryFn: () => sleevesApi.getCashActivities(clientId, accountId, sleeveId),
     enabled: !!clientId && !!accountId && !!sleeveId,
   })
 }

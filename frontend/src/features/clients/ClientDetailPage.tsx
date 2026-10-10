@@ -10,6 +10,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
+import { BrokerageConnections } from '@/features/connections/BrokerageConnections'
 
 export function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -154,6 +155,8 @@ export function ClientDetailPage() {
           <p className="text-stone text-sm py-4">No accounts yet.</p>
         )}
       </section>
+
+      <BrokerageConnections clientId={clientId!} />
 
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">

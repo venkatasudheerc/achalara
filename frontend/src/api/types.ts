@@ -40,6 +40,8 @@ export interface PerformanceSummary {
   total_return_pct: number | null
   total_cost_basis: number; total_market_value: number; total_unrealized_gain: number
   total_invested: number; total_proceeds: number; total_realized_gain: number
+  /** Dividends and interest received less fees and tax withheld */
+  total_income?: number
   closed_positions_count: number; trades_count: number
 }
 export interface PerformanceChild {
@@ -166,3 +168,58 @@ export interface BenchmarkResponse {
   timeseries: BenchmarkPoint[]
   warning: string | null
 }
+
+// ── Brokerage connections ──
+
+export type ConnectionStatus = 'active' | 'broken' | 'deleted'
+export type BrokerageAccountStatus = 'unmapped' | 'mapped' | 'ignored'
+
+export interface LinkResponse { redirect_url: string; expires_in_seconds: number }
+
+export interface ReconciliationDrift {
+  symbol: string; brokerage_quantity: number; derived_quantity: number
+  difference: number; awaiting_transactions: boolean
+}
+export interface Reconciliation {
+  matched: number; drifted: ReconciliationDrift[]
+  unmatched_sells: number; skipped_rows: Record<string, number>
+}
+
+export interface BrokerageAccount {
+  id: string; connection_id: string; name: string; number_last4: string | null
+  status: BrokerageAccountStatus
+  account_id: string | null; default_sleeve_id: string | null
+  initial_sync_completed: boolean
+  transactions_synced_through: string | null
+  last_synced_at: string | null; last_reconciled_at: string | null
+  reconciliation: Reconciliation | null
+}
+export interface Connection {
+  id: string; client_id: string; source: string; institution: string
+  status: ConnectionStatus; brokerage_accounts: BrokerageAccount[]
+}
+
+export interface BrokerageAccountUpdate {
+  status: 'mapped' | 'ignored'
+  account_id?: string | null; strategy_id?: string | null
+}
+export interface BrokerageSyncResult {
+  status: 'synced' | 'skipped'
+  reason: 'synced_recently' | 'initial_sync_pending' | 'rate_limited' | null
+  imported: number; duplicates: number; cash_imported: number
+  skipped_rows: Record<string, number>
+  next_sync_allowed_at: string | null
+  transactions_synced_through: string | null
+}
+
+export type CashActivityType =
+  | 'DIVIDEND' | 'INTEREST' | 'FEE' | 'WITHHOLDING'
+  | 'CONTRIBUTION' | 'WITHDRAWAL' | 'TRANSFER' | 'OTHER'
+export interface CashActivity {
+  id: string; sleeve_id: string; activity_date: string; type: CashActivityType
+  symbol: string | null; amount: number; notes: string | null
+  counts_toward_returns: boolean
+}
+
+export interface ReassignRequest { from_sleeve_id: string; to_sleeve_id: string; symbols: string[] }
+export interface ReassignResult { symbols: string[]; trades_moved: number; cash_activities_moved: number }
