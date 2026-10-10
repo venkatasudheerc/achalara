@@ -130,6 +130,7 @@ export function SleeveDetailPage() {
   const tradeCols: Column<TradeSummary>[] = [
     { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date), sortValue: (r) => r.trade_date },
     { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'security_type', header: 'Type', render: (r) => <span className="font-mono text-xs text-stone">{r.security_type ?? '—'}</span>, sortValue: (r) => r.security_type ?? '' },
     { key: 'action', header: 'Action', render: (r) => (
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
     ), sortValue: (r) => r.action },

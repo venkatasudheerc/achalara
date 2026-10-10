@@ -52,6 +52,9 @@ class NormalizedTrade(BaseModel):
     executed_at: datetime
     commission: Decimal = Decimal("0")
     source: str
+    # ETF | STOCK | ADR | MUTUAL_FUND | CLOSED_END_FUND | PREFERRED | OTHER, or
+    # None when the source does not say what kind of security this is.
+    security_type: Optional[str] = None
 
     # Routing hints (sleeve resolution); empty when the target sleeve is explicit.
     strategy: str = ""
@@ -85,10 +88,27 @@ class NormalizedCashActivity(BaseModel):
     amount: Decimal
     occurred_at: datetime
     symbol: Optional[str] = None
+    security_type: Optional[str] = None
     currency: str = "USD"
     source: str
     notes: str = ""
     raw: dict = Field(default_factory=dict)
+
+
+class RawActivity(BaseModel):
+    """One activity exactly as the source sent it, with what was done with it.
+
+    Kept so trades and cash rows can be re-derived when the mapping rules
+    change, without asking a rate-limited source for the same data again.
+    ``payload`` is for storage and audit; upstream code must not interpret it.
+    """
+
+    source_id: str  # the source's own id for the row; may be empty
+    type: str  # the source's type string, unmapped
+    occurred_on: Optional[date] = None
+    symbol: Optional[str] = None
+    outcome: str  # trade | cash | skipped:<reason>
+    payload: dict = Field(default_factory=dict)
 
 
 class ActivityBatch(BaseModel):
@@ -100,7 +120,12 @@ class ActivityBatch(BaseModel):
 
     trades: List[NormalizedTrade] = Field(default_factory=list)
     cash: List[NormalizedCashActivity] = Field(default_factory=list)
+    # Every row fetched, including the skipped ones, verbatim.
+    raw: List[RawActivity] = Field(default_factory=list)
     skipped: Dict[str, int] = Field(default_factory=dict)
+    # How each trade's security type was determined, by method, so reliance on
+    # a weak signal (a word in the description) is visible.
+    security_type_sources: Dict[str, int] = Field(default_factory=dict)
 
 
 class RawAccount(BaseModel):

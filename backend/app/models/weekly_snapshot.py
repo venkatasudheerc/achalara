@@ -41,5 +41,7 @@ class WeeklyPortfolioSnapshot(BaseModel):
     realized_gain = Column(Float, nullable=False, default=0.0)
 
     __table_args__ = (
-        UniqueConstraint("sleeve_id", "week_start_date", name="uq_snapshot_sleeve_week"),
+        UniqueConstraint(
+            "sleeve_id", "week_start_date", name="uq_snapshot_sleeve_week"
+        ),
     )

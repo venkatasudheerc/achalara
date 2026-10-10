@@ -595,3 +595,72 @@ def test_accounts_carry_the_sources_sync_status():
     assert account.connection_ref == "auth-1"
     assert account.initial_sync_completed is False
     assert account.transactions_synced_through.isoformat() == "2026-09-30"
+
+
+# ---------------------------------------------------------------------------
+# Security type and verbatim rows
+# ---------------------------------------------------------------------------
+
+
+def _typed(symbol_extra=None, description="ACME CORP", **kwargs):
+    row = _activity(description=description, **kwargs)
+    row["symbol"].update(symbol_extra or {})
+    return row
+
+
+def _one_trade(row):
+    batch = _connector([{"data": [row]}]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+    return batch.trades[0], batch.security_type_sources
+
+
+def test_security_type_comes_from_the_symbols_type_code():
+    trade, sources = _one_trade(_typed({"type": {"code": "et", "description": "ETF"}}))
+    assert trade.security_type == "ETF"
+    assert sources == {"type": 1}
+    assert _one_trade(_typed({"type": {"code": "cs"}}))[0].security_type == "STOCK"
+    assert _one_trade(_typed({"type": {"code": "ad"}}))[0].security_type == "ADR"
+    # A code we have no name for is still a known, non-ETF security.
+    assert _one_trade(_typed({"type": {"code": "wt"}}))[0].security_type == "OTHER"
+
+
+def test_security_type_falls_back_to_instrument_kind():
+    trade, sources = _one_trade(_typed({"kind": "etf"}))
+    assert trade.security_type == "ETF"
+    assert sources == {"kind": 1}
+
+
+def test_security_type_falls_back_to_the_word_etf_in_a_description():
+    trade, sources = _one_trade(_typed(description="VANGUARD TOTAL STOCK MARKET ETF"))
+    assert trade.security_type == "ETF"
+    assert sources == {"description": 1}
+    # Only as a whole word: a ticker or name merely containing the letters is not one.
+    assert _one_trade(_typed(description="NETFLIX INC"))[0].security_type is None
+
+
+def test_security_type_is_none_when_nothing_says():
+    trade, sources = _one_trade(_typed())
+    assert trade.security_type is None
+    assert sources == {"none": 1}
+
+
+def test_every_fetched_row_is_kept_verbatim_with_its_outcome():
+    payload = _fixture("vanguard_activities.json")
+    batch = _connector([payload]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+
+    assert len(batch.raw) == len(payload["data"])
+    outcomes = {}
+    for raw in batch.raw:
+        outcomes[raw.outcome] = outcomes.get(raw.outcome, 0) + 1
+    assert outcomes == {
+        "trade": 7,
+        "cash": 1,
+        "skipped:sweep": 2,
+        "skipped:incomplete": 1,
+        "skipped:corporate_action": 1,
+    }
+    split = next(r for r in batch.raw if r.type == "SPLIT")
+    assert split.symbol == "NVDA"
+    # The stored payload is the source row, untouched.
+    original = next(r for r in payload["data"] if r["type"] == "SPLIT")
+    assert split.payload == original
+    assert json.loads(json.dumps(split.payload)) == original

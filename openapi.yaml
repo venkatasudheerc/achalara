@@ -1635,6 +1635,10 @@ components:
           type: number
         notes:
           type: string
+        security_type:
+          type: string
+          nullable: true
+          description: ETF, STOCK, ADR, MUTUAL_FUND… as the source reported it; null for CSV, Sheets and manual trades
 
     # ── Accounts ─────────────────────────────────────────────────────────────
 
@@ -2340,6 +2344,17 @@ components:
           type: string
           nullable: true
           description: Client who owns the mapped account; may differ from the connection's client
+        sleeve_routes:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: Security type → sleeve id. Types without an entry go to `default_sleeve_id`.
+        sync_start_date:
+          type: string
+          format: date
+          nullable: true
+          description: Earliest activity date loaded; null means full history
         initial_sync_completed:
           type: boolean
           description: False while the source is still loading the account's history
@@ -2383,6 +2398,21 @@ components:
             The client who owns the account, when different from the client whose
             login reaches it (an agent with authority over another person's
             account). Defaults to the login's client.
+        strategy_routes:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: |
+            Split the account by what is traded: security type → strategy id,
+            e.g. `{"ETF": "<strategy id>"}`. One sleeve is created per strategy;
+            every other type goes to `strategy_id`. A symbol always stays in the
+            sleeve that first received it.
+        history_start:
+          type: string
+          format: date
+          nullable: true
+          description: Earliest activity date to load on the first sync; omit for full history
 
     BrokerageSyncResult:
       type: object

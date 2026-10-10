@@ -363,6 +363,7 @@ def get_sleeve_trades(
                 "price": float(t.price),
                 "commission": float(t.commission),
                 "notes": t.notes,
+                "security_type": t.security_type,
             }
             for t in trades
         ],

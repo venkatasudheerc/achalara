@@ -101,7 +101,12 @@ def update_brokerage_account(
         if body.status == "ignored":
             return service.ignore_account(brokerage_account_id)
         return service.map_account(
-            brokerage_account_id, body.account_id, body.strategy_id, body.client_id
+            brokerage_account_id,
+            body.account_id,
+            body.strategy_id,
+            body.client_id,
+            body.strategy_routes,
+            body.history_start,
         )
 
 

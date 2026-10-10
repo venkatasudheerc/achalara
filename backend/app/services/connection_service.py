@@ -10,7 +10,7 @@ scheduler job and the webhook handler all call it — do not inline it.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -21,7 +21,11 @@ from app.config import settings
 from app.connectors.models import NotSupported, RawAccount
 from app.connectors.registry import get_connector
 from app.models.account import Account
-from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
+from app.models.brokerage_connection import (
+    BrokerageAccount,
+    BrokerageActivity,
+    BrokerageConnection,
+)
 from app.models.client import Client
 from app.models.position import Position
 from app.models.sleeve import Sleeve
@@ -167,6 +171,8 @@ class ConnectionService:
         account_id: Optional[str] = None,
         strategy_id: Optional[str] = None,
         client_id: Optional[str] = None,
+        strategy_routes: Optional[Dict[str, str]] = None,
+        history_start: Optional[date] = None,
     ) -> BrokerageAccount:
         """Bring a discovered account into the hierarchy.
 
@@ -178,6 +184,11 @@ class ConnectionService:
         The account need not belong to the client who owns the login. One
         person's login routinely reaches accounts they only act on as agent, so
         ``client_id`` names the account's actual owner (default: the login's).
+
+        ``strategy_routes`` splits the account by what is traded: it maps a
+        security type ("ETF") to the strategy whose sleeve takes those trades,
+        and every other type goes to ``strategy_id``. ``history_start`` limits
+        how far back the first sync reaches.
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.last_synced_at is not None:
@@ -201,14 +212,38 @@ class ConnectionService:
             self.db.flush()
 
         if strategy_id:
-            strategy = (
-                self.db.query(Strategy).filter(Strategy.id == strategy_id).first()
-            )
-            if strategy is None:
-                raise LookupError("Strategy not found")
+            strategy = self._strategy_or_raise(strategy_id)
         else:
             strategy = self._default_strategy()
+        sleeve = self._empty_fifo_sleeve(account, strategy)
 
+        routes: Dict[str, str] = {}
+        for security_type, routed_strategy_id in (strategy_routes or {}).items():
+            routed = self._empty_fifo_sleeve(
+                account, self._strategy_or_raise(routed_strategy_id)
+            )
+            routes[security_type.strip().upper()] = routed.id
+
+        ba.account_id = account.id
+        ba.default_sleeve_id = sleeve.id
+        ba.sleeve_routes = routes or None
+        ba.sync_start_date = history_start
+        ba.status = "mapped"
+        self.db.commit()
+        return ba
+
+    def _strategy_or_raise(self, strategy_id: str) -> Strategy:
+        strategy = self.db.query(Strategy).filter(Strategy.id == strategy_id).first()
+        if strategy is None:
+            raise LookupError("Strategy not found")
+        return strategy
+
+    def _empty_fifo_sleeve(self, account: Account, strategy: Strategy) -> Sleeve:
+        """The account's sleeve for ``strategy``, created if missing, set to FIFO.
+
+        Refuses a sleeve that already holds trades: those came from another
+        source, and a sleeve holds trades from one source only.
+        """
         sleeve = (
             self.db.query(Sleeve)
             .filter(Sleeve.account_id == account.id, Sleeve.strategy_id == strategy.id)
@@ -219,19 +254,12 @@ class ConnectionService:
             self.db.add(sleeve)
             self.db.flush()
         elif self.db.query(Trade.id).filter(Trade.sleeve_id == sleeve.id).first():
-            # Only reachable for an existing account, so nothing has been
-            # written yet beyond, at most, the shared default strategy.
             raise ValueError(
                 "That account and strategy already hold trades from another "
                 "source; choose a different strategy"
             )
         sleeve.accounting_method = "FIFO"
-
-        ba.account_id = account.id
-        ba.default_sleeve_id = sleeve.id
-        ba.status = "mapped"
-        self.db.commit()
-        return ba
+        return sleeve
 
     def ignore_account(self, brokerage_account_id: str) -> BrokerageAccount:
         """Leave a discovered account out of Achalara; it is never synced."""
@@ -294,7 +322,11 @@ class ConnectionService:
             return result
 
         since = None
-        if last is not None:
+        if last is None and ba.sync_start_date is not None:
+            since = datetime.combine(
+                ba.sync_start_date, datetime.min.time(), tzinfo=timezone.utc
+            )
+        elif last is not None:
             watermark = ba.transactions_synced_through or last.date()
             since = datetime.combine(
                 watermark - SYNC_OVERLAP, datetime.min.time(), tzinfo=timezone.utc
@@ -313,17 +345,28 @@ class ConnectionService:
             result["reason"] = "rate_limited"
             return result
 
-        sleeve_id = ba.default_sleeve_id
         account_sleeves = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(
                 Sleeve.account_id == ba.account_id
             )
         ]
-        earliest = None
-        if batch.trades:
-            ingest = IngestionService(self.db).ingest_to_sleeve(
-                batch.trades,
+        self._store_raw(ba, batch.raw)
+        trades_by_sleeve, cash_by_sleeve = self._route(ba, batch, account_sleeves)
+
+        # Earliest newly written date per sleeve, to recompute snapshots from.
+        earliest: Dict[str, date] = {}
+
+        def touched(sleeve_id: str, when: Optional[date]) -> None:
+            if when is not None and (
+                sleeve_id not in earliest or when < earliest[sleeve_id]
+            ):
+                earliest[sleeve_id] = when
+
+        ingestion = IngestionService(self.db)
+        for sleeve_id, trades in trades_by_sleeve.items():
+            ingest = ingestion.ingest_to_sleeve(
+                trades,
                 sleeve_id,
                 mode="IMPORT",
                 import_type="BROKERAGE",
@@ -331,18 +374,17 @@ class ConnectionService:
             )
             if not ingest["success"]:
                 raise RuntimeError("; ".join(ingest["errors"]) or "Ingestion failed")
-            result["imported"] = ingest["imported"]
-            result["duplicates"] = ingest["duplicates"]
-            earliest = ingest["earliest_trade_date"]
+            result["imported"] += ingest["imported"]
+            result["duplicates"] += ingest["duplicates"]
+            touched(sleeve_id, ingest["earliest_trade_date"])
 
-        cash = CashActivityService(self.db).ingest(
-            batch.cash, sleeve_id, dedup_sleeve_ids=account_sleeves
-        )
-        result["cash_imported"] = cash["imported"]
-        if cash["earliest_activity_date"] and (
-            earliest is None or cash["earliest_activity_date"] < earliest
-        ):
-            earliest = cash["earliest_activity_date"]
+        cash_service = CashActivityService(self.db)
+        for sleeve_id, activities in cash_by_sleeve.items():
+            cash = cash_service.ingest(
+                activities, sleeve_id, dedup_sleeve_ids=account_sleeves
+            )
+            result["cash_imported"] += cash["imported"]
+            touched(sleeve_id, cash["earliest_activity_date"])
 
         ba.last_synced_at = now
         if remote is not None and remote.transactions_synced_through:
@@ -351,9 +393,10 @@ class ConnectionService:
             ba.transactions_synced_through = batch.trades[-1].executed_at.date()
         self.db.commit()
 
-        if earliest is not None:
+        snapshots = WeeklySnapshotService(self.db)
+        for sleeve_id, when in earliest.items():
             try:
-                WeeklySnapshotService(self.db).recompute_from(sleeve_id, earliest)
+                snapshots.recompute_from(sleeve_id, when)
             except Exception as exc:  # noqa: BLE001
                 self.db.rollback()
                 logger.error(
@@ -368,9 +411,80 @@ class ConnectionService:
 
         result["status"] = "synced"
         result["skipped_rows"] = dict(batch.skipped)
+        result["security_type_sources"] = dict(batch.security_type_sources)
         result["transactions_synced_through"] = ba.transactions_synced_through
         result["next_sync_allowed_at"] = now + MIN_SYNC_INTERVAL
         return result
+
+    def _store_raw(self, ba: BrokerageAccount, rows) -> None:
+        """Keep every fetched row verbatim, replacing any we already hold.
+
+        Each sync re-reads an overlap window, so a row usually arrives more
+        than once; the latest copy wins.
+        """
+        existing = {
+            row.source_activity_id: row
+            for row in self.db.query(BrokerageActivity).filter(
+                BrokerageActivity.brokerage_account_id == ba.id
+            )
+        }
+        for position, raw in enumerate(rows):
+            # A row with no id of its own still has to be stored once.
+            key = raw.source_id or (
+                f"noid:{raw.occurred_on}:{raw.type}:{raw.symbol}:{position}"
+            )
+            record = existing.get(key)
+            if record is None:
+                record = BrokerageActivity(
+                    brokerage_account_id=ba.id, source_activity_id=key
+                )
+                self.db.add(record)
+                existing[key] = record
+            record.activity_date = raw.occurred_on
+            record.type = raw.type
+            record.symbol = raw.symbol
+            record.outcome = raw.outcome
+            record.payload = raw.payload
+        self.db.flush()
+
+    def _route(self, ba: BrokerageAccount, batch, account_sleeves: List[str]):
+        """Decide which sleeve each trade and cash activity belongs in.
+
+        In order: the sleeve already holding that symbol in this account, so a
+        symbol never straddles two sleeves and one that was moved by hand stays
+        moved; then the sleeve routed for its security type; then the default.
+        A symbol's first placement in this batch holds for the rest of it.
+        """
+        placed: Dict[str, str] = {}
+        for symbol, sleeve_id in (
+            self.db.query(Trade.symbol, Trade.sleeve_id)
+            .filter(Trade.sleeve_id.in_(account_sleeves))
+            .distinct()
+        ):
+            placed.setdefault(symbol, sleeve_id)
+
+        routes = ba.sleeve_routes or {}
+
+        def sleeve_for(symbol: Optional[str], security_type: Optional[str]) -> str:
+            if not symbol:
+                return ba.default_sleeve_id
+            if symbol not in placed:
+                placed[symbol] = routes.get(security_type or "", ba.default_sleeve_id)
+            return placed[symbol]
+
+        trades_by_sleeve: Dict[str, list] = {}
+        for trade in batch.trades:
+            trades_by_sleeve.setdefault(
+                sleeve_for(trade.symbol, trade.security_type), []
+            ).append(trade)
+        # Cash follows the security it was paid on; trades are placed first so
+        # a dividend lands with its shares even when its own row has no type.
+        cash_by_sleeve: Dict[str, list] = {}
+        for activity in batch.cash:
+            cash_by_sleeve.setdefault(
+                sleeve_for(activity.symbol, activity.security_type), []
+            ).append(activity)
+        return trades_by_sleeve, cash_by_sleeve
 
     def sync_all_mapped(self) -> Dict[str, str]:
         """Sync every mapped account on an active connection (scheduler job).

@@ -15,6 +15,7 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           └──< WeeklyPortfolioSnapshot
 
 Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sleeve   (linked logins)
+                                        └──< BrokerageActivity            (source rows, verbatim)
 
 SyncLog                                            (standalone import/sync audit trail)
 ```
@@ -184,6 +185,7 @@ sleeves. Relationships: `account`, `strategy` (N→1); `trades`, `positions` (1�
 | notes | Text | nullable (broker descriptions are unbounded) |
 | google_sheet_row_id | String(255) | **unique**; null for CSV-sourced trades |
 | external_id | String(255) | indexed, nullable; **unique per sleeve** — see below |
+| security_type | String(20) | nullable — `ETF` / `STOCK` / `ADR` / `MUTUAL_FUND` / … as the source reported it; NULL for CSV, Sheets and manual trades |
 
 `external_id` is the source-derived idempotency key from
 `connectors/models.NormalizedTrade`, persisted so `UNIQUE(sleeve_id, external_id)`
@@ -307,6 +309,8 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | number_last4 | String(4) | nullable — only the last four characters are kept |
 | account_id | String(36) FK→accounts.id | nullable, **ON DELETE SET NULL** — set when mapped |
 | default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
+| sleeve_routes | JSON | nullable — security type → sleeve id, e.g. `{"ETF": "…"}`; other types use `default_sleeve_id` |
+| sync_start_date | Date | nullable — earliest activity date to load; NULL = full history |
 | status | String(20) | `unmapped` / `mapped` / `ignored` |
 | initial_sync_completed | Boolean | false while the source is still loading history |
 | transactions_synced_through | Date | nullable — the source's own completeness watermark |
@@ -323,6 +327,30 @@ act on as agent, so `connection.client_id` is who holds the login, not who owns 
 and a `FIFO` sleeve (default strategy "Unallocated"). Symbols can later be moved to other
 sleeves of the same account (`POST /trades/reassign`); sync dedups across all of the account's
 sleeves so moved trades are not re-imported.
+
+**Routing a synced trade to a sleeve**, in order: (1) the sleeve of this account that already
+holds the symbol — so a symbol never straddles sleeves and a manual reassignment sticks;
+(2) `sleeve_routes[security_type]`; (3) `default_sleeve_id`. Cash activities follow their symbol.
+
+### `brokerage_activities`
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| brokerage_account_id | String(36) FK→brokerage_accounts.id | not null, **ON DELETE CASCADE** |
+| source_activity_id | String(255) | the source's id for the row (may change if reprocessed) |
+| activity_date | Date | nullable |
+| type | String(50) | the source's type string, unmapped (`BUY`, `SPLIT`, `REI`, …) |
+| symbol | String(50) | nullable |
+| outcome | String(40) | `trade` / `cash` / `skipped:<reason>` |
+| payload | JSON | the row exactly as received |
+
+Constraints: `UNIQUE(brokerage_account_id, source_activity_id)`.
+
+Every activity the source returned, **including the rows we skip** (options, splits, rows with
+no symbol). `trades` and `cash_activities` are a simplified reading of these: they drop the
+settlement date, actual cash amount, currency/FX and the source's own type. Keeping the
+originals means that reading can be redone when the rules change, without another pull from a
+source limited to one per account per day. Re-fetched rows replace the stored copy.
 
 ## Performance roll-ups
 

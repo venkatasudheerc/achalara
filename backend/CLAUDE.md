@@ -135,7 +135,11 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
   be reassigned to other strategy sleeves after ingestion.
 - Rows the connector cannot represent (options, corporate actions) are skipped **and counted**
-  — never dropped silently.
+  — never dropped silently. Every fetched row, skipped or not, is stored verbatim in
+  `brokerage_activities`; re-derive from there before spending another pull.
+- A synced trade goes to the sleeve already holding its symbol, else the sleeve routed for its
+  `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
+  one symbol in two sleeves of an account.
 
 ## What "Done" Looks Like
 

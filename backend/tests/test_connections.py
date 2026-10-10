@@ -17,7 +17,11 @@ import pytest
 from app.config import settings
 from app.connectors import registry
 from app.connectors.snaptrade_connector import SnapTradeConnector
-from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
+from app.models.brokerage_connection import (
+    BrokerageAccount,
+    BrokerageActivity,
+    BrokerageConnection,
+)
 from app.models.cash_activity import CashActivity
 from app.models.position import Position
 from app.models.sleeve import Sleeve
@@ -458,6 +462,148 @@ def test_scheduled_job_syncs_mapped_accounts_only(db, client, client_id, sdk):
     assert outcomes == {ba.id: "synced"}
     # The second account was discovered but never mapped.
     assert db.query(BrokerageAccount).count() == 2
+
+
+# ---------------------------------------------------------------------------
+# Splitting an account by security type, and loading from a start date
+# ---------------------------------------------------------------------------
+
+
+def _split_account(db, client, client_id, history_start=None):
+    """Map acct-1 with ETFs routed to one strategy and the rest to another."""
+    etfs = client.post("/api/v1/strategies/", json={"name": "ETFs"}).json()["id"]
+    stocks = client.post("/api/v1/strategies/", json={"name": "Stocks"}).json()["id"]
+    (connection,) = client.post(
+        f"/api/v1/clients/{client_id}/connections/discover"
+    ).json()
+    ba_id = next(
+        a["id"] for a in connection["brokerage_accounts"] if a["name"] == "Brokerage Account"
+    )
+    body = {"status": "mapped", "strategy_id": stocks, "strategy_routes": {"etf": etfs}}
+    if history_start:
+        body["history_start"] = history_start
+    resp = client.patch(f"/api/v1/brokerage-accounts/{ba_id}", json=body)
+    assert resp.status_code == 200, resp.text
+    mapped = resp.json()
+    return ba_id, mapped["sleeve_routes"]["ETF"], mapped["default_sleeve_id"]
+
+
+def _symbols(db, sleeve_id):
+    return sorted({t.symbol for t in db.query(Trade).filter(Trade.sleeve_id == sleeve_id)})
+
+
+def test_mapping_with_routes_creates_one_fifo_sleeve_per_strategy(db, client, client_id, sdk):
+    ba_id, etf_sleeve, stock_sleeve = _split_account(db, client, client_id)
+
+    assert etf_sleeve != stock_sleeve
+    sleeves = {s.id: s for s in db.query(Sleeve).all()}
+    assert sleeves[etf_sleeve].strategy.name == "ETFs"
+    assert sleeves[stock_sleeve].strategy.name == "Stocks"
+    assert sleeves[etf_sleeve].account_id == sleeves[stock_sleeve].account_id
+    assert {s.accounting_method for s in sleeves.values()} == {"FIFO"}
+
+
+def test_sync_routes_trades_to_sleeves_by_security_type(db, client, client_id, sdk):
+    ba_id, etf_sleeve, stock_sleeve = _split_account(db, client, client_id)
+
+    result = sync_brokerage_account(db, ba_id)
+
+    assert result["imported"] == 7
+    # USO and VTI carry a type code; FRDM is recognised by its description.
+    assert _symbols(db, etf_sleeve) == ["FRDM", "USO", "VTI"]
+    assert _symbols(db, stock_sleeve) == ["INTC", "MU"]
+    types = dict(db.query(Trade.symbol, Trade.security_type).distinct())
+    assert types["USO"] == "ETF" and types["MU"] is None
+    # The dividend follows the security it was paid on.
+    assert db.query(CashActivity).one().sleeve_id == etf_sleeve
+    assert result["security_type_sources"] == {"type": 3, "description": 1, "none": 3}
+
+
+def test_a_symbol_stays_in_one_sleeve_even_when_rows_disagree_on_type(
+    db, client, client_id, sdk
+):
+    # One INTC leg says common stock and the other says nothing; both must
+    # land together or the round trip would be split across sleeves.
+    ba_id, etf_sleeve, stock_sleeve = _split_account(db, client, client_id)
+    for row in sdk.activities["data"]:
+        if (row["symbol"] or {}).get("raw_symbol") == "INTC" and row["type"] == "SELL":
+            row["symbol"]["type"] = {"code": "et"}
+
+    sync_brokerage_account(db, ba_id)
+
+    intc = {t.sleeve_id for t in db.query(Trade).filter(Trade.symbol == "INTC")}
+    assert len(intc) == 1
+
+
+def test_a_symbol_moved_by_hand_stays_moved_on_later_syncs(db, client, client_id, sdk):
+    ba_id, etf_sleeve, stock_sleeve = _split_account(db, client, client_id)
+    sync_brokerage_account(db, ba_id)
+    reassign_symbols(db, etf_sleeve, stock_sleeve, ["USO"])
+    # A new USO buy arrives on the next sync.
+    extra = dict(sdk.activities["data"][0], id="new-uso", trade_date="2026-09-29T05:00:00Z")
+    sdk.activities["data"].append(extra)
+    ba = db.query(BrokerageAccount).filter(BrokerageAccount.id == ba_id).one()
+    _allow_resync(db, ba)
+
+    result = sync_brokerage_account(db, ba_id)
+
+    assert result["imported"] == 1
+    assert "USO" in _symbols(db, stock_sleeve)
+    assert "USO" not in _symbols(db, etf_sleeve)
+
+
+def test_resync_of_a_split_account_imports_nothing(db, client, client_id, sdk):
+    ba_id, etf_sleeve, stock_sleeve = _split_account(db, client, client_id)
+    sync_brokerage_account(db, ba_id)
+    ba = db.query(BrokerageAccount).filter(BrokerageAccount.id == ba_id).one()
+    _allow_resync(db, ba)
+
+    result = sync_brokerage_account(db, ba_id)
+
+    assert (result["imported"], result["duplicates"], result["cash_imported"]) == (0, 7, 0)
+    assert db.query(Trade).count() == 7
+
+
+def test_first_sync_starts_at_the_history_start_date(db, client, client_id, sdk):
+    ba_id, _, _ = _split_account(db, client, client_id, history_start="2026-01-01")
+
+    sync_brokerage_account(db, ba_id)
+
+    call = [c for c in sdk.calls if c[0] == "activities"][-1][1]
+    assert call["start_date"] == date(2026, 1, 1)
+    listed = client.get(f"/api/v1/clients/{client_id}/connections").json()[0]
+    account = next(a for a in listed["brokerage_accounts"] if a["id"] == ba_id)
+    assert account["sync_start_date"] == "2026-01-01"
+
+
+def test_trade_listing_shows_security_type(db, client, client_id, sdk):
+    ba_id, etf_sleeve, _ = _split_account(db, client, client_id)
+    sync_brokerage_account(db, ba_id)
+    sleeve = db.query(Sleeve).filter(Sleeve.id == etf_sleeve).one()
+
+    trades = client.get(
+        f"/api/v1/clients/{client_id}/accounts/{sleeve.account_id}"
+        f"/sleeves/{etf_sleeve}/trades"
+    ).json()["trades"]
+
+    assert {t["security_type"] for t in trades} == {"ETF"}
+
+
+def test_sync_keeps_every_source_row_and_replaces_it_on_resync(db, client, client_id, sdk):
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+
+    rows = db.query(BrokerageActivity).filter(
+        BrokerageActivity.brokerage_account_id == ba.id
+    )
+    assert rows.count() == len(sdk.activities["data"])
+    split = rows.filter(BrokerageActivity.type == "SPLIT").one()
+    assert split.outcome == "skipped:corporate_action"
+    assert split.payload["symbol"]["raw_symbol"] == "NVDA"
+
+    _allow_resync(db, ba)
+    sync_brokerage_account(db, ba.id)
+    assert rows.count() == len(sdk.activities["data"])
 
 
 # ---------------------------------------------------------------------------

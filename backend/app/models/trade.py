@@ -42,6 +42,9 @@ class Trade(BaseModel):
     # API rather than ingestion — have none. Uniqueness is scoped per sleeve so
     # the same trade legitimately appearing in two sleeves is not blocked.
     external_id = Column(String(255), nullable=True, index=True)
+    # What kind of security this is (ETF, STOCK, ADR, ...), as the source
+    # reported it. NULL for sources that do not say (CSV, Sheets, manual).
+    security_type = Column(String(20), nullable=True)
 
     __table_args__ = (
         CheckConstraint("action IN ('BUY', 'SELL')", name="valid_action"),

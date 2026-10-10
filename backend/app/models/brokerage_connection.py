@@ -75,6 +75,12 @@ class BrokerageAccount(BaseModel):
         String(36), ForeignKey("sleeves.id", ondelete="SET NULL")
     )
     status = Column(String(20), nullable=False, default="unmapped")
+    # Security type -> sleeve id, for accounts split across strategies by what
+    # is traded (e.g. {"ETF": "<sleeve>"}). Types without an entry go to
+    # default_sleeve_id.
+    sleeve_routes = Column(JSON)
+    # Earliest activity date to pull. NULL means the full history.
+    sync_start_date = Column(Date)
     # The source's own report of how far its transaction history is complete.
     # This, not our clock, is the watermark: transactions lag holdings by days.
     initial_sync_completed = Column(Boolean, nullable=False, default=False)
@@ -107,4 +113,46 @@ class BrokerageAccount(BaseModel):
         return (
             f"<BrokerageAccount(id={self.id}, name={self.name}, "
             f"status={self.status})>"
+        )
+
+
+class BrokerageActivity(BaseModel):
+    """One activity row exactly as the source sent it.
+
+    The trades and cash activities we keep are a simplified reading of these.
+    Holding the originals means that reading can be redone — new handling for
+    splits, say — without pulling from a source that limits how often we ask.
+    Includes rows that were skipped, with the reason in ``outcome``.
+    """
+
+    __tablename__ = "brokerage_activities"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    brokerage_account_id = Column(
+        String(36),
+        ForeignKey("brokerage_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # The source's id for the row. It can change if the source reprocesses the
+    # activity, so it identifies a row for storage but is never a dedup key
+    # for trades.
+    source_activity_id = Column(String(255), nullable=False)
+    activity_date = Column(Date)
+    type = Column(String(50), nullable=False, default="")
+    symbol = Column(String(50))
+    outcome = Column(String(40), nullable=False)  # trade | cash | skipped:<reason>
+    payload = Column(JSON, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "brokerage_account_id",
+            "source_activity_id",
+            name="uq_brokerage_activity_account_source",
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<BrokerageActivity(id={self.id}, type={self.type}, "
+            f"outcome={self.outcome})>"
         )

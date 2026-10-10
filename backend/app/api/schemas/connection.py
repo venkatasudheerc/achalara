@@ -50,6 +50,9 @@ class BrokerageAccountResponse(BaseModel):
     default_sleeve_id: Optional[str] = None
     # Client who owns the mapped account; may differ from the connection's.
     owner_client_id: Optional[str] = None
+    # Security type -> sleeve id; types without an entry use default_sleeve_id.
+    sleeve_routes: Optional[Dict[str, str]] = None
+    sync_start_date: Optional[date] = None
     initial_sync_completed: bool
     transactions_synced_through: Optional[date] = None
     last_synced_at: Optional[datetime] = None
@@ -85,6 +88,11 @@ class BrokerageAccountUpdate(BaseModel):
     # mapped only: the client who owns the account, when that is not the client
     # whose login reaches it (an agent with authority over someone's account).
     client_id: Optional[str] = None
+    # mapped only: split the account by what is traded. Maps a security type
+    # ("ETF") to the strategy taking those trades; other types use strategy_id.
+    strategy_routes: Optional[Dict[str, str]] = None
+    # mapped only: earliest activity date to load (omit for full history).
+    history_start: Optional[date] = None
 
 
 class SyncResult(BaseModel):

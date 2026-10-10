@@ -33,6 +33,8 @@ export interface TradeSummary {
   id: string; sleeve_id: string; trade_date: string; symbol: string
   action: TradeAction; quantity: number; price: number
   commission: number; notes: string
+  /** ETF, STOCK, ADR… as the source reported it; null for CSV/Sheets/manual trades */
+  security_type?: string | null
 }
 
 export interface PerformanceSummary {
@@ -191,6 +193,8 @@ export interface BrokerageAccount {
   account_id: string | null; default_sleeve_id: string | null
   /** Client who owns the mapped account; may differ from the connection's client */
   owner_client_id: string | null
+  sleeve_routes: Record<string, string> | null
+  sync_start_date: string | null
   initial_sync_completed: boolean
   transactions_synced_through: string | null
   last_synced_at: string | null; last_reconciled_at: string | null
@@ -206,6 +210,9 @@ export interface BrokerageAccountUpdate {
   account_id?: string | null; strategy_id?: string | null
   /** Owner of the account when it is not the client whose login reaches it */
   client_id?: string | null
+  /** Security type → strategy id; other types use strategy_id */
+  strategy_routes?: Record<string, string> | null
+  history_start?: string | null
 }
 export interface BrokerageSyncResult {
   status: 'synced' | 'skipped'

@@ -40,6 +40,7 @@ from app.connectors.models import (
     NormalizedTrade,
     NotSupported,
     RawAccount,
+    RawActivity,
     TradeAction,
 )
 
@@ -92,6 +93,24 @@ _CORPORATE_ACTION_TYPES = {
     "ASSIGNMENT",
     "EXPIRED",
 }
+
+# SnapTrade security type codes (``symbol.type.code``) and the ``kind`` a live
+# holding's instrument carries, mapped onto our vocabulary.
+_SECURITY_TYPES = {
+    "et": "ETF",
+    "etf": "ETF",
+    "cs": "STOCK",
+    "stock": "STOCK",
+    "equity": "STOCK",
+    "ad": "ADR",
+    "adr": "ADR",
+    "oef": "MUTUAL_FUND",
+    "mutual_fund": "MUTUAL_FUND",
+    "cef": "CLOSED_END_FUND",
+    "ps": "PREFERRED",
+}
+
+_ETF_WORD = re.compile(r"\bETFS?\b", re.IGNORECASE)
 
 # Cash moving between the settlement balance and its sweep fund. Internal to
 # the account, so neither a trade nor a cash activity.
@@ -433,43 +452,60 @@ class SnapTradeConnector:
         return batch
 
     def _classify(self, row: Any, account_ref: str, batch: ActivityBatch) -> None:
-        """Route one activity into the batch as a trade, cash, or a skip."""
-        raw_type = str(_get(row, "type") or "").upper()
+        """Route one activity into the batch as a trade, cash, or a skip.
 
-        def skip(reason: str) -> None:
+        Whatever happens to it, the row is also kept verbatim in ``batch.raw``.
+        """
+        outcome = self._outcome(row, account_ref, batch)
+        if outcome.startswith("skipped:"):
+            reason = outcome.split(":", 1)[1]
             batch.skipped[reason] = batch.skipped.get(reason, 0) + 1
+        occurred = _parse_datetime(_get(row, "trade_date"))
+        batch.raw.append(
+            RawActivity(
+                source_id=str(_get(row, "id") or ""),
+                type=str(_get(row, "type") or ""),
+                occurred_on=occurred.date() if occurred else None,
+                symbol=_symbol_ticker(_get(row, "symbol")) or None,
+                outcome=outcome,
+                payload=_jsonable(row),
+            )
+        )
+
+    def _outcome(self, row: Any, account_ref: str, batch: ActivityBatch) -> str:
+        """Add the row to the batch if it maps, and say what became of it."""
+        raw_type = str(_get(row, "type") or "").upper()
 
         if raw_type in _TRADE_TYPES:
             # A reinvestment into a sweep fund moves cash, not shares.
             if raw_type == "REI" and not _decimal(_get(row, "units")):
-                skip("sweep")
-                return
+                return "skipped:sweep"
             if _is_option(row):
                 # Contracts are reported in per-share prices with no x100
                 # multiplier, and assignment/expiry are not modeled, so an
                 # option leg would be ingested with wrong economics.
-                skip("option")
-                return
+                return "skipped:option"
             trade = self._to_trade(row, account_ref)
             if trade is None:
-                skip("incomplete")
-            else:
-                batch.trades.append(trade)
-        elif raw_type in _CASH_TYPES:
+                return "skipped:incomplete"
+            batch.trades.append(trade)
+            how = _security_type(row)[1]
+            batch.security_type_sources[how] = (
+                batch.security_type_sources.get(how, 0) + 1
+            )
+            return "trade"
+        if raw_type in _CASH_TYPES:
             activity = self._to_cash(row, account_ref, _CASH_TYPES[raw_type])
             if activity is None:
-                skip("incomplete")
-            else:
-                batch.cash.append(activity)
-        elif raw_type in _CORPORATE_ACTION_TYPES:
-            skip("corporate_action")
-        elif raw_type in _SWEEP_TYPES:
-            skip("sweep")
-        else:
-            logger.warning(
-                "SnapTrade activity type %r not recognized; skipping", raw_type
-            )
-            skip("unrecognized")
+                return "skipped:incomplete"
+            batch.cash.append(activity)
+            return "cash"
+        if raw_type in _CORPORATE_ACTION_TYPES:
+            return "skipped:corporate_action"
+        if raw_type in _SWEEP_TYPES:
+            return "skipped:sweep"
+        logger.warning("SnapTrade activity type %r not recognized; skipping", raw_type)
+        return "skipped:unrecognized"
 
     def _to_cash(
         self, row: Any, account_ref: str, cash_type: str
@@ -496,6 +532,7 @@ class SnapTradeConnector:
             amount=amount,
             occurred_at=occurred_at,
             symbol=symbol,
+            security_type=_security_type(row)[0] if symbol else None,
             currency=_currency_code(_get(row, "currency")),
             source=SOURCE,
             notes=str(_get(row, "description") or ""),
@@ -552,6 +589,7 @@ class SnapTradeConnector:
             executed_at=traded_at,
             commission=_decimal(_get(row, "fee")) or Decimal("0"),
             source=SOURCE,
+            security_type=_security_type(row)[0],
             notes=notes,
             raw=_dict(row),
         )
@@ -613,6 +651,29 @@ def _default_credentials() -> SnapTradeCredentials:
             "No SnapTrade user configured; set SNAPTRADE_USER_ID or pass credentials"
         )
     return SnapTradeCredentials(user_id=settings.snaptrade_user_id)
+
+
+def _security_type(row: Any) -> tuple:
+    """What kind of security an activity concerns, and how that was determined.
+
+    Returns ``(type, method)``. Tried in order of reliability: the type code on
+    the symbol, the ``kind`` a live instrument carries, then the word "ETF" in
+    a description (brokerages name funds that way: "... TOTAL STOCK MARKET
+    ETF"). ``(None, "none")`` when nothing says.
+    """
+    symbol = _get(row, "symbol")
+    if symbol is not None and not isinstance(symbol, str):
+        code = _get(_get(symbol, "type"), "code")
+        if isinstance(code, str) and code.strip():
+            return _SECURITY_TYPES.get(code.strip().lower(), "OTHER"), "type"
+        kind = _get(symbol, "kind")
+        if isinstance(kind, str) and kind.strip():
+            return _SECURITY_TYPES.get(kind.strip().lower(), "OTHER"), "kind"
+        if _ETF_WORD.search(str(_get(symbol, "description") or "")):
+            return "ETF", "description"
+    if _ETF_WORD.search(str(_get(row, "description") or "")):
+        return "ETF", "description"
+    return None, "none"
 
 
 def _is_option(row: Any) -> bool:
@@ -714,6 +775,40 @@ def _dict(obj: Any) -> dict:
         return dict(obj)
     except (TypeError, ValueError):
         return {"repr": repr(obj)}
+
+
+def _jsonable(obj: Any, _depth: int = 0) -> Any:
+    """A plain JSON-safe copy of a payload, for storing a row verbatim.
+
+    SDK objects are mappings, sequences and scalars in disguise, and carry
+    Decimals, dates and UUIDs that a JSON column cannot take as they are.
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if _depth > 12:
+        return str(obj)
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if hasattr(obj, "items"):
+        try:
+            return {str(k): _jsonable(v, _depth + 1) for k, v in obj.items()}
+        except Exception:  # noqa: BLE001 - audit data is never load-bearing
+            return str(obj)
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return [_jsonable(v, _depth + 1) for v in obj]
+    for probe, value in (("is_none_oapg", None), ("is_true_oapg", True)):
+        check = getattr(obj, probe, None)
+        if callable(check):
+            try:
+                if check():
+                    return value
+            except Exception:  # noqa: BLE001
+                pass
+    if callable(getattr(obj, "is_false_oapg", None)):
+        return False
+    return str(obj)
 
 
 def _symbol_ticker(symbol: Any) -> str:

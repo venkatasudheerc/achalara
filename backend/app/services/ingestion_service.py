@@ -370,6 +370,7 @@ class IngestionService:
             commission=Decimal(str(t.commission)),
             notes=t.notes,
             external_id=t.external_id or None,
+            security_type=t.security_type,
         )
 
     def _start_log(self, import_type: str, processed: int, duplicates: int) -> SyncLog:
