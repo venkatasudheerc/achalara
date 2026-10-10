@@ -5,6 +5,7 @@ import {
   useUpdateBrokerageAccount, useSyncBrokerageAccount,
 } from '@/hooks/useConnections'
 import { useStrategies } from '@/hooks/useStrategies'
+import { useClientsList } from '@/hooks/useClients'
 import { ErrorState } from '@/components/ErrorState'
 import { Skeleton } from '@/components/Skeleton'
 import { formatDate, formatNumber } from '@/lib/formatters'
@@ -172,9 +173,12 @@ function BrokerageAccountRow({
   clientId, account, connectionActive,
 }: { clientId: string; account: BrokerageAccount; connectionActive: boolean }) {
   const { data: strategies } = useStrategies()
+  const { data: clients } = useClientsList()
   const update = useUpdateBrokerageAccount()
   const sync = useSyncBrokerageAccount()
   const [strategyId, setStrategyId] = useState('')
+  // The login's holder may only be an agent on this account, so its owner is a choice.
+  const [ownerId, setOwnerId] = useState(clientId)
   const [message, setMessage] = useState('')
   const [showDrift, setShowDrift] = useState(false)
 
@@ -183,7 +187,7 @@ function BrokerageAccountRow({
     try {
       await update.mutateAsync({
         id: account.id,
-        body: { status: 'mapped', strategy_id: strategyId || null },
+        body: { status: 'mapped', strategy_id: strategyId || null, client_id: ownerId },
       })
     } catch {
       setMessage('Could not map this account. The chosen strategy may already hold trades.')
@@ -240,7 +244,7 @@ function BrokerageAccountRow({
             )}
             {account.account_id && (
               <Link
-                to={`/app/clients/${clientId}/accounts/${account.account_id}`}
+                to={`/app/clients/${account.owner_client_id ?? clientId}/accounts/${account.account_id}`}
                 className="text-xs border border-stone/30 text-stone rounded-btn px-3 py-1.5 hover:border-pine hover:text-pine"
               >
                 Open →
@@ -257,6 +261,16 @@ function BrokerageAccountRow({
           </div>
         ) : (
           <div className="flex items-center gap-2 shrink-0">
+            <select
+              value={ownerId}
+              onChange={(e) => setOwnerId(e.target.value)}
+              aria-label="Client who owns this account"
+              className="border border-stone/30 rounded-btn px-2 py-1.5 text-xs focus:outline-none focus:border-pine"
+            >
+              {(clients ?? []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
             <select
               value={strategyId}
               onChange={(e) => setStrategyId(e.target.value)}

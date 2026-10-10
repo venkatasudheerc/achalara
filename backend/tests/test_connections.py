@@ -257,6 +257,53 @@ def test_mapping_via_api_into_a_chosen_strategy(db, client, client_id, sdk):
     assert sleeve.strategy_id == strategy_id
 
 
+def test_an_agents_login_can_map_an_account_to_its_real_owner(db, client, client_id, sdk):
+    owner_id = client.post(
+        "/api/v1/clients/", json={"name": "Owner", "email": "owner@example.com"}
+    ).json()["id"]
+    (connection,) = client.post(
+        f"/api/v1/clients/{client_id}/connections/discover"
+    ).json()
+    ba_id = connection["brokerage_accounts"][0]["id"]
+
+    resp = client.patch(
+        f"/api/v1/brokerage-accounts/{ba_id}",
+        json={"status": "mapped", "client_id": owner_id},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["owner_client_id"] == owner_id
+    sleeve = db.query(Sleeve).filter(Sleeve.id == resp.json()["default_sleeve_id"]).one()
+    assert sleeve.account.client_id == owner_id
+    # The login itself still belongs to the agent.
+    assert db.query(BrokerageConnection).one().client_id == client_id
+    # And it syncs like any other mapped account.
+    assert sync_brokerage_account(db, ba_id)["imported"] == 7
+    assert db.query(Trade).filter(Trade.sleeve_id == sleeve.id).count() == 7
+
+
+def test_mapping_rejects_an_account_and_client_that_disagree(db, client, client_id, sdk):
+    other_id = client.post(
+        "/api/v1/clients/", json={"name": "Other", "email": "other@example.com"}
+    ).json()["id"]
+    first = _mapped_account(db, client_id, "acct-1")
+    second = (
+        db.query(BrokerageAccount)
+        .filter(BrokerageAccount.external_account_ref == "acct-2")
+        .one()
+    )
+    resp = client.patch(
+        f"/api/v1/brokerage-accounts/{second.id}",
+        json={"status": "mapped", "account_id": first.account_id, "client_id": other_id},
+    )
+    assert resp.status_code == 409
+    resp = client.patch(
+        f"/api/v1/brokerage-accounts/{second.id}",
+        json={"status": "mapped", "client_id": "no-such-client"},
+    )
+    assert resp.status_code == 404
+
+
 def test_mapping_refuses_a_sleeve_that_already_holds_trades(db, client, client_id, sdk):
     first = _mapped_account(db, client_id, "acct-1")
     sync_brokerage_account(db, first.id)

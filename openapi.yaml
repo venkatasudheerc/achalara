@@ -1232,6 +1232,8 @@ paths:
       description: |
         `mapped` creates an Achalara account (unless `account_id` names one) and
         a FIFO sleeve for `strategy_id` (default: the "Unallocated" strategy).
+        The account may belong to a different client than the login: pass
+        `client_id` to name its owner.
         The sleeve must not already hold trades. An account cannot be remapped
         once it has synced.
       operationId: updateBrokerageAccount
@@ -2334,6 +2336,10 @@ components:
         default_sleeve_id:
           type: string
           nullable: true
+        owner_client_id:
+          type: string
+          nullable: true
+          description: Client who owns the mapped account; may differ from the connection's client
         initial_sync_completed:
           type: boolean
           description: False while the source is still loading the account's history
@@ -2370,6 +2376,13 @@ components:
           type: string
           nullable: true
           description: Strategy the trades land in; omit for "Unallocated"
+        client_id:
+          type: string
+          nullable: true
+          description: |
+            The client who owns the account, when different from the client whose
+            login reaches it (an agent with authority over another person's
+            account). Defaults to the login's client.
 
     BrokerageSyncResult:
       type: object

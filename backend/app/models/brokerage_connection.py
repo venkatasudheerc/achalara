@@ -95,6 +95,14 @@ class BrokerageAccount(BaseModel):
         "BrokerageConnection", back_populates="brokerage_accounts"
     )
 
+    account = relationship("Account")
+
+    @property
+    def owner_client_id(self):
+        """The client who owns the mapped account, which may not be the one
+        whose login reaches it."""
+        return self.account.client_id if self.account is not None else None
+
     def __repr__(self):
         return (
             f"<BrokerageAccount(id={self.id}, name={self.name}, "

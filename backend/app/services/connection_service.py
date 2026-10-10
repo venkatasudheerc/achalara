@@ -166,6 +166,7 @@ class ConnectionService:
         brokerage_account_id: str,
         account_id: Optional[str] = None,
         strategy_id: Optional[str] = None,
+        client_id: Optional[str] = None,
     ) -> BrokerageAccount:
         """Bring a discovered account into the hierarchy.
 
@@ -173,23 +174,25 @@ class ConnectionService:
         resolves the sleeve its trades are ingested into (the named strategy,
         or "Unallocated"). The sleeve must be empty: a sleeve holds trades from
         one source, so brokerage activity is never mixed into imported ones.
+
+        The account need not belong to the client who owns the login. One
+        person's login routinely reaches accounts they only act on as agent, so
+        ``client_id`` names the account's actual owner (default: the login's).
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.last_synced_at is not None:
             raise ValueError("Account has already been synced and cannot be remapped")
-        client_id = ba.connection.client_id
 
         if account_id:
-            account = (
-                self.db.query(Account)
-                .filter(Account.id == account_id, Account.client_id == client_id)
-                .first()
-            )
+            account = self.db.query(Account).filter(Account.id == account_id).first()
             if account is None:
-                raise LookupError("Account not found for this client")
+                raise LookupError("Account not found")
+            if client_id and account.client_id != client_id:
+                raise ValueError("That account belongs to a different client")
         else:
+            owner = self._client_or_raise(client_id or ba.connection.client_id)
             account = Account(
-                client_id=client_id,
+                client_id=owner.id,
                 name=ba.name,
                 account_number=f"****{ba.number_last4}" if ba.number_last4 else None,
                 description=f"Linked via {ba.connection.institution or SOURCE}",

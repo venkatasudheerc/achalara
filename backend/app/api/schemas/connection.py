@@ -47,6 +47,8 @@ class BrokerageAccountResponse(BaseModel):
     status: str  # unmapped | mapped | ignored
     account_id: Optional[str] = None
     default_sleeve_id: Optional[str] = None
+    # Client who owns the mapped account; may differ from the connection's.
+    owner_client_id: Optional[str] = None
     initial_sync_completed: bool
     transactions_synced_through: Optional[date] = None
     last_synced_at: Optional[datetime] = None
@@ -79,6 +81,9 @@ class BrokerageAccountUpdate(BaseModel):
     # the strategy its trades land in (omit for "Unallocated").
     account_id: Optional[str] = None
     strategy_id: Optional[str] = None
+    # mapped only: the client who owns the account, when that is not the client
+    # whose login reaches it (an agent with authority over someone's account).
+    client_id: Optional[str] = None
 
 
 class SyncResult(BaseModel):

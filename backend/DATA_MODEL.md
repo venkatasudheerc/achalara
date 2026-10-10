@@ -315,7 +315,9 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 Constraints: `UNIQUE(connection_id, external_account_ref)`.
 
 Every account discovered under a login, mapped or not — kept apart from `accounts` because one
-login exposes several accounts and some are never brought in. Mapping creates the `Account`
+login exposes several accounts and some are never brought in. The mapped `Account` may belong
+to a **different client** than the connection: one person's login reaches accounts they only
+act on as agent, so `connection.client_id` is who holds the login, not who owns each account. Mapping creates the `Account`
 and a `FIFO` sleeve (default strategy "Unallocated"). Symbols can later be moved to other
 sleeves of the same account (`POST /trades/reassign`); sync dedups across all of the account's
 sleeves so moved trades are not re-imported.

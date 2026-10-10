@@ -189,6 +189,8 @@ export interface BrokerageAccount {
   id: string; connection_id: string; name: string; number_last4: string | null
   status: BrokerageAccountStatus
   account_id: string | null; default_sleeve_id: string | null
+  /** Client who owns the mapped account; may differ from the connection's client */
+  owner_client_id: string | null
   initial_sync_completed: boolean
   transactions_synced_through: string | null
   last_synced_at: string | null; last_reconciled_at: string | null
@@ -202,6 +204,8 @@ export interface Connection {
 export interface BrokerageAccountUpdate {
   status: 'mapped' | 'ignored'
   account_id?: string | null; strategy_id?: string | null
+  /** Owner of the account when it is not the client whose login reaches it */
+  client_id?: string | null
 }
 export interface BrokerageSyncResult {
   status: 'synced' | 'skipped'
