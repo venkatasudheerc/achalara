@@ -17,7 +17,8 @@ class WeeklyPortfolioSnapshot(BaseModel):
     cost_basis  — aggregate open-position cost basis at week close
     market_value — aggregate open-position market value at week close
     cash_in     — gross BUY notional during the week
-    cash_out    — gross SELL proceeds during the week
+    cash_out    — gross SELL proceeds during the week, plus net investment
+                  income (dividends less fees)
     realized_gain — net realized P&L from round-trips closed during the week
     """
 

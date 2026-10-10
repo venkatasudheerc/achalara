@@ -76,7 +76,7 @@ class MWRCalculationService:
     def _get_cash_flows(
         self, sleeve_ids, start_date: date, end_date: date
     ) -> List[Tuple[date, Decimal]]:
-        """Get net cash flows (deposits/withdrawals) during period"""
+        """Get net cash flows (trades plus investment income) during period"""
         from app.models.trade import Trade
 
         trades = (
@@ -105,6 +105,14 @@ class MWRCalculationService:
                 daily_flows[flow_date] -= qty * price + comm
             else:  # SELL
                 daily_flows[flow_date] += qty * price - comm
+
+        # Dividends and fees: money out of (or into) the sleeve with no trade.
+        from app.services.cash_activity_service import CashActivityService
+
+        for flow_date, amount in CashActivityService(self.db).income_flows(
+            sleeve_ids, start_date, end_date
+        ):
+            daily_flows[flow_date] = daily_flows.get(flow_date, Decimal(0)) + amount
 
         return [(date, flow) for date, flow in sorted(daily_flows.items())]
 

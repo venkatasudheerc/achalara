@@ -1,0 +1,15 @@
+meta {
+  name: List Connections
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/connections
+  body: none
+  auth: none
+}
+
+docs {
+  Connections with their accounts, sync watermark and last reconciliation.
+}

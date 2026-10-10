@@ -58,6 +58,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/strategies` | `strategies` (firm-wide definitions)                    |
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
+| `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 
 **Performance roll-ups** (`services/performance_service.py`): a level resolves to a _set of sleeve ids_, then one calc runs over the **merged** trade stream — returns are NOT averaged from child returns. Account = all sleeves in the account; Client = all sleeves under the client's accounts; Strategy = all sleeves for that strategy. Each response is `{ level, id, name, summary, timeseries, children }`.
 
@@ -76,6 +77,10 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/trade_import.py`          | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes)                    |
 | `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
 | `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
+| `app/services/connection_service.py`    | Brokerage link/discover/map/reconcile + `sync_brokerage_account` (the one sync path)    |
+| `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
+| `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
+| `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
 | `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
 | `app/services/market_price.py`          | Position price updates / persistence                                                    |
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
@@ -118,6 +123,19 @@ per account, <=4 background holdings calls per user per day) — never loop them
 ## Sync Logic Must Stay Shared
 
 The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from `daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
+
+## Brokerage Sync Rules
+
+- `sync_brokerage_account()` in `connection_service.py` is the only brokerage sync path. The
+  `/brokerage-accounts/{id}/sync` route, the scheduler job and the webhook handler all call it.
+- At most one transactions pull per account per 24h. The guard lives in the service; only a
+  source-initiated webhook passes `force=True`. Never loop or retry on a 429.
+- Brokerage sleeves use `accounting_method = "FIFO"`. Do not ingest brokerage trades into a
+  `ROUND_TRIP` sleeve, and keep one trade source per sleeve.
+- Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
+  be reassigned to other strategy sleeves after ingestion.
+- Rows the connector cannot represent (options, corporate actions) are skipped **and counted**
+  — never dropped silently.
 
 ## What "Done" Looks Like
 

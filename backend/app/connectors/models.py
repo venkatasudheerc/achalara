@@ -7,10 +7,10 @@ these types and on ``base.BrokerageConnector`` — never on a vendor shape.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -73,6 +73,36 @@ class NormalizedPosition(BaseModel):
     raw: dict = Field(default_factory=dict)
 
 
+class NormalizedCashActivity(BaseModel):
+    """A non-trade money movement: dividend, interest, fee, transfer.
+
+    ``amount`` is signed from the holder's side — positive is cash received.
+    ``external_id`` is the idempotent dedup key, as on ``NormalizedTrade``.
+    """
+
+    external_id: str
+    type: str  # DIVIDEND | INTEREST | FEE | WITHHOLDING | CONTRIBUTION | ...
+    amount: Decimal
+    occurred_at: datetime
+    symbol: Optional[str] = None
+    currency: str = "USD"
+    source: str
+    notes: str = ""
+    raw: dict = Field(default_factory=dict)
+
+
+class ActivityBatch(BaseModel):
+    """Everything a source reported for an account over a window.
+
+    ``skipped`` counts rows that were deliberately not ingested, by reason, so
+    a gap in coverage is reported rather than silent.
+    """
+
+    trades: List[NormalizedTrade] = Field(default_factory=list)
+    cash: List[NormalizedCashActivity] = Field(default_factory=list)
+    skipped: Dict[str, int] = Field(default_factory=dict)
+
+
 class RawAccount(BaseModel):
     """An account discovered at a source, before it is mapped into the hierarchy."""
 
@@ -80,6 +110,12 @@ class RawAccount(BaseModel):
     name: str
     account_number: Optional[str] = None
     institution: str = ""
+    # The connection (login) this account sits under, where the source has one.
+    connection_ref: Optional[str] = None
+    # The source's own report of transaction-history completeness. None when
+    # the source does not say.
+    initial_sync_completed: Optional[bool] = None
+    transactions_synced_through: Optional[date] = None
     raw: dict = Field(default_factory=dict)
 
 

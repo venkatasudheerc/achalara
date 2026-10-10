@@ -21,6 +21,7 @@ from app.models.trade import Trade
 from app.services.mwr_calculation import MWRCalculationService
 from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
+from app.services.cash_activity_service import CashActivityService
 from app.connectors.webull_connector import WebullConnector
 
 import logging
@@ -36,6 +37,7 @@ class PerformanceService:
         self.mwr = MWRCalculationService(db)
         self.twr = TWRCalculationService(db)
         self.portfolio = PortfolioCalculationService(db)
+        self.cash = CashActivityService(db)
 
     # -- sleeve-set resolution ------------------------------------------------
 
@@ -145,6 +147,7 @@ class PerformanceService:
                     "total_cost_basis": 0.0,
                     "total_market_value": 0.0,
                     "total_unrealized_gain": 0.0,
+                    "total_income": 0.0,
                     "trades_count": 0,
                 },
                 "timeseries": [],
@@ -198,6 +201,7 @@ class PerformanceService:
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,
                 "total_realized_gain": total_realized_gain,
+                "total_income": self.cash.total_income(sleeve_ids, s_start, s_end),
                 "closed_positions_count": valued.get("closed_positions_count", 0),
                 "trades_count": len(trades),
             },
@@ -339,6 +343,13 @@ class PerformanceService:
                     p["realized_gain"]
                 )
 
+        # Dividends and fees, bucketed by month; they leave the sleeve like
+        # sale proceeds, so they are added to cash_out below.
+        income_by_month: Dict[tuple, float] = {}
+        for flow_date, amount in self.cash.income_flows(sleeve_ids):
+            key = (flow_date.year, flow_date.month)
+            income_by_month[key] = income_by_month.get(key, 0.0) + float(amount)
+
         prev_end_value = 0.0  # value carried from previous month
 
         while (year, month) <= (end_year, end_month):
@@ -366,7 +377,7 @@ class PerformanceService:
                 float(t.quantity) * float(t.price) - float(t.commission)
                 for t in month_trades
                 if t.action == "SELL"
-            )
+            ) + income_by_month.get((year, month), 0.0)
 
             realized_this_month = realized_by_month.get((year, month), 0.0)
 

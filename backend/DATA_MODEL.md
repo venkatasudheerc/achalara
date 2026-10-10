@@ -10,8 +10,11 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           │
                           ├──< Trade
                           ├──< Position
+                          ├──< CashActivity
                           ├──< SheetSyncConfig
                           └──< WeeklyPortfolioSnapshot
+
+Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sleeve   (linked logins)
 
 SyncLog                                            (standalone import/sync audit trail)
 ```
@@ -153,6 +156,13 @@ and "growth" are the same definition. Relationships: `sleeves` (1→N). No
 | id | String(36) PK | uuid |
 | account_id | String(36) FK→accounts.id | not null, **ON DELETE CASCADE** |
 | strategy_id | String(36) FK→strategies.id | not null, **ON DELETE RESTRICT** |
+| accounting_method | String(20) | not null, default `ROUND_TRIP`; `FIFO` for brokerage-linked sleeves |
+
+`accounting_method` decides how SELLs are matched to BUYs when deriving positions:
+`ROUND_TRIP` pairs equal quantities (strategy sheets record discrete round trips, and a SELL
+with no equal-quantity BUY is ignored); `FIFO` consumes the oldest lots and splits them on a
+partial sell, which real brokerage activity needs. A sleeve set mixing both is matched sleeve
+by sleeve and rolled up per symbol.
 
 Constraints: `UNIQUE(account_id, strategy_id)` — one sleeve per strategy per account.
 `RESTRICT` on `strategy_id` prevents deleting a strategy definition that still has live
@@ -222,7 +232,7 @@ Client is derived via `sleeve → account.client_id` (the old `client_id` column
 | Column | Type | Notes |
 |---|---|---|
 | id | String(36) PK | uuid |
-| import_type | String(20) | "HISTORICAL" or "DAILY" |
+| import_type | String(20) | "HISTORICAL", "DAILY" or "BROKERAGE" |
 | status | String(20) | PENDING / IN_PROGRESS / SUCCESS / FAILED |
 | rows_processed / rows_success / rows_failed | Integer | default 0 |
 | error_details | JSON | nullable |
@@ -250,6 +260,65 @@ Constraints: `UNIQUE(sleeve_id, week_start_date)` — one snapshot per sleeve pe
 **Write path:** upserted automatically after any trade write (`POST /trades`) or import/sync. Full rebuild available via `POST /admin/rebuild-snapshots`. The `WeeklySnapshotService` walks all Mondays from the sleeve's first trade date. Snapshots are stored per-sleeve; at read time `WeeklySnapshotService.returns_series()` aggregates across the requested sleeve set (account / client / strategy) using market-value weighting for TWR and MWR.
 
 **Migration:** `afc155b89ef6_add_weekly_portfolio_snapshots`.
+
+### `cash_activities`
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
+| activity_date | Date | not null |
+| type | String(20) | `DIVIDEND` / `INTEREST` / `FEE` / `WITHHOLDING` / `CONTRIBUTION` / `WITHDRAWAL` / `TRANSFER` / `OTHER` |
+| symbol | String(50) | nullable — the security the money relates to |
+| amount | Numeric(18,2) | signed; positive is cash received |
+| notes | Text | nullable |
+| external_id | String(255) | not null, indexed — source-derived idempotency key |
+
+Constraints: `UNIQUE(sleeve_id, external_id)`.
+
+Non-trade money movements. Performance is securities-only (no cash balance), so only some of
+these are returns: `FEE` always, and `DIVIDEND` / `INTEREST` / `WITHHOLDING` when paid on a
+symbol the sleeve set has traded. They enter MWR as cash flows and TWR/monthly returns via
+`cash_out`. Contributions, withdrawals, transfers and income on untraded symbols (a settlement
+fund's interest) are stored for audit and never counted. See `CashActivityService.income_flows`.
+
+### `brokerage_connections`
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| client_id | String(36) FK→clients.id | not null, **ON DELETE CASCADE** |
+| source | String(50) | connector registry name, e.g. `snaptrade` |
+| external_user_id | String(255) | the user id the login was linked under at the source |
+| external_connection_id | String(255) | the source's id for the login |
+| institution | String(255) | e.g. "Vanguard" |
+| status | String(20) | `active` / `broken` / `deleted` |
+
+Constraints: `UNIQUE(source, external_connection_id)`. One row per brokerage login. Holds
+references only — no credentials and no secret (the Personal SnapTrade flow issues none).
+
+### `brokerage_accounts`
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| connection_id | String(36) FK→brokerage_connections.id | not null, **ON DELETE CASCADE** |
+| external_account_ref | String(255) | the source's account id |
+| name | String(255) | as reported by the brokerage |
+| number_last4 | String(4) | nullable — only the last four characters are kept |
+| account_id | String(36) FK→accounts.id | nullable, **ON DELETE SET NULL** — set when mapped |
+| default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
+| status | String(20) | `unmapped` / `mapped` / `ignored` |
+| initial_sync_completed | Boolean | false while the source is still loading history |
+| transactions_synced_through | Date | nullable — the source's own completeness watermark |
+| last_synced_at | DateTime(tz) | nullable — gates the 24h-per-account sync limit |
+| last_reconciled_at | DateTime(tz) | nullable |
+| reconciliation | JSON | nullable — `{matched, drifted[], unmatched_sells, skipped_rows}` |
+
+Constraints: `UNIQUE(connection_id, external_account_ref)`.
+
+Every account discovered under a login, mapped or not — kept apart from `accounts` because one
+login exposes several accounts and some are never brought in. Mapping creates the `Account`
+and a `FIFO` sleeve (default strategy "Unallocated"). Symbols can later be moved to other
+sleeves of the same account (`POST /trades/reassign`); sync dedups across all of the account's
+sleeves so moved trades are not re-imported.
 
 ## Performance roll-ups
 
@@ -291,6 +360,12 @@ Rebuild all snapshots: `POST /admin/rebuild-snapshots` (pass `sleeve_id` to scop
   a matching `(date, symbol, qty, price)` tuple as a duplicate, so trades without an
   `external_id` still dedup as before. Quantity and price compare as normalized `Decimal`s,
   not floats, so fractional share counts compare exactly.
+- **Brokerage trades dedup on `external_id` alone.** For sources whose id is a complete
+  identity (`snaptrade`), the legacy tuple is not consulted: it has no action, so it would drop
+  one leg of a same-day buy and sell at one price, which real brokerage data contains.
+- **Brokerage coverage gaps are counted, not hidden.** Option legs, splits/mergers/assignments,
+  and rows with an unresolvable symbol are skipped by the connector and tallied per sync in
+  `skipped_rows`; the resulting share-count differences appear in the account's reconciliation.
 - **`google_sheet_row_id` is retained but no longer the dedup path** (sheet trades go through
   `external_id` like every other source); it stays available for a future row-id-keyed source.
 - **Migration `fe521b07fb54` is Postgres-guarded** and preserves each old strategy id as its

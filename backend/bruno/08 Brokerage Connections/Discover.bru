@@ -1,0 +1,20 @@
+meta {
+  name: Discover
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/connections/discover
+  body: none
+  auth: none
+}
+
+vars:post-response {
+  connectionId: res.body[0].id
+  brokerageAccountId: res.body[0].brokerage_accounts[0].id
+}
+
+docs {
+  Records the logins and accounts SnapTrade reports. Safe to repeat. Stores the first connection and brokerage account ids for the requests below.
+}

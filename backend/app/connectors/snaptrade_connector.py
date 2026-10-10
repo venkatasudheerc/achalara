@@ -21,6 +21,7 @@ lost. ``SnapTradeCredentials`` carries whichever applies.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -29,10 +30,12 @@ from typing import Any, Dict, List, Optional
 from app.config import settings
 from app.connectors.base import ConnectorCapabilities
 from app.connectors.models import (
+    ActivityBatch,
     Connection,
     ConnectionResult,
     ConnectionStatus,
     LinkSession,
+    NormalizedCashActivity,
     NormalizedPosition,
     NormalizedTrade,
     NotSupported,
@@ -44,9 +47,8 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "snaptrade"
 
-# Activity types that represent an executed trade. Everything else SnapTrade
-# reports (DIVIDEND, FEE, CONTRIBUTION, WITHDRAWAL, TRANSFER, ...) has no home
-# in the Trade model yet and is skipped — see _KNOWN_NON_TRADE_TYPES.
+# Activity types that represent an executed trade. Money movements map through
+# _CASH_TYPES; anything in neither is skipped and counted.
 #
 # REI (dividend reinvestment) is a real share purchase: Vanguard reports the
 # shares bought in ``units`` with a per-share ``price``. Leaving it out makes
@@ -59,36 +61,44 @@ _TRADE_TYPES = {
     "REI": TradeAction.BUY,
 }
 
-# Recognized non-trade activity. Listed explicitly so an *unrecognized* type
-# can be logged loudly instead of silently vanishing: dividends in particular
-# affect real returns, so dropping them is a known accuracy gap, not a no-op.
-#
-# Vanguard spells several of these with spaces and qualifiers (observed in
-# captured payloads). SPLIT, CORP ACTION (MERGER), ASSIGNMENT and EXPIRED
-# change share counts too, so skipping them is a further accuracy gap.
-_KNOWN_NON_TRADE_TYPES = {
-    "DIVIDEND",
-    "CONTRIBUTION",
-    "WITHDRAWAL",
-    "DEPOSIT",
-    "INTEREST",
-    "INTEREST CHARGE",
-    "INCOME",
-    "FEE",
-    "WITHHOLDING",
-    "TRANSFER",
-    "TRANSFER (INCOMING)",
-    "TRANSFER (OUTGOING)",
-    "WIRE OUT",
-    "SWEEP IN",
-    "SWEEP OUT",
-    "STOCK_DIVIDEND",
+# Non-trade activity that moves money, mapped onto our cash activity types.
+# INCOME is fund income Vanguard reports apart from DIVIDEND; INTEREST CHARGE
+# is margin interest, a cost. Cash in lieu is proceeds for a fractional share
+# lost in a corporate action — real cash, but not income.
+_CASH_TYPES = {
+    "DIVIDEND": "DIVIDEND",
+    "INTEREST": "INTEREST",
+    "INCOME": "INTEREST",
+    "FEE": "FEE",
+    "INTEREST CHARGE": "FEE",
+    "WITHHOLDING": "WITHHOLDING",
+    "CONTRIBUTION": "CONTRIBUTION",
+    "DEPOSIT": "CONTRIBUTION",
+    "WITHDRAWAL": "WITHDRAWAL",
+    "WIRE OUT": "WITHDRAWAL",
+    "TRANSFER": "TRANSFER",
+    "TRANSFER (INCOMING)": "TRANSFER",
+    "TRANSFER (OUTGOING)": "TRANSFER",
+    "CORP ACTION (CASH IN LIEU)": "OTHER",
+}
+
+# Activity that changes share counts without a trade. Nothing models these
+# yet, so they are skipped and counted; holdings reconciliation shows the
+# resulting drift.
+_CORPORATE_ACTION_TYPES = {
     "SPLIT",
+    "STOCK_DIVIDEND",
     "CORP ACTION (MERGER)",
-    "CORP ACTION (CASH IN LIEU)",
     "ASSIGNMENT",
     "EXPIRED",
 }
+
+# Cash moving between the settlement balance and its sweep fund. Internal to
+# the account, so neither a trade nor a cash activity.
+_SWEEP_TYPES = {"SWEEP IN", "SWEEP OUT"}
+
+# OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
+_OCC_SYMBOL = re.compile(r"^[A-Z.]{1,6}\d{6}[CP]\d{8}$")
 
 # SnapTrade caps this endpoint at 1000 rows per call.
 _MAX_PAGE = 1000
@@ -255,8 +265,7 @@ class SnapTradeConnector:
         Only meaningful on Daily plans, and may be billed per call, so this is
         a user-initiated action rather than something to loop over.
         """
-        if credentials is None:
-            raise NotSupported("refresh_connection requires SnapTrade credentials")
+        credentials = credentials or _default_credentials()
         response = self.client.connections.refresh_brokerage_authorization(
             authorization_id=connection_id, **credentials.as_kwargs()
         )
@@ -274,8 +283,7 @@ class SnapTradeConnector:
 
         Exposing this to end users is required by SnapTrade's launch checklist.
         """
-        if credentials is None:
-            raise NotSupported("remove_connection requires SnapTrade credentials")
+        credentials = credentials or _default_credentials()
         self.client.connections.delete_connection(
             authorization_id=connection_id, **credentials.as_kwargs()
         )
@@ -302,6 +310,9 @@ class SnapTradeConnector:
                     name=str(_get(item, "name") or _get(item, "number") or "Account"),
                     account_number=_opt_str(_get(item, "number")),
                     institution=_institution(item),
+                    connection_ref=_opt_str(_get(item, "brokerage_authorization")),
+                    initial_sync_completed=_initial_sync_completed(item),
+                    transactions_synced_through=_synced_through(item),
                     raw=_dict(item),
                 )
             )
@@ -368,13 +379,29 @@ class SnapTradeConnector:
     ) -> List[NormalizedTrade]:
         """Executed trades for one account, oldest first.
 
-        Pages through SnapTrade's offset pagination and keeps only BUY/SELL
-        activity. Rows that cannot be mapped are skipped with a warning rather
-        than failing the whole sync — one malformed row should not block a
-        day's trades.
+        The trade half of :meth:`fetch_activities`, for callers that only want
+        the interface's transactions.
+        """
+        return self.fetch_activities(
+            connection_id, account_ref, since, until, credentials
+        ).trades
+
+    def fetch_activities(
+        self,
+        connection_id: str,
+        account_ref: str,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        credentials: Optional[SnapTradeCredentials] = None,
+    ) -> ActivityBatch:
+        """Trades and cash activity for one account, oldest first.
+
+        Pages through SnapTrade's offset pagination. Rows that cannot be mapped
+        are skipped and tallied by reason rather than failing the whole sync —
+        one malformed row should not block a day's trades.
         """
         creds = credentials or SnapTradeCredentials(user_id=connection_id)
-        trades: List[NormalizedTrade] = []
+        batch = ActivityBatch()
         offset = 0
         while True:
             response = self.client.account_information.get_account_activities(
@@ -388,9 +415,7 @@ class SnapTradeConnector:
             body = _body(response)
             rows = _rows(body)
             for row in rows:
-                trade = self._to_trade(row, account_ref)
-                if trade is not None:
-                    trades.append(trade)
+                self._classify(row, account_ref, batch)
 
             offset += len(rows)
             total = _total(body)
@@ -399,37 +424,98 @@ class SnapTradeConnector:
             if total is None and len(rows) < _MAX_PAGE:
                 break
 
-        _disambiguate_repeats(trades)
+        _disambiguate_repeats(batch.trades)
+        _disambiguate_repeats(batch.cash)
         # SnapTrade returns newest first; ingestion reads chronologically.
-        trades.sort(key=lambda t: t.executed_at)
-        return trades
+        batch.trades.sort(key=lambda t: t.executed_at)
+        batch.cash.sort(key=lambda c: c.occurred_at)
+        return batch
+
+    def _classify(self, row: Any, account_ref: str, batch: ActivityBatch) -> None:
+        """Route one activity into the batch as a trade, cash, or a skip."""
+        raw_type = str(_get(row, "type") or "").upper()
+
+        def skip(reason: str) -> None:
+            batch.skipped[reason] = batch.skipped.get(reason, 0) + 1
+
+        if raw_type in _TRADE_TYPES:
+            # A reinvestment into a sweep fund moves cash, not shares.
+            if raw_type == "REI" and not _decimal(_get(row, "units")):
+                skip("sweep")
+                return
+            if _is_option(row):
+                # Contracts are reported in per-share prices with no x100
+                # multiplier, and assignment/expiry are not modeled, so an
+                # option leg would be ingested with wrong economics.
+                skip("option")
+                return
+            trade = self._to_trade(row, account_ref)
+            if trade is None:
+                skip("incomplete")
+            else:
+                batch.trades.append(trade)
+        elif raw_type in _CASH_TYPES:
+            activity = self._to_cash(row, account_ref, _CASH_TYPES[raw_type])
+            if activity is None:
+                skip("incomplete")
+            else:
+                batch.cash.append(activity)
+        elif raw_type in _CORPORATE_ACTION_TYPES:
+            skip("corporate_action")
+        elif raw_type in _SWEEP_TYPES:
+            skip("sweep")
+        else:
+            logger.warning(
+                "SnapTrade activity type %r not recognized; skipping", raw_type
+            )
+            skip("unrecognized")
+
+    def _to_cash(
+        self, row: Any, account_ref: str, cash_type: str
+    ) -> Optional[NormalizedCashActivity]:
+        """Map one non-trade activity to a cash activity, or None to skip."""
+        amount = _decimal(_get(row, "amount"))
+        occurred_at = _parse_datetime(_get(row, "trade_date"))
+        if not amount or occurred_at is None:
+            logger.warning(
+                "Skipping SnapTrade cash activity %s: incomplete "
+                "(amount=%r trade_date=%r)",
+                _get(row, "id"),
+                _get(row, "amount"),
+                _get(row, "trade_date"),
+            )
+            return None
+        symbol = _symbol_ticker(_get(row, "symbol")) or None
+        return NormalizedCashActivity(
+            external_id=(
+                f"{SOURCE}:{account_ref}:{occurred_at.date().isoformat()}:cash:"
+                f"{cash_type}:{symbol or '-'}:{_normalize_number(amount)}"
+            ),
+            type=cash_type,
+            amount=amount,
+            occurred_at=occurred_at,
+            symbol=symbol,
+            currency=_currency_code(_get(row, "currency")),
+            source=SOURCE,
+            notes=str(_get(row, "description") or ""),
+            raw=_dict(row),
+        )
 
     def _to_trade(self, row: Any, account_ref: str) -> Optional[NormalizedTrade]:
-        """Map one SnapTrade activity to a NormalizedTrade, or None to skip.
+        """Map one SnapTrade trade activity to a NormalizedTrade, or None to skip.
 
         Field paths follow the SDK's generated ``AccountUniversalActivity``
         model and were checked against a real Vanguard capture: ``trade_date``
         is date-only (midnight US/Eastern, as ``05:00Z``), ``symbol`` is null
-        on cash rows and on some delisted names, and ``price`` is 0 on rows
-        that move no shares.
+        on some delisted names, and ``price`` is 0 on rows that move no shares.
         """
         raw_type = str(_get(row, "type") or "").upper()
-        action = _TRADE_TYPES.get(raw_type)
-        if action is None:
-            if raw_type and raw_type not in _KNOWN_NON_TRADE_TYPES:
-                logger.warning(
-                    "SnapTrade activity type %r not recognized; skipping", raw_type
-                )
-            return None
+        action = _TRADE_TYPES[raw_type]
 
         symbol = _symbol_ticker(_get(row, "symbol"))
         units = _decimal(_get(row, "units"))
         price = _decimal(_get(row, "price"))
         traded_at = _parse_datetime(_get(row, "trade_date"))
-
-        # A reinvestment into a sweep fund moves cash, not shares.
-        if raw_type == "REI" and not units:
-            return None
 
         # Granularity varies by brokerage and trade_date is nullable, so a row
         # without one cannot be placed on the performance timeline. Vanguard
@@ -515,7 +601,27 @@ def snaptrade_external_id(
     return key if occurrence <= 1 else f"{key}:{occurrence}"
 
 
-def _disambiguate_repeats(trades: List[NormalizedTrade]) -> None:
+def _default_credentials() -> SnapTradeCredentials:
+    """Credentials for the configured SnapTrade user (the Personal-key owner).
+
+    Lets callers act on a connection by its id alone, without handling a
+    vendor credential type.
+    """
+    if not settings.snaptrade_user_id:
+        raise NotSupported(
+            "No SnapTrade user configured; set SNAPTRADE_USER_ID or pass credentials"
+        )
+    return SnapTradeCredentials(user_id=settings.snaptrade_user_id)
+
+
+def _is_option(row: Any) -> bool:
+    """Whether an activity is an option leg rather than a share trade."""
+    if _get(row, "option_symbol"):
+        return True
+    return bool(_OCC_SYMBOL.match(_symbol_ticker(_get(row, "symbol"))))
+
+
+def _disambiguate_repeats(trades: List[Any]) -> None:
     """Give repeated identical fills distinct keys, in place.
 
     Order within a set of identical rows does not matter: they are
@@ -655,6 +761,27 @@ def _institution(item: Any) -> str:
     if isinstance(name, str) and name.strip():
         return name.strip()
     return ""
+
+
+def _transaction_sync(item: Any) -> Any:
+    """The ``sync_status.transactions`` block of an account payload."""
+    return _get(_get(item, "sync_status"), "transactions")
+
+
+def _initial_sync_completed(item: Any) -> Optional[bool]:
+    """Whether SnapTrade has finished the account's first history pull.
+
+    Until it has, the account returns no activity at all even though its
+    holdings are already populated.
+    """
+    value = _get(_transaction_sync(item), "initial_sync_completed")
+    return value if isinstance(value, bool) else None
+
+
+def _synced_through(item: Any) -> Optional[date]:
+    """The last date for which the account's transactions are complete."""
+    parsed = _parse_datetime(_get(_transaction_sync(item), "last_successful_sync"))
+    return parsed.date() if parsed else None
 
 
 def _currency_code(currency: Any) -> str:

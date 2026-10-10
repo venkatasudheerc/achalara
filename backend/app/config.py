@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     webull_app_secret: str = ""
     snaptrade_client_id: str = ""
     snaptrade_consumer_key: str = ""
+    # The SnapTrade userId the brokerage logins were linked under. With a
+    # Personal key this is one fixed id for the key owner.
+    snaptrade_user_id: str = ""
     python_env: str = "development"
     log_level: str = "INFO"
     port: int = 8000

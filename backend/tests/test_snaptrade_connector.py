@@ -486,3 +486,110 @@ def test_vanguard_keys_are_stable_across_fetches():
     first = {t.external_id for t in _vanguard_trades()}
     second = {t.external_id for t in _vanguard_trades()}
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# fetch_activities: trades, cash, and an account of what was left out
+# ---------------------------------------------------------------------------
+
+
+def _vanguard_batch():
+    return _connector([_fixture("vanguard_activities.json")]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
+
+
+def test_activities_separate_cash_from_trades():
+    batch = _vanguard_batch()
+    assert len(batch.trades) == 7
+    (dividend,) = batch.cash
+    assert dividend.type == "DIVIDEND"
+    assert dividend.symbol == "FRDM"
+    assert dividend.amount == Decimal("8.21")
+    assert dividend.external_id.startswith(f"snaptrade:{ACCOUNT}:2026-09-30:cash:")
+
+
+def test_activities_tally_every_row_left_out():
+    batch = _vanguard_batch()
+    assert batch.skipped == {"sweep": 2, "incomplete": 1, "corporate_action": 1}
+    # Every fixture row is accounted for: ingested or counted as skipped.
+    total = len(_fixture("vanguard_activities.json")["data"])
+    assert len(batch.trades) + len(batch.cash) + sum(batch.skipped.values()) == total
+
+
+def test_option_legs_are_skipped_not_ingested_at_share_economics():
+    page = {
+        "data": [
+            _activity(symbol="BULL270115P00020000", units=2, price="1.35"),
+            _activity(activity_id="act-2", symbol="AAPL"),
+        ]
+    }
+    batch = _connector([page]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+    assert [t.symbol for t in batch.trades] == ["AAPL"]
+    assert batch.skipped == {"option": 1}
+
+
+def test_cash_types_map_onto_ours_and_keep_the_source_sign():
+    def cash(type_, amount, activity_id):
+        row = _activity(activity_id=activity_id, type_=type_, units=0, price=0)
+        row["amount"] = amount
+        row["symbol"] = None
+        return row
+
+    page = {
+        "data": [
+            cash("FEE", -25.0, "a"),
+            cash("WIRE OUT", -1000.0, "b"),
+            cash("TRANSFER (INCOMING)", 5000.0, "c"),
+            cash("INTEREST", 0.0, "d"),
+        ]
+    }
+    batch = _connector([page]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+    assert sorted((c.type, c.amount) for c in batch.cash) == [
+        ("FEE", Decimal("-25.0")),
+        ("TRANSFER", Decimal("5000.0")),
+        ("WITHDRAWAL", Decimal("-1000.0")),
+    ]
+    # A zero-amount row moves no money.
+    assert batch.skipped == {"incomplete": 1}
+
+
+def test_repeated_identical_cash_rows_get_distinct_keys():
+    row = _activity(type_="DIVIDEND", units=0, price=0)
+    row["amount"] = 4.0
+    batch = _connector([{"data": [row, dict(row, id="act-2")]}]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
+    first, second = batch.cash
+    assert first.external_id != second.external_id
+
+
+def test_accounts_carry_the_sources_sync_status():
+    class _WithStatus(_StubActivities):
+        def list_user_accounts(self, **kwargs):
+            return type(
+                "Resp",
+                (),
+                {
+                    "body": [
+                        {
+                            "id": "acct-1",
+                            "name": "Brokerage",
+                            "brokerage_authorization": "auth-1",
+                            "sync_status": {
+                                "transactions": {
+                                    "initial_sync_completed": False,
+                                    "last_successful_sync": "2026-09-30",
+                                }
+                            },
+                        }
+                    ]
+                },
+            )()
+
+    stub = _StubClient()
+    stub.account_information = _WithStatus([])
+    (account,) = SnapTradeConnector(client=stub).fetch_accounts("c", credentials=CREDS)
+    assert account.connection_ref == "auth-1"
+    assert account.initial_sync_completed is False
+    assert account.transactions_synced_through.isoformat() == "2026-09-30"

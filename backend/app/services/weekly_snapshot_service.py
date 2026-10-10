@@ -19,6 +19,7 @@ from app.models.trade import Trade
 from app.models.weekly_snapshot import WeeklyPortfolioSnapshot
 from app.services.portfolio_calculation import PortfolioCalculationService, _as_sleeve_ids
 from app.services.mwr_calculation import MWRCalculationService
+from app.services.cash_activity_service import CashActivityService
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class WeeklySnapshotService:
         self.db = db
         self.portfolio = PortfolioCalculationService(db)
         self.mwr_svc = MWRCalculationService(db)
+        self.cash = CashActivityService(db)
 
     # -------------------------------------------------------------------------
     # Public API
@@ -249,6 +251,20 @@ class WeeklySnapshotService:
         cash_out = sum(
             float(t.quantity) * float(t.price) - float(t.commission)
             for t in trades_this_week if t.action == "SELL"
+        )
+
+        # Dividends and fees received this week leave the sleeve like sale
+        # proceeds do, so they join cash_out (a net fee week reduces it).
+        cash_out += float(
+            sum(
+                (
+                    amount
+                    for _, amount in self.cash.income_flows(
+                        [sleeve_id], prev_monday + timedelta(days=1), monday
+                    )
+                ),
+                Decimal(0),
+            )
         )
 
         # Realized gain this week.

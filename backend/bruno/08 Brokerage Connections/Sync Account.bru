@@ -1,0 +1,15 @@
+meta {
+  name: Sync Account
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/brokerage-accounts/{{brokerageAccountId}}/sync
+  body: none
+  auth: none
+}
+
+docs {
+  Pulls trades and cash activity. SnapTrade allows one transactions pull per account per 24 hours; an earlier call returns status skipped. Do not loop this.
+}

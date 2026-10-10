@@ -1,0 +1,26 @@
+meta {
+  name: Reassign Symbols
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/v1/trades/reassign
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "from_sleeve_id": "{{sleeveId}}",
+    "to_sleeve_id": "{{targetSleeveId}}",
+    "symbols": ["VTI"]
+  }
+}
+docs {
+  Moves every trade and cash activity for the symbols to another sleeve of the same account.
+}

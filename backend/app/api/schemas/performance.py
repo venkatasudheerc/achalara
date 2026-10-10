@@ -27,6 +27,8 @@ class PerformanceSummary(BaseModel):
     total_invested: float = 0.0
     total_proceeds: float = 0.0
     total_realized_gain: float = 0.0
+    # Dividends and interest received less fees and tax withheld
+    total_income: float = 0.0
     closed_positions_count: int = 0
     trades_count: int = 0
 
@@ -53,7 +55,7 @@ class MonthlyReturn(BaseModel):
     start_value: float
     end_value: float
     cash_in: float   # BUY cash deployed this month
-    cash_out: float  # SELL proceeds received this month
+    cash_out: float  # SELL proceeds plus net investment income this month
     net_cash_flow: float
     realized_gain: float
     return_pct: Optional[float] = None  # None for the inception month

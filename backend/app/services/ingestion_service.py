@@ -33,6 +33,33 @@ from app.services.portfolio_calculation import PortfolioCalculationService
 logger = logging.getLogger(__name__)
 
 
+# Sources whose ``external_id`` is a complete identity on its own. For these the
+# legacy ``(date, symbol, qty, price)`` tuple is *not* consulted: it has no
+# action, so it would collapse a same-day buy and sell at one price — which
+# real brokerage data contains — and silently drop a leg.
+_ID_AUTHORITATIVE_SOURCES = {"snaptrade"}
+
+
+def _is_duplicate(trade: NormalizedTrade, keys: set) -> bool:
+    """Whether ``trade`` is already represented in ``keys``, and record it if not."""
+    if trade.source in _ID_AUTHORITATIVE_SOURCES and trade.external_id:
+        if trade.external_id in keys:
+            return True
+        keys.add(trade.external_id)
+        return False
+    # Either identity matching means we already have this trade: the source's
+    # own id, or the legacy economics tuple.
+    key = _trade_dedup_key(
+        trade.executed_at.date(), trade.symbol, trade.quantity, trade.price
+    )
+    if key in keys or (trade.external_id and trade.external_id in keys):
+        return True
+    keys.add(key)
+    if trade.external_id:
+        keys.add(trade.external_id)
+    return False
+
+
 def _trade_dedup_key(trade_date, symbol, quantity, price) -> tuple:
     """Normalize a trade into the legacy comparable key (date, symbol, qty, price).
 
@@ -91,6 +118,7 @@ class IngestionService:
         import_type: str = "HISTORICAL",
         total_rows: Optional[int] = None,
         prior_error_count: int = 0,
+        dedup_sleeve_ids: Optional[List[str]] = None,
     ) -> Dict:
         """Ingest pre-validated normalized trades into a single explicit sleeve.
 
@@ -100,6 +128,9 @@ class IngestionService:
         row count (CSV/Sheets report raw rows, not valid-trade count).
         ``prior_error_count`` is the number of upstream validation errors, added
         to the SyncLog ``rows_failed`` tally as the legacy pipeline did.
+        ``dedup_sleeve_ids`` widens the duplicate check beyond the target sleeve.
+        ``earliest_trade_date`` in the result is the oldest newly imported trade,
+        so callers can recompute derived data from that point.
         """
         result = {
             "success": False,
@@ -109,6 +140,7 @@ class IngestionService:
             "errors": [],
             "sync_log_id": None,
             "affected_sleeve_ids": [],
+            "earliest_trade_date": None,
         }
 
         sleeve = self.db.query(Sleeve).filter(Sleeve.id == sleeve_id).first()
@@ -120,23 +152,22 @@ class IngestionService:
             result["errors"].insert(0, "No valid trades found")
             return result
 
-        existing_keys = self._existing_keys(sleeve_id)
+        # Dedup scope defaults to the target sleeve. A brokerage sync widens it
+        # to every sleeve of the account, so a trade that was later moved to
+        # another strategy sleeve is not re-imported into this one.
+        existing_keys: set = set()
+        for sid in dedup_sleeve_ids or [sleeve_id]:
+            existing_keys |= self._existing_keys(sid)
         to_import: List[NormalizedTrade] = []
         for t in trades:
-            # Either identity matching means we already have this trade: the
-            # source's own id, or the legacy economics tuple.
-            key = _trade_dedup_key(t.executed_at.date(), t.symbol, t.quantity, t.price)
-            if key in existing_keys or (
-                t.external_id and t.external_id in existing_keys
-            ):
+            if _is_duplicate(t, existing_keys):
                 result["duplicates"] += 1
                 continue
-            existing_keys.add(key)
-            if t.external_id:
-                existing_keys.add(t.external_id)
             to_import.append(t)
 
         result["imported"] = len(to_import)
+        if to_import:
+            result["earliest_trade_date"] = min(t.executed_at.date() for t in to_import)
 
         if mode == "VALIDATE":
             result["success"] = True
@@ -274,18 +305,9 @@ class IngestionService:
                         self._existing_keys(sleeve.id) if sleeve is not None else set()
                     )
 
-                key = _trade_dedup_key(
-                    t.executed_at.date(), t.symbol, t.quantity, t.price
-                )
-                bucket_keys = seen_keys[bucket]
-                if key in bucket_keys or (
-                    t.external_id and t.external_id in bucket_keys
-                ):
+                if _is_duplicate(t, seen_keys[bucket]):
                     result["duplicates"] += 1
                     continue
-                bucket_keys.add(key)
-                if t.external_id:
-                    bucket_keys.add(t.external_id)
 
                 result["imported"] += 1
                 if create:

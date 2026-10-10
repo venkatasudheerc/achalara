@@ -21,6 +21,8 @@ from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.market_price import MarketPriceService
 from app.connectors.webull_connector import WebullConnector
 from app.services.performance_service import PerformanceService
+from app.services.cash_activity_service import CashActivityService
+from app.api.schemas.connection import CashActivityResponse
 from app.api.schemas.position import (
     PositionResponse,
     ClosedPositionResponse,
@@ -365,6 +367,18 @@ def get_sleeve_trades(
             for t in trades
         ],
     }
+
+
+@router.get(
+    "/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities",
+    response_model=list[CashActivityResponse],
+)
+def get_sleeve_cash_activities(
+    client_id: str, account_id: str, sleeve_id: str, db: Session = Depends(get_db)
+):
+    """Dividends, fees and other non-trade money movements for a sleeve."""
+    _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
+    return CashActivityService(db).list_for_sleeves([sleeve_id])
 
 
 @router.post("/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/market-prices")

@@ -130,15 +130,25 @@ lives in `app/connectors/SNAPTRADE_BUILD_PLAN.md`.
 
 ### B4 — SnapTrade adapter (production, in main repo)
 
-- [ ] `snaptrade_connector.py` implementing the interface: linking + read first.
-- [ ] App-level keys in `.env`; per-client connection tokens **encrypted at rest in the DB**.
-- [ ] Add link/callback/connection-management endpoints to root `openapi.yaml`.
-- [ ] Recorded-fixture tests (no live network in CI).
+- [x] `snaptrade_connector.py` implementing the interface: linking + read, verified against a
+      real Vanguard capture.
+- [x] App-level keys in `.env`. No per-client token is stored: the Personal flow issues none.
+      Encrypted `userSecret` storage arrives with the Commercial key (multi-client), not before.
+- [x] Connections persisted (`brokerage_connections`, `brokerage_accounts`); link / discover /
+      map / sync / reconcile / delete endpoints in root `openapi.yaml`.
+- [x] Recorded-fixture tests (no live network in CI).
+- [x] FIFO lot accounting for brokerage sleeves; dividends and fees feed MWR/TWR.
+- [x] Reassign a symbol's history between sleeves of one account (split by strategy).
+- [ ] Options, splits/mergers and assignments — currently skipped and reported as drift.
+- [ ] Live end-to-end run against the real account (link → map → sync → compare holdings).
 
-### B5 — Real-time freshness
+### B5 — Freshness
 
-- [ ] Wire SnapTrade webhooks to trigger `ingestion_service.sync_connection`, so connected
-      accounts stay current without manual refresh.
+- [x] Daily scheduler job syncs every mapped account (transactions are a day-delayed batch, so
+      daily is as fresh as the source gets).
+- [x] HMAC-verified SnapTrade webhook endpoint calling the same shared sync.
+- [ ] Register the webhook URL in the SnapTrade dashboard once there is a public host, and
+      confirm the signature encoding against a real delivery.
 
 ### B6 — Trading (deferred — enables Grow)
 

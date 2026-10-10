@@ -8,6 +8,7 @@ import logging
 
 from app.models.trade import Trade
 from app.models.position import Position
+from app.models.sleeve import Sleeve
 
 
 def _as_sleeve_ids(sleeve_ids) -> List[str]:
@@ -26,8 +27,159 @@ class PortfolioCalculationService:
 
     def calculate_positions(self, sleeve_ids, as_of_date: date = None) -> Dict:
         """
-        Calculate open and closed positions across one or more sleeves using
-        **quantity-matched round-trips**.
+        Calculate open and closed positions across one or more sleeves.
+
+        Each sleeve is matched by its own ``accounting_method``: ROUND_TRIP
+        sleeves pair equal-quantity buys and sells (see
+        ``_round_trip_positions``); FIFO sleeves consume oldest lots first (see
+        ``_fifo_positions``). Open positions are then rolled up per symbol.
+
+        Returns a dict with keys:
+            open   — list of position dicts (quantity > 0)
+            closed — list of closed-lot dicts (one per matched buy/sell pair)
+            unmatched_sells — count of FIFO SELLs with no shares to sell
+        """
+        sleeve_ids = _as_sleeve_ids(sleeve_ids)
+        if as_of_date is None:
+            as_of_date = date.today()
+
+        fifo_ids = [
+            row[0]
+            for row in self.db.query(Sleeve.id).filter(
+                Sleeve.id.in_(sleeve_ids), Sleeve.accounting_method == "FIFO"
+            )
+        ]
+        if not fifo_ids:
+            return self._round_trip_positions(sleeve_ids, as_of_date)
+
+        round_trip_ids = [sid for sid in sleeve_ids if sid not in fifo_ids]
+        results = [self._fifo_positions(sid, as_of_date) for sid in fifo_ids]
+        if round_trip_ids:
+            results.append(self._round_trip_positions(round_trip_ids, as_of_date))
+
+        open_by_symbol: Dict[str, Dict] = {}
+        closed: List[Dict] = []
+        unmatched = 0
+        for result in results:
+            closed.extend(result["closed"])
+            unmatched += result["unmatched_sells"]
+            for pos in result["open"]:
+                agg = open_by_symbol.get(pos["symbol"])
+                if agg is None:
+                    open_by_symbol[pos["symbol"]] = dict(pos)
+                    continue
+                agg["quantity"] += pos["quantity"]
+                agg["cost_basis"] += pos["cost_basis"]
+                agg["avg_cost"] = agg["cost_basis"] / agg["quantity"]
+                agg["trades_count"] += pos["trades_count"]
+
+        closed.sort(key=lambda p: p["closed_at"])
+        return {
+            "open": list(open_by_symbol.values()),
+            "closed": closed,
+            "unmatched_sells": unmatched,
+        }
+
+    def _fifo_positions(self, sleeve_id: str, as_of_date: date) -> Dict:
+        """
+        Positions for one sleeve using first-in-first-out lots.
+
+        Each SELL consumes the oldest open lots of its symbol, splitting a lot
+        when it is only partly sold. Every lot (or part of one) a SELL consumes
+        is one closed entry, with both commissions apportioned by quantity.
+
+        A SELL with no shares left to sell — history that starts mid-position,
+        or shares that arrived by transfer or split — is counted in
+        ``unmatched_sells`` rather than matched against nothing.
+        """
+        trades = (
+            self.db.query(Trade)
+            .filter(Trade.sleeve_id == sleeve_id, Trade.trade_date <= as_of_date)
+            .order_by(Trade.trade_date, Trade.id)
+            .all()
+        )
+        # Buys before sells within a day: the source reports dates, not times,
+        # so a same-day round trip must not see its sell first.
+        trades.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
+
+        # Per symbol: open lots, oldest first, as [qty_left, unit_cost, opened_at].
+        lots: Dict[str, List[list]] = {}
+        closed_positions: List[Dict] = []
+        trades_count: Dict[str, int] = {}
+        unmatched_sells = 0
+
+        for trade in trades:
+            symbol = trade.symbol
+            trades_count[symbol] = trades_count.get(symbol, 0) + 1
+            qty = Decimal(str(trade.quantity))
+            price = Decimal(str(trade.price))
+            comm = Decimal(str(trade.commission or 0))
+
+            if trade.action == "BUY":
+                unit_cost = price + comm / qty
+                lots.setdefault(symbol, []).append([qty, unit_cost, trade.trade_date])
+                continue
+
+            remaining = qty
+            sell_comm_per_share = comm / qty
+            symbol_lots = lots.get(symbol, [])
+            while remaining > 0 and symbol_lots:
+                lot = symbol_lots[0]
+                matched = min(remaining, lot[0])
+                cost_basis = matched * lot[1]
+                proceeds = matched * (price - sell_comm_per_share)
+                realized = proceeds - cost_basis
+                rg_pct = (realized / cost_basis * 100) if cost_basis > 0 else Decimal(0)
+                closed_positions.append(
+                    {
+                        "symbol": symbol,
+                        "status": "CLOSED",
+                        "quantity": Decimal(0),
+                        "cost_basis": Decimal(0),
+                        "avg_cost": Decimal(0),
+                        "entry_price": float(lot[1]),
+                        "exit_price": float(price),
+                        "matched_quantity": float(matched),
+                        "realized_gain": realized,
+                        "realized_gain_pct": float(rg_pct),
+                        "opened_at": lot[2],
+                        "closed_at": trade.trade_date,
+                        "trades_count": 2,
+                    }
+                )
+                lot[0] -= matched
+                remaining -= matched
+                if lot[0] <= 0:
+                    symbol_lots.pop(0)
+            if remaining > 0:
+                unmatched_sells += 1
+
+        open_positions = []
+        for symbol, symbol_lots in lots.items():
+            total_qty = sum((lot[0] for lot in symbol_lots), Decimal(0))
+            if total_qty <= 0:
+                continue
+            total_cost = sum((lot[0] * lot[1] for lot in symbol_lots), Decimal(0))
+            open_positions.append(
+                {
+                    "symbol": symbol,
+                    "status": "OPEN",
+                    "quantity": total_qty,
+                    "cost_basis": total_cost,
+                    "avg_cost": total_cost / total_qty,
+                    "trades_count": trades_count.get(symbol, 0),
+                }
+            )
+
+        return {
+            "open": open_positions,
+            "closed": closed_positions,
+            "unmatched_sells": unmatched_sells,
+        }
+
+    def _round_trip_positions(self, sleeve_ids: List[str], as_of_date: date) -> Dict:
+        """
+        Positions across one or more sleeves using **quantity-matched round-trips**.
 
         Each SELL is paired with the earliest unmatched BUY of the same symbol
         AND the same quantity within the sleeve set (a sleeve = account ×
@@ -36,17 +188,9 @@ class PortfolioCalculationService:
         both commissions. Any BUY left unmatched contributes to the OPEN
         position for that symbol.
 
-        Returns a dict with keys:
-            open   — list of position dicts (quantity > 0)
-            closed — list of round-trip dicts (one per matched buy/sell pair)
-
         A SELL with no matching BUY is ignored (treated as out-of-scope data
         rather than an error).
         """
-        sleeve_ids = _as_sleeve_ids(sleeve_ids)
-        if as_of_date is None:
-            as_of_date = date.today()
-
         trades = (
             self.db.query(Trade)
             .filter(
@@ -141,7 +285,11 @@ class PortfolioCalculationService:
                 }
             )
 
-        return {"open": open_positions, "closed": closed_positions}
+        return {
+            "open": open_positions,
+            "closed": closed_positions,
+            "unmatched_sells": 0,
+        }
 
     def calculate_position_value(self, position: Dict, current_price: Decimal) -> Dict:
         """Add market value and unrealized P&L to an open position dict."""
