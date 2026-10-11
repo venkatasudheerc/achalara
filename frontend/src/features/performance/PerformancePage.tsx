@@ -48,7 +48,7 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
         <p className="text-xs font-mono tracking-widest text-mist/60 uppercase mb-1">
           {level} · {name}
         </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mt-6">
           <div>
             <p className="text-xs text-mist/60 mb-1">TWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
@@ -81,10 +81,18 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
             <p className={`font-mono text-2xl tabular-nums ${gainPos ? 'text-gain' : 'text-loss'}`}>
               {formatCurrency(summary.total_unrealized_gain)}
             </p>
+            <p className="text-xs text-mist/40 mt-0.5">On open positions</p>
+          </div>
+          <div>
+            <p className="text-xs text-mist/60 mb-1">Realised gain</p>
+            <p className={`font-mono text-2xl tabular-nums ${
+              summary.total_realized_gain >= 0 ? 'text-gain' : 'text-loss'
+            }`}>
+              {formatCurrency(summary.total_realized_gain)}
+            </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              {summary.twr_pct != null && summary.mwr_pct != null
-                ? `TWR vs MWR: ${formatPercent(summary.twr_pct - summary.mwr_pct)}`
-                : 'Since inception'}
+              {summary.closed_positions_count} closed
+              {summary.total_income ? ` · ${formatCurrency(summary.total_income)} income` : ''}
             </p>
           </div>
         </div>

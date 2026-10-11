@@ -1073,6 +1073,105 @@ def test_income_shows_in_summary_and_sleeve_listing(db, client, client_id, sdk):
 
 
 # ---------------------------------------------------------------------------
+# Time-weighted return
+# ---------------------------------------------------------------------------
+
+
+def _twr(db, sleeve_id, start, end, prices=None):
+    from app.services.twr_calculation import TWRCalculationService
+
+    return TWRCalculationService(db).calculate_twr(sleeve_id, start, end, prices)
+
+
+def _sym_trade(db, sleeve_id, symbol, day, action, qty, price):
+    db.add(
+        Trade(
+            sleeve_id=sleeve_id,
+            trade_date=day,
+            symbol=symbol,
+            action=action,
+            quantity=Decimal(qty),
+            price=Decimal(price),
+            commission=Decimal("0"),
+        )
+    )
+    db.commit()
+
+
+def test_twr_of_a_single_holding_is_its_price_change(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "BUY", "100", "100")
+    _trade(db, sleeve_id, date(2025, 6, 30), "SELL", "100", "110")
+
+    assert _twr(db, sleeve_id, date(2025, 1, 2), date(2025, 6, 30)) == pytest.approx(0.10)
+
+
+def test_twr_does_not_compound_across_positions(db, client):
+    # Ten holdings each up 10% make a portfolio up 10%, not 1.1 ** 10.
+    sleeve_id = _fifo_sleeve(db, client)
+    prices = {}
+    for n in range(10):
+        _sym_trade(db, sleeve_id, f"S{n}", date(2025, 1, 2), "BUY", "10", "100")
+        prices[f"S{n}"] = Decimal("110")
+
+    twr = _twr(db, sleeve_id, date(2025, 1, 2), date(2025, 1, 2), prices)
+
+    assert twr == pytest.approx(0.10)
+
+
+def test_twr_ignores_the_size_and_timing_of_new_money(db, client):
+    # Up 10%, then ten times the money is added, then up 10% again.
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "BUY", "10", "100")
+    _trade(db, sleeve_id, date(2025, 3, 3), "BUY", "100", "110")
+
+    twr = _twr(db, sleeve_id, date(2025, 1, 2), date(2025, 3, 3), {"VTI": Decimal("121")})
+
+    assert twr == pytest.approx(1.1 * 1.1 - 1)
+
+
+def test_twr_counts_a_dividend_as_return(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "BUY", "100", "100")
+    _cash(db, sleeve_id, date(2025, 6, 30), "DIVIDEND", "500")
+
+    twr = _twr(db, sleeve_id, date(2025, 1, 2), date(2025, 6, 30))
+
+    assert twr == pytest.approx(0.05)
+
+
+def test_twr_is_none_without_trades(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    assert _twr(db, sleeve_id, date(2025, 1, 1), date(2025, 12, 31)) is None
+
+
+def test_returns_are_not_quoted_when_no_money_was_ever_invested(db, client):
+    # Options written for a premium and left to expire: a gain, but on no
+    # capital, so neither return has a base to be a percentage of.
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 3, 3), "SELL", "10", "200")
+    _trade(db, sleeve_id, date(2025, 4, 17), "BUY", "10", "50")
+
+    assert _mwr(db, sleeve_id) is None
+    assert _twr(db, sleeve_id, date(2025, 1, 2), date(2025, 12, 31)) is None
+
+
+def test_mwr_values_open_holdings_at_market_when_prices_are_given(db, client):
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 2), "BUY", "100", "100")
+    _trade(db, sleeve_id, date(2026, 1, 2), "BUY", "1", "100")
+    svc = MWRCalculationService(db)
+
+    stale = svc.calculate_mwr(sleeve_id, date(2025, 1, 2), date(2026, 1, 2))
+    marked = svc.calculate_mwr(
+        sleeve_id, date(2025, 1, 2), date(2026, 1, 2), {"VTI": Decimal("120")}
+    )
+
+    assert stale == pytest.approx(0.0, abs=1e-6)
+    assert marked == pytest.approx(0.20, abs=0.005)
+
+
+# ---------------------------------------------------------------------------
 # Removing a connection
 # ---------------------------------------------------------------------------
 

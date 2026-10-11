@@ -15,7 +15,9 @@ class MWRCalculationService:
         self.db = db
         self.logger = logging.getLogger(__name__)
 
-    def calculate_mwr(self, sleeve_ids, start_date: date, end_date: date) -> float:
+    def calculate_mwr(
+        self, sleeve_ids, start_date: date, end_date: date, prices=None
+    ) -> float:
         """
         Calculate Money Weighted Return (Internal Rate of Return).
 
@@ -25,16 +27,32 @@ class MWRCalculationService:
         (positive).  When the portfolio carries open holdings across the period
         the closing market value is added as a terminal inflow.
 
-        Returns MWR as a decimal (e.g. 0.10 for 10%).
+        ``prices`` are current market prices by symbol. Pass them only when the
+        window runs up to the present; without them holdings are valued at
+        their last traded price, which leaves any gain since then out.
+
+        Returns MWR as a decimal (e.g. 0.10 for 10%), or None when no money
+        was ever invested in the window, so there is nothing to earn a rate on.
         """
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
         try:
             opening_value = self._get_opening_value(sleeve_ids, start_date)
             cash_flows = self._get_cash_flows(sleeve_ids, start_date, end_date)
-            closing_value = self._get_closing_value(sleeve_ids, end_date)
+            closing_value = self._get_closing_value(sleeve_ids, end_date, prices)
 
             if not cash_flows:
                 return 0.0
+
+            # A rate of return needs money put in. A stream that only ever
+            # takes money out first — writing options, shorting — has none, and
+            # solving it gives a rate with the sign of the result reversed.
+            invested = opening_value
+            most_invested = invested
+            for _, flow in cash_flows:
+                invested -= flow
+                most_invested = max(most_invested, invested)
+            if most_invested <= 0:
+                return None
 
             irr = self._solve_irr(
                 opening_value, cash_flows, closing_value, start_date, end_date
@@ -116,8 +134,10 @@ class MWRCalculationService:
 
         return [(date, flow) for date, flow in sorted(daily_flows.items())]
 
-    def _get_closing_value(self, sleeve_ids, end_date: date) -> Decimal:
-        """Portfolio value at end_date = open holdings at last-trade price.
+    def _get_closing_value(self, sleeve_ids, end_date: date, prices=None) -> Decimal:
+        """Portfolio value at end_date: holdings at market, else last-trade price.
+
+        A short position counts as a liability (negative value).
 
         For a fully-closed portfolio this returns 0, which is correct: the IRR
         is solved purely from the BUY/SELL cash-flow stream in _get_cash_flows.
@@ -149,7 +169,11 @@ class MWRCalculationService:
 
         value = Decimal(0)
         for symbol, qty in net_qty.items():
-            if qty > 0 and symbol in last_price:
+            if qty == 0 or symbol not in last_price:
+                continue
+            if prices and symbol in prices:
+                value += qty * Decimal(str(prices[symbol]))
+            else:
                 value += qty * last_price[symbol][1]
 
         return value

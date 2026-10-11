@@ -160,13 +160,20 @@ class PerformanceService:
         s_start = start_date or min(t.trade_date for t in trades)
         s_end = end_date or max(t.trade_date for t in trades)
 
+        # Current prices belong in the return only when the window runs up to
+        # the present; a window ending in the past is valued as of then.
+        to_present = end_date is None or end_date >= max(
+            t.trade_date for t in trades
+        )
+        market = prices if to_present else None
+
         try:
-            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end)
+            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end, market)
         except Exception as exc:
             _log.error("MWR failed for sleeves=%s: %s", sleeve_ids, exc)
             mwr = None
         try:
-            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end)
+            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end, market)
         except Exception as exc:
             _log.error("TWR failed for sleeves=%s: %s", sleeve_ids, exc)
             twr = None
@@ -187,8 +194,7 @@ class PerformanceService:
         total_realized_gain = valued.get("total_realized_gain", 0.0)
 
         twr_note = (
-            "N/A — TWR requires open positions to mark to market; "
-            "all positions are closed (round-trip portfolio)"
+            "N/A — no capital was at work in this period"
             if twr is None
             else None
         )
