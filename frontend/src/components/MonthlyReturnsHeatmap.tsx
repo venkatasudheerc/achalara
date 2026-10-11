@@ -28,6 +28,15 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
     monthlyReturns.map((r) => [`${r.year}-${r.month}`, r.return_pct])
   )
 
+  // Each year's return is its months compounded, not added.
+  const byYear = new Map<number, number>()
+  for (const r of monthlyReturns) {
+    if (r.return_pct == null) continue
+    byYear.set(r.year, (byYear.get(r.year) ?? 1) * (1 + r.return_pct / 100))
+  }
+  const yearReturn = (year: number): number | null =>
+    byYear.has(year) ? (byYear.get(year)! - 1) * 100 : null
+
   const marked = monthlyReturns.find((r) => r.includes_unrealized)
   const markedKey = marked ? `${marked.year}-${marked.month}` : null
 
@@ -52,6 +61,7 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
             {visibleMonthIdxs.map((idx) => (
               <th key={idx} className="text-stone font-normal pb-2 px-1 text-center">{MONTHS[idx]}</th>
             ))}
+            <th className="text-stone font-normal pb-2 pl-3 pr-1 text-center border-l border-stone/20">YTD</th>
           </tr>
         </thead>
         <tbody>
@@ -78,6 +88,18 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
                   </td>
                 )
               })}
+              <td className="py-1 pl-3 pr-0.5 border-l border-stone/20">
+                {yearReturn(year) != null ? (
+                  <div
+                    className={`rounded text-center py-1 px-1 tabular-nums font-medium ${cellColor(yearReturn(year)!)}`}
+                    title={`${year}: ${yearReturn(year)!.toFixed(2)}% (months compounded)`}
+                  >
+                    {yearReturn(year)!.toFixed(1)}%
+                  </div>
+                ) : (
+                  <div className="text-center text-stone/30 py-1">—</div>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
