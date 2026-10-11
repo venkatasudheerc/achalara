@@ -6,6 +6,7 @@ from typing import List, Tuple
 import logging
 
 from app.services.portfolio_calculation import _as_sleeve_ids
+from app.services.corporate_actions import adjusted_trades
 
 
 class MWRCalculationService:
@@ -102,6 +103,7 @@ class MWRCalculationService:
             .filter(Trade.sleeve_id.in_(sleeve_ids), Trade.trade_date < start_date)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
 
         value = Decimal(0)
         for trade in trades:
@@ -131,6 +133,7 @@ class MWRCalculationService:
             .order_by(Trade.trade_date)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
 
         # Aggregate cash flows by date
         daily_flows = {}
@@ -173,6 +176,7 @@ class MWRCalculationService:
             .filter(Trade.sleeve_id.in_(sleeve_ids), Trade.trade_date <= end_date)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
 
         net_qty: dict = {}
         # Track the latest-dated trade price per symbol in the same pass so we

@@ -9,6 +9,7 @@ import logging
 from app.models.trade import Trade
 from app.models.position import Position
 from app.models.sleeve import Sleeve
+from app.services.corporate_actions import adjusted_trades
 
 
 def _as_sleeve_ids(sleeve_ids) -> List[str]:
@@ -104,6 +105,7 @@ class PortfolioCalculationService:
             .order_by(Trade.trade_date, Trade.id)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
         # Buys before sells within a day: the source reports dates, not times,
         # so a same-day round trip must not see its sell first.
         trades.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
@@ -249,6 +251,7 @@ class PortfolioCalculationService:
             .order_by(Trade.trade_date, Trade.id)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
 
         # Per (symbol, quantity): queues of unmatched buys, in date order.
         # NOTE: matching is by EXACT quantity — a BUY of 100 only pairs with a
@@ -441,6 +444,7 @@ class PortfolioCalculationService:
             .order_by(Trade.trade_date)
             .all()
         )
+        trades = adjusted_trades(self.db, trades)
         if not trades:
             return []
 

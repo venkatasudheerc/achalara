@@ -34,7 +34,8 @@ from app.models.trade import Trade
 from app.services.cash_activity_service import CashActivityService
 from app.services.ingestion_service import IngestionService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.weekly_snapshot_service import WeeklySnapshotService
+from app.services.corporate_actions import record_splits
+from app.services.performance_build_service import rebuild_for_sleeves
 
 logger = logging.getLogger(__name__)
 
@@ -355,7 +356,7 @@ class ConnectionService:
             return result
 
         self._store_raw(ba, batch.raw)
-        earliest = self._ingest(ba, batch, result)
+        self._ingest(ba, batch, result)
 
         ba.last_synced_at = now
         self._refresh_cash_balance(ba)
@@ -365,13 +366,14 @@ class ConnectionService:
             ba.transactions_synced_through = batch.trades[-1].executed_at.date()
         self.db.commit()
 
-        self._recompute_snapshots(earliest)
-
         try:
             self.reconcile(ba.id, skipped_rows=batch.skipped)
         except Exception as exc:  # noqa: BLE001
             self.db.rollback()
             logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)
+
+        # After reconciling: the cash history leans on what it found.
+        self._after_trades_changed(ba)
 
         result["status"] = "synced"
         result["skipped_rows"] = dict(batch.skipped)
@@ -429,16 +431,28 @@ class ConnectionService:
 
         return earliest
 
-    def _recompute_snapshots(self, earliest: Dict[str, date]) -> None:
-        snapshots = WeeklySnapshotService(self.db)
-        for sleeve_id, when in earliest.items():
-            try:
-                snapshots.recompute_from(sleeve_id, when)
-            except Exception as exc:  # noqa: BLE001
-                self.db.rollback()
-                logger.error(
-                    "Snapshot recompute failed for sleeve %s: %s", sleeve_id, exc
-                )
+    def _after_trades_changed(self, ba: BrokerageAccount) -> None:
+        """Bring everything derived from the account's trades up to date.
+
+        Splits first, since they change how every earlier trade is read; then
+        the positions that reading produces; then the daily valuation.
+        """
+        sleeve_ids = [
+            row[0]
+            for row in self.db.query(Sleeve.id).filter(
+                Sleeve.account_id == ba.account_id
+            )
+        ]
+        try:
+            if record_splits(self.db, ba.id):
+                self.db.commit()
+                positions = PortfolioCalculationService(self.db)
+                for sleeve_id in sleeve_ids:
+                    positions.persist_all_positions(sleeve_id)
+        except Exception as exc:  # noqa: BLE001
+            self.db.rollback()
+            logger.error("Recording splits failed for account %s: %s", ba.id, exc)
+        rebuild_for_sleeves(self.db, sleeve_ids)
 
     def rederive(self, brokerage_account_id: str) -> Dict:
         """Re-read the account's stored source rows under the current rules.
@@ -474,9 +488,9 @@ class ConnectionService:
             "cash_imported": 0,
             "skipped_rows": dict(batch.skipped),
         }
-        earliest = self._ingest(ba, batch, result)
+        self._ingest(ba, batch, result)
         self.db.commit()
-        self._recompute_snapshots(earliest)
+        self._after_trades_changed(ba)
         return result
 
     def _refresh_cash_balance(self, ba: BrokerageAccount) -> None:
@@ -602,7 +616,10 @@ class ConnectionService:
     # ------------------------------------------------------------------
 
     def reconcile(
-        self, brokerage_account_id: str, skipped_rows: Optional[Dict] = None
+        self,
+        brokerage_account_id: str,
+        skipped_rows: Optional[Dict] = None,
+        holdings: Optional[list] = None,
     ) -> Dict:
         """Compare the brokerage's holdings with what our trades add up to.
 
@@ -616,9 +633,10 @@ class ConnectionService:
         if not ba.account_id:
             raise ValueError("Account is not mapped")
 
-        holdings = self.connector.fetch_positions(
-            ba.connection.external_user_id, ba.external_account_ref
-        )
+        if holdings is None:
+            holdings = self.connector.fetch_positions(
+                ba.connection.external_user_id, ba.external_account_ref
+            )
         sleeve_ids = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(

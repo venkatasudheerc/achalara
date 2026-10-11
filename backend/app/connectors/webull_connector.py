@@ -57,6 +57,23 @@ class WebullConnector:
         first, varied field names) stay sealed here; callers get clean points.
         """
         bars = self._webull.get_historical_bars(symbol, timespan="W", count=weeks)
+        return self._points(bars)
+
+    def fetch_daily_closes(
+        self, symbol: str, days: int = 1200
+    ) -> List[Tuple[date, float]]:
+        """Daily ``(date, close)`` points for a symbol, oldest first.
+
+        The source's closes are adjusted for later splits and dividends, so a
+        past close is not the price that traded that day; ratios between two
+        dates are total returns. 1,200 bars is the most it serves.
+        """
+        bars = self._webull.get_historical_bars(symbol, timespan="D", count=days)
+        return self._points(bars)
+
+    @staticmethod
+    def _points(bars) -> List[Tuple[date, float]]:
+        """Clean ``(date, close)`` points from the vendor's bars, oldest first."""
         if not bars:
             return []
 

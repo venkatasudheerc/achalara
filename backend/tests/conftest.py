@@ -20,6 +20,8 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 def db_engine():
     """Create test database engine (session-scoped)"""
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    # SQLite has no schemas, so the perf schema's tables live in the default one.
+    engine = engine.execution_options(schema_translate_map={"perf": None})
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)

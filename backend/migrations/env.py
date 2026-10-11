@@ -32,6 +32,13 @@ def _get_url() -> str:
         return config.get_main_option("sqlalchemy.url")
 
 
+def _include_name(name, type_, parent_names):
+    """Limit autogenerate to the schemas this application owns."""
+    if type_ == "schema":
+        return name in (None, "public", "perf")
+    return True
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = _get_url()
@@ -61,6 +68,10 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            # Performance tables live in the perf schema; without this
+            # autogenerate neither sees them nor compares them.
+            include_schemas=True,
+            include_name=_include_name,
         )
 
         with context.begin_transaction():

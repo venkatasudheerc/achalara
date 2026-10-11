@@ -414,6 +414,9 @@ class SnapTradeConnector:
                     avg_cost=_decimal(cost) or Decimal("0"),
                     currency=_currency_code(_get(item, "currency")),
                     market_price=_decimal(_get(item, "price")),
+                    security_type=_security_type(
+                        {"symbol": instrument if instrument is not None else None}
+                    )[0],
                     as_of=as_of,
                     raw=_dict(item),
                 )

@@ -83,6 +83,9 @@ class NormalizedPosition(BaseModel):
     avg_cost: Decimal
     currency: str = "USD"
     market_price: Optional[Decimal] = None
+    # ETF | STOCK | ADR | ... as on NormalizedTrade; None when the source does
+    # not class the holding.
+    security_type: Optional[str] = None
     as_of: Optional[datetime] = None
     raw: dict = Field(default_factory=dict)
 

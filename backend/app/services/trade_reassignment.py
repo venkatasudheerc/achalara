@@ -13,9 +13,8 @@ from sqlalchemy.orm import Session
 from app.models.cash_activity import CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.models.weekly_snapshot import WeeklyPortfolioSnapshot
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.weekly_snapshot_service import WeeklySnapshotService
+from app.services.performance_build_service import rebuild_for_sleeves
 
 
 def reassign_symbols(
@@ -64,15 +63,9 @@ def reassign_symbols(
 
     if trades_moved or cash_moved:
         positions = PortfolioCalculationService(db)
-        snapshots = WeeklySnapshotService(db)
         for sleeve_id in (source.id, target.id):
             positions.persist_all_positions(sleeve_id)
-            # A rebuild leaves snapshots alone when a sleeve has no trades
-            # left, so clear them first.
-            db.query(WeeklyPortfolioSnapshot).filter(
-                WeeklyPortfolioSnapshot.sleeve_id == sleeve_id
-            ).delete(synchronize_session=False)
-            snapshots.rebuild_sleeve(sleeve_id)
+        rebuild_for_sleeves(db, [source.id, target.id])
 
     return {
         "symbols": wanted,

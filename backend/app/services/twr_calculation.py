@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 import logging
 
 from app.models.trade import Trade
+from app.services.corporate_actions import adjusted_trades
 from app.services.portfolio_calculation import _as_sleeve_ids
 
 
@@ -101,6 +102,7 @@ class TWRCalculationService:
             .order_by(Trade.trade_date, Trade.id)
             .all()
         )
+        all_trades = adjusted_trades(self.db, all_trades)
         if not all_trades:
             return []
         # None means "not to the present"; an empty dict is the present with
