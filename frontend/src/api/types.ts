@@ -41,6 +41,8 @@ export interface PerformanceSummary {
   mwr_pct: number | null; twr_pct: number | null; twr_note: string | null
   total_return_pct: number | null
   total_cost_basis: number; total_market_value: number; total_unrealized_gain: number
+  /** Cash held now; set for whole-account views, where returns include cash */
+  cash_balance?: number | null
   total_invested: number; total_proceeds: number; total_realized_gain: number
   /** Dividends and interest received less fees and tax withheld */
   total_income?: number

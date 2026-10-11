@@ -119,6 +119,12 @@ class RawActivity(BaseModel):
     occurred_on: Optional[date] = None
     symbol: Optional[str] = None
     outcome: str  # trade | cash | skipped:<reason>
+    # What the row did to the account's cash, signed (0 for a move between
+    # cash and its sweep fund, which is cash either way).
+    cash_amount: Decimal = Decimal("0")
+    # Whether that cash came from or went outside the account (a deposit,
+    # withdrawal or transfer) rather than from trading or income within it.
+    is_external_flow: bool = False
     payload: dict = Field(default_factory=dict)
 
 

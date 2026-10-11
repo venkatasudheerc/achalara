@@ -349,6 +349,7 @@ class ConnectionService:
         earliest = self._ingest(ba, batch, result)
 
         ba.last_synced_at = now
+        self._refresh_cash_balance(ba)
         if remote is not None and remote.transactions_synced_through:
             ba.transactions_synced_through = remote.transactions_synced_through
         elif batch.trades:
@@ -454,6 +455,8 @@ class ConnectionService:
         )
         for record, raw in zip(records, batch.raw):
             record.outcome = raw.outcome
+            record.cash_amount = raw.cash_amount
+            record.is_external_flow = raw.is_external_flow
 
         result = {
             "rows": len(records),
@@ -466,6 +469,23 @@ class ConnectionService:
         self.db.commit()
         self._recompute_snapshots(earliest)
         return result
+
+    def _refresh_cash_balance(self, ba: BrokerageAccount) -> None:
+        """Record the cash the source reports for the account now.
+
+        Best-effort: without it the account simply stays securities-only.
+        """
+        fetch = getattr(self.connector, "fetch_cash_balance", None)
+        if fetch is None:
+            return
+        try:
+            cash = fetch(ba.connection.external_user_id, ba.external_account_ref)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Cash balance unavailable for account %s: %s", ba.id, exc)
+            return
+        if cash is not None:
+            ba.cash_balance = cash
+            ba.cash_balance_at = datetime.now(timezone.utc)
 
     def _store_raw(self, ba: BrokerageAccount, rows) -> None:
         """Keep every fetched row verbatim, replacing any we already hold.
@@ -495,6 +515,8 @@ class ConnectionService:
             record.type = raw.type
             record.symbol = raw.symbol
             record.outcome = raw.outcome
+            record.cash_amount = raw.cash_amount
+            record.is_external_flow = raw.is_external_flow
             record.payload = raw.payload
         self.db.flush()
 

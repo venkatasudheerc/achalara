@@ -103,13 +103,20 @@ def get_client_performance(
     svc = PerformanceService(db)
     all_sleeve_ids = svc.sleeve_ids_for_client(client_id)
 
-    perf = svc.performance(all_sleeve_ids, start_date, end_date)
+    perf = svc.performance(
+        all_sleeve_ids,
+        start_date,
+        end_date,
+        cash_account_ids=svc.account_ids_for_client(client_id),
+    )
 
     accounts = db.query(Account).filter(Account.client_id == client_id).all()
     children = []
     for account in accounts:
         acct_sleeve_ids = svc.sleeve_ids_for_account(account.id)
-        child = svc.performance(acct_sleeve_ids, start_date, end_date)
+        child = svc.performance(
+            acct_sleeve_ids, start_date, end_date, cash_account_ids=[account.id]
+        )
         children.append(
             {
                 "level": "account",
@@ -145,7 +152,12 @@ def get_client_returns_series(
     from app.services.weekly_snapshot_service import WeeklySnapshotService
     svc = PerformanceService(db)
     sleeve_ids = svc.sleeve_ids_for_client(client_id)
-    series = WeeklySnapshotService(db).returns_series(sleeve_ids, start_date, end_date)
+    series = WeeklySnapshotService(db).returns_series(
+        sleeve_ids,
+        start_date,
+        end_date,
+        cash_account_ids=svc.account_ids_for_client(client_id),
+    )
     return {"level": "client", "id": client_id, "series": series}
 
 
@@ -160,7 +172,9 @@ def get_client_monthly_returns(
         raise HTTPException(status_code=404, detail="Client not found")
     svc = PerformanceService(db)
     sleeve_ids = svc.sleeve_ids_for_client(client_id)
-    months = svc.monthly_returns(sleeve_ids)
+    months = svc.monthly_returns(
+        sleeve_ids, cash_account_ids=svc.account_ids_for_client(client_id)
+    )
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
     if non_none:

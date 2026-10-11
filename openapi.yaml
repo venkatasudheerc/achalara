@@ -1922,6 +1922,13 @@ components:
         value:
           type: number
           nullable: true
+          description: Securities at their last traded price that day (today's prices on the final point), plus cash where known
+        cost_basis:
+          type: number
+        cash:
+          type: number
+          nullable: true
+          description: Cash held that day, already included in value and cost_basis; null when cash is not tracked
 
     PerformanceSummary:
       type: object
@@ -1946,6 +1953,14 @@ components:
           type: number
         total_unrealized_gain:
           type: number
+        cash_balance:
+          type: number
+          nullable: true
+          description: |
+            Cash held now. Set for account and client views where the brokerage
+            reports cash; `mwr_pct` and `twr_pct` are then measured on securities
+            plus cash, with deposits and withdrawals as the only money in or out.
+            Null for sleeve and strategy views, which are securities only.
         total_invested:
           type: number
         total_proceeds:

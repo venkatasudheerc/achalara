@@ -10,6 +10,9 @@ class PerformancePoint(BaseModel):
     date: date
     value: float
     cost_basis: float
+    # Cash held that day, already included in value and cost_basis. Present
+    # only for views of whole accounts whose cash is known.
+    cash: Optional[float] = None
 
 
 class PerformanceSummary(BaseModel):
@@ -23,6 +26,9 @@ class PerformanceSummary(BaseModel):
     total_cost_basis: float = 0.0
     total_market_value: float = 0.0
     total_unrealized_gain: float = 0.0
+    # Cash held now, for views of whole accounts whose cash is known. When set,
+    # mwr_pct and twr_pct are measured on securities plus cash.
+    cash_balance: Optional[float] = None
     # Closed-position fields
     total_invested: float = 0.0
     total_proceeds: float = 0.0

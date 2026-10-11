@@ -63,6 +63,7 @@ class _StubSDK:
             {"id": "auth-1", "brokerage": {"name": "Vanguard"}, "disabled": False}
         ]
         self.rate_limited = False
+        self.cash = None
         self.calls = []
         self.account_information = self
         self.connections = self
@@ -118,6 +119,11 @@ class _StubSDK:
 
     def get_all_account_positions(self, **kwargs):
         return self._resp(self.positions)
+
+    def get_user_account_balance(self, **kwargs):
+        if self.cash is None:
+            return self._resp([])
+        return self._resp([{"currency": {"code": "USD"}, "cash": self.cash}])
 
 
 @pytest.fixture
@@ -1236,6 +1242,186 @@ def test_mwr_values_open_holdings_at_market_when_prices_are_given(db, client):
 
     assert stale == pytest.approx(0.0, abs=1e-6)
     assert marked == pytest.approx(0.20, abs=0.005)
+
+
+# ---------------------------------------------------------------------------
+# Cash: whole-account value and returns
+# ---------------------------------------------------------------------------
+
+
+def _cash_row(type_, amount, day, symbol=None, units=0, price=0):
+    return {
+        "id": f"cash-{type_}-{day}-{amount}",
+        "symbol": (
+            {"symbol": symbol, "raw_symbol": symbol, "type": {"code": "cs"}}
+            if symbol
+            else None
+        ),
+        "option_symbol": None,
+        "currency": {"code": "USD"},
+        "type": type_,
+        "description": type_,
+        "amount": amount,
+        "price": price,
+        "units": units,
+        "fee": 0.0,
+        "trade_date": f"{day}T05:00:00Z",
+        "settlement_date": f"{day}T05:00:00Z",
+    }
+
+
+def _cash_account(db, client, client_id, sdk, rows, cash_now):
+    """An account whose whole history is ``rows`` and whose cash is known."""
+    from app.services import performance_service
+
+    sdk.activities = {"data": rows}
+    sdk.positions = {"results": []}
+    sdk.cash = cash_now
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+    return ba
+
+
+@pytest.fixture
+def no_live_prices(monkeypatch):
+    from app.services import performance_service
+
+    monkeypatch.setattr(
+        performance_service.WebullConnector, "is_configured", lambda self: False
+    )
+
+
+def test_cash_on_a_past_date_is_worked_back_from_todays_balance(
+    db, client, client_id, sdk
+):
+    from app.services.cash_ledger import CashLedger
+
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-02-02", "ABC", 40, 100),
+            _cash_row("DIVIDEND", 50.0, "2026-03-02", "ABC"),
+            # Cash moving into the settlement fund is still cash.
+            _cash_row("SWEEP IN", -6000.0, "2026-03-03", "VMFXX", 0, 1),
+        ],
+        cash_now=6050.0,
+    )
+    ledger = CashLedger.for_accounts(db, [ba.account_id])
+
+    assert ledger.balance_on(date(2026, 1, 1)) == Decimal("0")
+    assert ledger.balance_on(date(2026, 1, 5)) == Decimal("10000")
+    assert ledger.balance_on(date(2026, 2, 2)) == Decimal("6000")
+    assert ledger.balance_on(date(2026, 12, 31)) == Decimal("6050")
+    # Only the deposit crossed the account boundary.
+    assert ledger.external == {date(2026, 1, 5): Decimal("10000")}
+
+
+def test_account_return_includes_idle_cash(db, client, client_id, sdk, no_live_prices):
+    from app.services.performance_service import PerformanceService
+
+    # 10,000 deposited, 4,000 of it put into a stock that then rises 25%.
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
+        ],
+        cash_now=6000.0,
+    )
+    sleeve_id = ba.default_sleeve_id
+    _priced(db, sleeve_id, "125")
+    service = PerformanceService(db)
+
+    account = service.performance([sleeve_id], cash_account_ids=[ba.account_id])
+    sleeve = service.performance([sleeve_id])
+
+    # The stock alone is up 25%; the account, with 6,000 idle, is up 10%.
+    assert sleeve["summary"]["twr_pct"] == pytest.approx(0.25)
+    assert sleeve["summary"]["cash_balance"] is None
+    assert account["summary"]["twr_pct"] == pytest.approx(0.10)
+    assert account["summary"]["mwr_pct"] == pytest.approx(0.10, abs=1e-3)
+    assert account["summary"]["cash_balance"] == 6000.0
+    # The chart is securities plus cash, ending on today's total.
+    assert account["timeseries"][-1]["value"] == pytest.approx(11000.0)
+    assert account["timeseries"][-1]["cash"] == pytest.approx(6000.0)
+
+
+def test_a_deposit_is_money_in_but_a_trade_is_not(db, client, client_id, sdk, no_live_prices):
+    from app.services.performance_service import PerformanceService
+
+    # Flat prices throughout: more money arriving must not look like a gain.
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
+            _cash_row("CONTRIBUTION", 50000.0, "2026-03-02"),
+            _cash_row("BUY", -20000.0, "2026-03-02", "ABC", 200, 100),
+        ],
+        cash_now=36000.0,
+    )
+    _priced(db, ba.default_sleeve_id, "100")
+
+    summary = PerformanceService(db).performance(
+        [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
+    )["summary"]
+
+    assert summary["twr_pct"] == pytest.approx(0.0, abs=1e-9)
+    assert summary["mwr_pct"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_account_views_with_cash_agree_with_each_other(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
+            _cash_row("DIVIDEND", 80.0, "2026-02-16", "ABC"),
+            _cash_row("SELL", 2200.0, "2026-03-02", "ABC", -20, 110),
+            _cash_row("FEE", -15.0, "2026-03-31"),
+        ],
+        cash_now=8265.0,
+    )
+    sleeve_id = ba.default_sleeve_id
+    _priced(db, sleeve_id, "120")
+    service = PerformanceService(db)
+    accounts = [ba.account_id]
+
+    headline = service.performance([sleeve_id], cash_account_ids=accounts)["summary"]
+    weekly = WeeklySnapshotService(db).returns_series(
+        [sleeve_id], cash_account_ids=accounts
+    )
+    monthly = service.monthly_returns([sleeve_id], cash_account_ids=accounts)
+
+    # 10,000 in; now 20 shares at 120 plus 8,265 cash.
+    assert headline["twr_pct"] == pytest.approx(10665 / 10000 - 1)
+    assert weekly[-1]["twr_cumul"] == pytest.approx(headline["twr_pct"], abs=1e-6)
+    assert weekly[-1]["mwr_cumul"] == pytest.approx(headline["mwr_pct"], abs=1e-6)
+    compounded = 1.0
+    for month in monthly:
+        compounded *= 1 + month["return_pct"] / 100
+    assert compounded - 1 == pytest.approx(headline["twr_pct"], abs=1e-3)
+
+
+def test_account_without_reported_cash_stays_securities_only(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+
+    summary = PerformanceService(db).performance(
+        [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
+    )["summary"]
+
+    assert summary["cash_balance"] is None
 
 
 # ---------------------------------------------------------------------------

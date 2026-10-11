@@ -1,6 +1,6 @@
 """Money Weighted Return (MWR) calculation service"""
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Tuple
 
 import logging
@@ -16,7 +16,7 @@ class MWRCalculationService:
         self.logger = logging.getLogger(__name__)
 
     def calculate_mwr(
-        self, sleeve_ids, start_date: date, end_date: date, prices=None
+        self, sleeve_ids, start_date: date, end_date: date, prices=None, ledger=None
     ) -> float:
         """
         Calculate Money Weighted Return (Internal Rate of Return).
@@ -31,16 +31,38 @@ class MWRCalculationService:
         window runs up to the present; without them holdings are valued at
         their last traded price, which leaves any gain since then out.
 
+        ``ledger`` is a ``CashLedger`` for accounts whose cash is known: their
+        value includes cash, their trades and income are no longer flows, and
+        deposits and withdrawals are. See ``TWRCalculationService.growth_at``.
+
         Returns MWR as a decimal (e.g. 0.10 for 10%), or None when no money
         was ever invested in the window, so there is nothing to earn a rate on.
         """
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
         try:
-            opening_value = self._get_opening_value(sleeve_ids, start_date)
-            cash_flows = self._get_cash_flows(sleeve_ids, start_date, end_date)
-            closing_value = self._get_closing_value(sleeve_ids, end_date, prices)
+            tracked = ledger.sleeve_ids if ledger is not None else set()
+            untracked = [sid for sid in sleeve_ids if sid not in tracked]
+            held = [sid for sid in sleeve_ids if sid in tracked]
 
-            if not cash_flows:
+            opening_value = self._get_opening_value(untracked, start_date)
+            flows_by_date = dict(self._get_cash_flows(untracked, start_date, end_date))
+            closing_value = self._get_closing_value(sleeve_ids, end_date, prices)
+            if ledger is not None:
+                day_before = start_date - timedelta(days=1)
+                opening_value += self._get_closing_value(
+                    held, day_before
+                ) + ledger.balance_on(day_before)
+                closing_value += ledger.balance_on(end_date)
+                for day, deposited in ledger.external.items():
+                    if start_date <= day <= end_date:
+                        # A deposit is money the investor puts in: an outflow
+                        # from their side, like a BUY.
+                        flows_by_date[day] = (
+                            flows_by_date.get(day, Decimal(0)) - deposited
+                        )
+            cash_flows = sorted(flows_by_date.items())
+
+            if not cash_flows and opening_value <= 0:
                 return 0.0
 
             # A rate of return needs money put in. A stream that only ever
@@ -227,7 +249,12 @@ class MWRCalculationService:
         # If start and end are the same date (e.g. inception week with same-day
         # cash flows) there is no elapsed time and the return must be 0 — the
         # solver's initial guess of 0.1 would otherwise leak through unchanged.
-        total_days = (end_date - anchor).days
+        # Money that has all come back out stopped earning on the day the last
+        # of it left; time after that is not part of the holding period.
+        horizon = end_date
+        if float(closing) == 0 and flows:
+            horizon = min(end_date, flows[-1][0])
+        total_days = (horizon - anchor).days
         if total_days <= 0:
             return 0.0
         holding_period_years = total_days / days_per_year

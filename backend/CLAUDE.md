@@ -78,6 +78,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
 | `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
 | `app/services/connection_service.py`    | Brokerage link/discover/map/reconcile + `sync_brokerage_account` (the one sync path)    |
+| `app/services/cash_ledger.py`           | Cash balance on any date, worked back from the brokerage's reported balance             |
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
@@ -137,6 +138,9 @@ checkpoint to `growth_at`. Rules they share:
   because no price history is stored.
 - A window "to the present" ends at `CashActivityService.last_activity_date` (last trade or
   counted income payment).
+- Account and client views pass `cash_account_ids`; where a `CashLedger` exists the return is
+  on securities plus cash with deposits/withdrawals as the only flows. Sleeve and strategy
+  views never include cash.
 - No return is quoted when no money was ever invested (written options, shorts): `None`, not 0.
 
 ## Brokerage Sync Rules

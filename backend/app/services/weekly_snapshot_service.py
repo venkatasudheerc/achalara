@@ -21,6 +21,7 @@ from app.models.weekly_snapshot import WeeklyPortfolioSnapshot
 from app.services.portfolio_calculation import PortfolioCalculationService, _as_sleeve_ids
 from app.services.mwr_calculation import MWRCalculationService
 from app.services.cash_activity_service import CashActivityService
+from app.services.cash_ledger import CashLedger
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ class WeeklySnapshotService:
         sleeve_ids: List[str],
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        cash_account_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
         """Cumulative TWR and MWR since inception, at each Monday and today.
 
@@ -189,11 +191,11 @@ class WeeklySnapshotService:
             )
         }
 
+        ledger = CashLedger.for_accounts(self.db, cash_account_ids or [])
         points = TWRCalculationService(self.db).growth_at(
-            sleeve_ids, inception, mondays, prices
+            sleeve_ids, inception, mondays, prices, ledger
         )
         final = mondays[-1] if mondays and mondays[-1] >= last_trade else None
-        last_activity = self.cash.last_activity_date(sleeve_ids)
 
         result = []
         for point in points:
@@ -203,13 +205,15 @@ class WeeklySnapshotService:
             if end_date and monday > end_date:
                 continue
             if monday == final:
-                # Same window and prices as the headline: up to the last trade
-                # or income payment, holdings at market.
+                # Same window and prices as the headline: up to today, holdings
+                # at market.
                 mwr = self.mwr_svc.calculate_mwr(
-                    sleeve_ids, inception, last_activity, prices
+                    sleeve_ids, inception, as_of, prices, ledger
                 )
             else:
-                mwr = self.mwr_svc.calculate_mwr(sleeve_ids, inception, monday)
+                mwr = self.mwr_svc.calculate_mwr(
+                    sleeve_ids, inception, monday, None, ledger
+                )
             result.append(
                 {
                     "date": monday.isoformat(),

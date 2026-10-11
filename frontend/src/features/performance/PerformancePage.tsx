@@ -68,12 +68,16 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
             <p className="text-xs text-mist/40 mt-0.5">Money Weighted</p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">Market value</p>
+            <p className="text-xs text-mist/60 mb-1">
+              {summary.cash_balance != null ? 'Total value' : 'Market value'}
+            </p>
             <p className="font-mono text-2xl text-paper tabular-nums">
-              {formatCurrency(summary.total_market_value)}
+              {formatCurrency(summary.total_market_value + (summary.cash_balance ?? 0))}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              {formatCurrency(summary.total_cost_basis)} cost basis
+              {summary.cash_balance != null
+                ? `${formatCurrency(summary.total_market_value)} securities · ${formatCurrency(summary.cash_balance)} cash`
+                : `${formatCurrency(summary.total_cost_basis)} cost basis`}
             </p>
           </div>
           <div>

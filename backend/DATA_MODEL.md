@@ -317,6 +317,8 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | last_synced_at | DateTime(tz) | nullable — gates the 24h-per-account sync limit |
 | last_reconciled_at | DateTime(tz) | nullable |
 | reconciliation | JSON | nullable — `{matched, drifted[], unmatched_sells, skipped_rows}` |
+| cash_balance | Numeric(18,2) | nullable — cash the source last reported; NULL means cash is not tracked |
+| cash_balance_at | DateTime(tz) | nullable — when that was read |
 
 Constraints: `UNIQUE(connection_id, external_account_ref)`.
 
@@ -342,6 +344,8 @@ holds the symbol — so a symbol never straddles sleeves and a manual reassignme
 | type | String(50) | the source's type string, unmapped (`BUY`, `SPLIT`, `REI`, …) |
 | symbol | String(50) | nullable |
 | outcome | String(40) | `trade` / `cash` / `skipped:<reason>` |
+| cash_amount | Numeric(18,2) | signed effect on the account's cash; 0 for a move between cash and its sweep fund |
+| is_external_flow | Boolean | true for a deposit, withdrawal or transfer across the account boundary |
 | payload | JSON | the row exactly as received |
 
 Constraints: `UNIQUE(brokerage_account_id, source_activity_id)`.
@@ -351,6 +355,19 @@ no symbol). `trades` and `cash_activities` are a simplified reading of these: th
 settlement date, actual cash amount, currency/FX and the source's own type. Keeping the
 originals means that reading can be redone when the rules change, without another pull from a
 source limited to one per account per day. Re-fetched rows replace the stored copy.
+
+### Cash and whole-account returns
+
+There is no cash table. `CashLedger` (`services/cash_ledger.py`) derives the balance on any
+date as `brokerage_accounts.cash_balance` minus every `brokerage_activities.cash_amount` dated
+after it — today's reported balance walked backwards — so no opening balance is needed.
+
+Views of **whole accounts** (account and client level) include it where it is known: value is
+securities plus cash, a trade or dividend only moves value between the two, and the only money
+in or out is an `is_external_flow` row. Sleeve and strategy views stay **securities-only**
+(BUY = money in, SELL = money out), so a level's children do not sum to it: the difference is
+cash. Accounts with no reported balance (CSV, Sheets) are securities-only at every level, and a
+client mixing both kinds is measured with each account on its own basis.
 
 ## Performance roll-ups
 

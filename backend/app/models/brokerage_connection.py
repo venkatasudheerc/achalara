@@ -6,8 +6,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     JSON,
+    Numeric,
     String,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import relationship
 import uuid
@@ -88,6 +90,10 @@ class BrokerageAccount(BaseModel):
     last_synced_at = Column(DateTime(timezone=True))
     last_reconciled_at = Column(DateTime(timezone=True))
     reconciliation = Column(JSON)
+    # Cash the source last reported for the account, and when. With the cash
+    # each stored activity moved, this gives the balance on any earlier date.
+    cash_balance = Column(Numeric(18, 2))
+    cash_balance_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint(
@@ -141,6 +147,11 @@ class BrokerageActivity(BaseModel):
     type = Column(String(50), nullable=False, default="")
     symbol = Column(String(50))
     outcome = Column(String(40), nullable=False)  # trade | cash | skipped:<reason>
+    # Signed effect on the account's cash; see connectors.models.RawActivity.
+    cash_amount = Column(Numeric(18, 2))
+    is_external_flow = Column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     payload = Column(JSON, nullable=False)
 
     __table_args__ = (

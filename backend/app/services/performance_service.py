@@ -22,6 +22,7 @@ from app.services.mwr_calculation import MWRCalculationService
 from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.cash_activity_service import CashActivityService
+from app.services.cash_ledger import CashLedger
 from app.connectors.webull_connector import WebullConnector
 from app.connectors.models import is_option_symbol
 
@@ -44,6 +45,10 @@ class PerformanceService:
 
     def sleeve_ids_for_account(self, account_id: str) -> List[str]:
         rows = self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
+        return [r[0] for r in rows]
+
+    def account_ids_for_client(self, client_id: str) -> List[str]:
+        rows = self.db.query(Account.id).filter(Account.client_id == client_id).all()
         return [r[0] for r in rows]
 
     def sleeve_ids_for_client(self, client_id: str) -> List[str]:
@@ -127,12 +132,20 @@ class PerformanceService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         prices: Optional[Dict[str, Decimal]] = None,
+        cash_account_ids: Optional[List[str]] = None,
     ) -> Dict:
         """Summary metrics + value time-series for a set of sleeves.
+
+        ``cash_account_ids`` names the accounts being viewed as a whole. Where
+        their cash is known it is added to the value and the returns are
+        measured on the total, with deposits and withdrawals as the only money
+        in or out. Leave it out for a view of securities alone (a sleeve, a
+        strategy).
 
         Returns an empty/zeroed payload when the sleeve set has no trades.
         """
         sleeve_ids = list(sleeve_ids)
+        ledger = CashLedger.for_accounts(self.db, cash_account_ids or [])
         if prices is None:
             prices = self._fetch_live_prices(sleeve_ids) if sleeve_ids else {}
 
@@ -159,26 +172,39 @@ class PerformanceService:
 
         s_start = start_date or min(t.trade_date for t in trades)
         last_activity = self.cash.last_activity_date(sleeve_ids)
-        s_end = end_date or last_activity
-
         # Current prices belong in the return only when the window runs up to
         # the present; a window ending in the past is valued as of then.
         to_present = end_date is None or end_date >= last_activity
+        # Today's prices are a value as of today, so an open-ended window runs
+        # to today even if nothing has happened since the last trade.
+        s_end = end_date or max(last_activity, date.today())
         market = prices if to_present else None
 
         try:
-            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end, market)
+            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end, market, ledger)
         except Exception as exc:
             _log.error("MWR failed for sleeves=%s: %s", sleeve_ids, exc)
             mwr = None
         try:
-            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end, market)
+            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end, market, ledger)
         except Exception as exc:
             _log.error("TWR failed for sleeves=%s: %s", sleeve_ids, exc)
             twr = None
 
         valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
         timeseries = self.portfolio.value_series(sleeve_ids, prices)
+
+        # With cash known, every point of the chart is securities plus the
+        # cash held that day. Cash is worth what it cost, so it joins both
+        # lines and the gap between them stays the unrealised gain.
+        cash_now = None
+        if ledger is not None:
+            for point in timeseries:
+                held = float(ledger.balance_on(point["date"]))
+                point["cash"] = held
+                point["value"] += held
+                point["cost_basis"] += held
+            cash_now = float(ledger.balance_on(date.today()))
 
         # Closed-position roll-ups
         closed = valued.get("closed_positions", [])
@@ -205,6 +231,7 @@ class PerformanceService:
                 "total_cost_basis": valued.get("total_cost_basis", 0.0),
                 "total_market_value": valued.get("total_market_value", 0.0),
                 "total_unrealized_gain": valued.get("total_unrealized_gain", 0.0),
+                "cash_balance": cash_now,
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,
                 "total_realized_gain": total_realized_gain,
@@ -297,7 +324,9 @@ class PerformanceService:
             "positions": result_positions,
         }
 
-    def monthly_returns(self, sleeve_ids: List[str]) -> List[Dict]:
+    def monthly_returns(
+        self, sleeve_ids: List[str], cash_account_ids: Optional[List[str]] = None
+    ) -> List[Dict]:
         """Month-on-month return breakdown since inception.
 
         For each calendar month:
@@ -314,6 +343,7 @@ class PerformanceService:
         """
         sleeve_ids = list(sleeve_ids)
         prices = self._fetch_live_prices(sleeve_ids)
+        ledger = CashLedger.for_accounts(self.db, cash_account_ids or [])
 
         trades = (
             self.db.query(Trade)
@@ -361,7 +391,9 @@ class PerformanceService:
             y, m = (y + 1, 1) if m == 12 else (y, m + 1)
         growth_by_date = {
             point["date"]: point
-            for point in self.twr.growth_at(sleeve_ids, first_date, month_ends, prices)
+            for point in self.twr.growth_at(
+                sleeve_ids, first_date, month_ends, prices, ledger
+            )
         }
 
         prev_end_value = 0.0  # value carried from previous month

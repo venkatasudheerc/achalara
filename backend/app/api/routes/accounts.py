@@ -124,7 +124,9 @@ def get_account_performance(
     )
     sleeve_ids = [s.id for s, _ in sleeve_rows]
 
-    perf = svc.performance(sleeve_ids, start_date, end_date)
+    perf = svc.performance(
+        sleeve_ids, start_date, end_date, cash_account_ids=[account_id]
+    )
 
     children = []
     for sleeve, strat in sleeve_rows:
@@ -164,7 +166,9 @@ def get_account_returns_series(
         s[0] for s in db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
     ]
     from app.services.weekly_snapshot_service import WeeklySnapshotService
-    series = WeeklySnapshotService(db).returns_series(sleeve_ids, start_date, end_date)
+    series = WeeklySnapshotService(db).returns_series(
+        sleeve_ids, start_date, end_date, cash_account_ids=[account_id]
+    )
     return {"level": "account", "id": account_id, "series": series}
 
 
@@ -183,7 +187,7 @@ def get_account_monthly_returns(
         s[0] for s in db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
     ]
     svc = PerformanceService(db)
-    months = svc.monthly_returns(sleeve_ids)
+    months = svc.monthly_returns(sleeve_ids, cash_account_ids=[account_id])
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
     if non_none:

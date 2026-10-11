@@ -84,6 +84,9 @@ _CASH_TYPES = {
     "CORP ACTION (CASH IN LIEU)": "OTHER",
 }
 
+# Cash that crosses the account boundary, as opposed to income earned inside it.
+_EXTERNAL_CASH_TYPES = {"CONTRIBUTION", "WITHDRAWAL", "TRANSFER"}
+
 # Activity that changes share counts without a trade. Nothing models these
 # yet, so they are skipped and counted; holdings reconciliation shows the
 # resulting drift.
@@ -341,6 +344,28 @@ class SnapTradeConnector:
             )
         return out
 
+    def fetch_cash_balance(
+        self,
+        connection_id: str,
+        account_ref: str,
+        credentials: Optional[SnapTradeCredentials] = None,
+    ) -> Optional[Decimal]:
+        """Cash the account holds now, or None if the source does not say.
+
+        Sums the balance across currencies as reported; accounts here are
+        single-currency, and a multi-currency one would need FX to do better.
+        """
+        creds = credentials or SnapTradeCredentials(user_id=connection_id)
+        response = self.client.account_information.get_user_account_balance(
+            account_id=account_ref, **creds.as_kwargs()
+        )
+        total = None
+        for item in _rows(_body(response)):
+            cash = _decimal(_get(item, "cash"))
+            if cash is not None:
+                total = (total or Decimal(0)) + cash
+        return total
+
     def fetch_positions(
         self,
         connection_id: str,
@@ -487,6 +512,13 @@ class SnapTradeConnector:
                 occurred_on=occurred.date() if occurred else None,
                 symbol=_symbol_ticker(_get(row, "symbol")) or None,
                 outcome=outcome,
+                cash_amount=(
+                    Decimal(0)
+                    if outcome == "skipped:sweep"
+                    else _decimal(_get(row, "amount")) or Decimal(0)
+                ),
+                is_external_flow=_CASH_TYPES.get(str(_get(row, "type") or "").upper())
+                in _EXTERNAL_CASH_TYPES,
                 payload=_jsonable(row),
             )
         )

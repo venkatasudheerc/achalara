@@ -1,6 +1,6 @@
 """Time Weighted Return (TWR) calculation service"""
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 import logging
 
@@ -44,6 +44,7 @@ class TWRCalculationService:
         start_date: date,
         end_date: date,
         prices: Optional[Dict[str, Decimal]] = None,
+        ledger=None,
     ):
         """
         Calculate Time Weighted Return over [start_date, end_date].
@@ -55,7 +56,7 @@ class TWRCalculationService:
         nothing to measure (no trades, or no capital at work in the window).
         """
         try:
-            points = self.growth_at(sleeve_ids, start_date, [end_date], prices)
+            points = self.growth_at(sleeve_ids, start_date, [end_date], prices, ledger)
             return points[0]["twr"] if points else None
         except Exception as e:
             self.logger.error(f"TWR calculation failed: {e}")
@@ -67,6 +68,7 @@ class TWRCalculationService:
         start_date: date,
         checkpoints: List[date],
         prices: Optional[Dict[str, Decimal]] = None,
+        ledger=None,
     ) -> List[Dict]:
         """Cumulative TWR from ``start_date`` to each checkpoint date.
 
@@ -78,6 +80,12 @@ class TWRCalculationService:
         ``prices`` are applied only to the final checkpoint, and only if no
         trade falls after it: current prices describe the present, not a past
         date. Every other value uses last traded prices.
+
+        ``ledger`` is a ``CashLedger`` for accounts whose cash is known. Their
+        value then includes cash, their trades and income stop being money in
+        or out (they only move value between cash and securities), and
+        deposits and withdrawals take that role. Sleeves outside the ledger
+        keep the securities-only measure, so a mixed set still adds up.
         """
         from app.services.cash_activity_service import CashActivityService
 
@@ -98,14 +106,22 @@ class TWRCalculationService:
         to_present = bool(prices) and horizon >= all_trades[-1].trade_date
         trades = [t for t in all_trades if t.trade_date <= horizon]
 
+        tracked = ledger.sleeve_ids if ledger is not None else set()
+        untracked_ids = [sid for sid in sleeve_ids if sid not in tracked]
+        # For a cash-tracked sleeve, income just lands in its cash.
         income: Dict[date, Decimal] = dict(
-            CashActivityService(self.db).income_flows(sleeve_ids, start_date, horizon)
+            CashActivityService(self.db).income_flows(
+                untracked_ids, start_date, horizon
+            )
         )
+
+        def cash_on(day: date) -> Decimal:
+            return ledger.balance_on(day) if ledger is not None else Decimal(0)
 
         quantity: Dict[str, Decimal] = {}
         last_price: Dict[str, Decimal] = {}
 
-        def value(market: Optional[Dict[str, Decimal]] = None) -> Decimal:
+        def securities(market: Optional[Dict[str, Decimal]] = None) -> Decimal:
             total = Decimal(0)
             for symbol, qty in quantity.items():
                 if qty == 0:
@@ -127,7 +143,9 @@ class TWRCalculationService:
         while index < len(trades) and trades[index].trade_date < start_date:
             apply(trades[index])
             index += 1
-        previous_value = value()
+        opening_day = start_date - timedelta(days=1)
+        previous_cash = cash_on(opening_day)
+        previous_value = securities() + previous_cash
 
         by_date: Dict[date, List[Trade]] = {}
         for trade in trades[index:]:
@@ -146,12 +164,15 @@ class TWRCalculationService:
                 worth = previous_value
                 if to_present and not pending and until is None:
                     # Bring holdings from their last traded prices up to market.
-                    worth = value(prices)
+                    worth = securities(prices) + previous_cash
                     if previous_value > 0:
                         twr = growth * float(worth / previous_value) - 1.0
                 points.append({"date": checkpoint, "twr": twr, "value": float(worth)})
 
-        for day in sorted(set(by_date) | set(income)):
+        cash_days = (
+            ledger.change_dates(start_date, horizon) if ledger is not None else []
+        )
+        for day in sorted(set(by_date) | set(income) | set(cash_days)):
             emit(day)
             day_trades = by_date.get(day, [])
 
@@ -159,7 +180,7 @@ class TWRCalculationService:
             #    repriced at what they traded for today.
             for trade in day_trades:
                 last_price[trade.symbol] = Decimal(str(trade.price))
-            before_flows = value()
+            before_flows = securities() + previous_cash
             if previous_value > 0:
                 growth *= float(before_flows / previous_value)
                 measured = True
@@ -171,15 +192,21 @@ class TWRCalculationService:
             # A net fee day is money paid in, not negative money out.
             money_in = max(-net_income, Decimal(0))
             for trade in day_trades:
-                gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
-                commission = Decimal(str(trade.commission or 0))
-                if trade.action == "BUY":
-                    money_in += gross + commission
-                else:
-                    money_out += gross - commission
+                if trade.sleeve_id not in tracked:
+                    gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
+                    commission = Decimal(str(trade.commission or 0))
+                    if trade.action == "BUY":
+                        money_in += gross + commission
+                    else:
+                        money_out += gross - commission
                 apply(trade)
+            if ledger is not None:
+                deposited = ledger.external.get(day, Decimal(0))
+                money_in += max(deposited, Decimal(0))
+                money_out += max(-deposited, Decimal(0))
 
-            end_value = value()
+            previous_cash = cash_on(day)
+            end_value = securities() + previous_cash
             base = before_flows + money_in
             if base > 0:
                 gained = end_value + money_out - money_in - before_flows
