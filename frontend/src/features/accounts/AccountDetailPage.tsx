@@ -4,13 +4,16 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAccount, useAccountPositions } from '@/hooks/useAccounts'
 import { useSleeves, useCreateSleeve } from '@/hooks/useSleeves'
 import { useStrategies } from '@/hooks/useStrategies'
-import { useScope } from '@/context/ScopeContext'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
+import { useClient } from '@/hooks/useClients'
+import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency } from '@/lib/formatters'
 import type { SleeveResponse, AggregatedPosition } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
+import { performanceApi } from '@/api/endpoints/performance'
 
 export function AccountDetailPage() {
   const { clientId, accountId } = useParams<{ clientId: string; accountId: string }>()
@@ -22,6 +25,11 @@ export function AccountDetailPage() {
   const { data: positions } = useAccountPositions(clientId!, accountId!)
   const { data: strategies } = useStrategies()
   const createSleeve = useCreateSleeve()
+  const { data: client } = useClient(clientId!)
+  useScopeFollowsPage(
+    client && { id: client.id, name: client.name },
+    account && { id: account.id, name: account.name },
+  )
 
   const [showSleeveForm, setShowSleeveForm] = useState(false)
   const [strategyId, setStrategyId] = useState('')
@@ -56,7 +64,7 @@ export function AccountDetailPage() {
   ]
 
   const posCols: Column<AggregatedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
     { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
@@ -80,12 +88,20 @@ export function AccountDetailPage() {
             <p className="text-stone text-sm font-mono mt-1"># {account.account_number}</p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <a
+            href={performanceApi.reportUrl(clientId!, accountId!)}
+            className="px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
+          >
+            Download report
+          </a>
         <button
           onClick={() => { flushSync(() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name) }); navigate('/app/performance') }}
           className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance
         </button>
+        </div>
       </div>
 
       {/* Sleeves */}

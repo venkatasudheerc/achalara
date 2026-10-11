@@ -1,0 +1,28 @@
+meta {
+  name: Account Balances
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{snaptradeBaseUrl}}/accounts/{{snaptradeAccountId}}/balances?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Cash balances per currency for the account in `snaptradeAccountId`. Set that
+  env var yourself; **List Accounts** lists the available ids.
+
+  Not yet consumed by Achalara — our performance math derives value from trades
+  and positions. It matters for reconciliation: a sleeve's computed value plus
+  uninvested cash should tie back to the brokerage's own total, which is a good
+  check on whether the trade history we ingested is complete.
+
+  Shares the per-account rate-limit bucket with the positions call (10
+  requests/minute per account on Personal keys), so reading both counts twice.
+}

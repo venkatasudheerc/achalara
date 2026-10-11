@@ -22,6 +22,13 @@ class Sleeve(BaseModel):
         String(36), ForeignKey("strategies.id", ondelete="RESTRICT"), nullable=False
     )
 
+    # How SELLs are matched to BUYs when deriving positions. ROUND_TRIP pairs
+    # equal quantities (strategy sheets record discrete round trips); FIFO
+    # consumes the oldest lots, which is what real brokerage activity needs.
+    accounting_method = Column(
+        String(20), nullable=False, default="ROUND_TRIP", server_default="ROUND_TRIP"
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "account_id", "strategy_id", name="uq_sleeve_account_strategy"
@@ -35,6 +42,9 @@ class Sleeve(BaseModel):
     )
     positions = relationship(
         "Position", back_populates="sleeve", cascade="all, delete-orphan"
+    )
+    cash_activities = relationship(
+        "CashActivity", back_populates="sleeve", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

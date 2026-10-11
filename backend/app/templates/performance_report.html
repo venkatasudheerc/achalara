@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investment Performance Report — {{ account_name }}</title>
+<style>
+  @page { size: Letter; margin: 18mm 16mm 20mm 16mm;
+    @bottom-left { content: "{{ footer_left }}"; font-size: 7.5pt; color: #8A968F; }
+    @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: #8A968F; } }
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #14201C; font-size: 9.5pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4pt; color: #1E3A2F; }
+  h2 { font-size: 13pt; color: #1E3A2F; margin: 18pt 0 6pt; }
+  .meta { color: #4b5852; font-size: 10pt; }
+  .muted { color: #8A968F; }
+  .rule { border-top: 2pt solid #C9A24B; margin: 10pt 0 0; }
+  .tiles { display: flex; gap: 2pt; margin-top: 0; }
+  .tile { flex: 1; background: #EAF0EC; padding: 9pt 11pt; }
+  .tile .label { font-size: 8.5pt; color: #4b5852; }
+  .tile .value { font-size: 17pt; font-weight: 700; margin-top: 2pt; }
+  .tile .sub { font-size: 7.5pt; color: #8A968F; }
+  .note { font-size: 7.5pt; color: #8A968F; margin-top: 4pt; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8pt; text-align: right; color: #4b5852; padding: 4pt 5pt; border-bottom: 0.75pt solid #8A968F; font-weight: 700; }
+  td { text-align: right; padding: 4.5pt 5pt; border-bottom: 0.4pt solid #dfe6e1; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.strong td { font-weight: 700; border-top: 0.75pt solid #8A968F; }
+  .gain { color: #2E8B6B; } .loss { color: #C2703D; }
+  .chart { margin: 2pt 0 0; } .chart svg { width: 100%; height: auto; }
+  h2 { page-break-after: avoid; } table, .chart, .block { page-break-inside: avoid; }
+  .grid td, .grid th { text-align: center; padding: 3.5pt 2pt; font-size: 8pt; }
+  .grid td:first-child, .grid th:first-child { text-align: left; }
+  .pagebreak { page-break-before: always; }
+  .block { background: #EAF0EC; padding: 10pt 12pt; }
+  ul.method { padding-left: 12pt; margin: 4pt 0; } ul.method li { margin-bottom: 4pt; font-size: 8.5pt; }
+  .fine { font-size: 7.5pt; color: #8A968F; }
+</style>
+</head>
+<body>
+
+<h1>Investment Performance Report</h1>
+<div class="meta">{{ client_name }}</div>
+<div class="meta">{{ account_name }}{% if account_number %} · Account {{ account_number }}{% endif %}</div>
+<div class="meta">Period ending {{ as_of_long }} · Inception {{ inception_long }}</div>
+<div class="meta muted">Prepared by {{ prepared_by }}</div>
+<div class="rule"></div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Ending value</div><div class="value">{{ ending_value }}</div><div class="sub">{{ ending_note }}</div></div>
+  <div class="tile"><div class="label">Quarter to date</div><div class="value">{{ r.qtd }}</div></div>
+  <div class="tile"><div class="label">Year to date</div><div class="value">{{ r.ytd }}</div></div>
+  <div class="tile"><div class="label">Since inception{% if annualised %} (annualized){% endif %}</div><div class="value">{{ r.inception }}</div></div>
+</div>
+<div class="note">Returns shown are time-weighted. No advisory fees are recorded for this account, so net and gross returns are the same.</div>
+
+<h2>Performance Summary</h2>
+{% for paragraph in summary %}<p>{{ paragraph }}</p>{% endfor %}
+
+<h2>Returns by Period</h2>
+<table>
+  <tr><th></th><th>MTD</th><th>QTD</th><th>YTD</th><th>1 Yr</th><th>Inception{% if annualised %}*{% endif %}</th></tr>
+  <tr><td><b>Portfolio</b></td><td>{{ r.mtd }}</td><td>{{ r.qtd }}</td><td>{{ r.ytd }}</td><td>{{ r.one_year }}</td><td>{{ r.inception }}</td></tr>
+</table>
+<div class="note">{% if annualised %}* Annualized. {% endif %}Periods of one year or less are cumulative. Time-weighted returns link daily returns and remove the effect of contributions and withdrawals.</div>
+
+<h2>Account Activity</h2>
+<table>
+  <tr><th></th><th>Quarter to Date</th><th>Year to Date</th><th>Last 12 Months</th><th>Since Inception</th></tr>
+  {% for label, key, cls in activity_rows %}
+  <tr class="{{ cls }}"><td>{{ label }}</td>{% for col in ("qtd", "ytd", "one_year", "inception") %}<td>{{ activity[col][key] }}</td>{% endfor %}</tr>
+  {% endfor %}
+</table>
+<div class="note">Money-weighted return (IRR) reflects the timing and size of contributions and withdrawals. Returns for periods longer than one year are annualized.</div>
+
+<div class="pagebreak"></div>
+<h2>Growth of Portfolio Value</h2>
+<div class="chart">{{ charts.growth | safe }}</div>
+<h2>Cumulative Return Since Inception</h2>
+<div class="chart">{{ charts.cumulative | safe }}</div>
+<div class="note">Cumulative time-weighted return.</div>
+<h2>Drawdowns</h2>
+<div class="chart">{{ charts.drawdown | safe }}</div>
+<div class="note">Percentage decline from the previous peak in cumulative return.{% if deepest %} Deepest point: {{ deepest }}.{% endif %}</div>
+
+<div class="pagebreak"></div>
+<h2>Risk Statistics</h2>
+<table>
+  <tr><th></th><th>Since Inception</th></tr>
+  {% for label, value in risk_rows %}<tr><td>{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}
+</table>
+<div class="note">{{ drawdown_note }} Statistics use daily returns; monthly figures are calendar months.</div>
+
+<h2>Calendar Year Returns</h2>
+<div class="chart">{{ charts.years | safe }}</div>
+<table>
+  <tr><th></th>{% for y in years %}<th>{{ y.label }}</th>{% endfor %}</tr>
+  <tr><td><b>Portfolio</b></td>{% for y in years %}<td>{{ y.value }}</td>{% endfor %}</tr>
+</table>
+<div class="note">* Partial year. Returns are cumulative for each calendar year.</div>
+
+<h2>Monthly Returns (%)</h2>
+<table class="grid">
+  <tr><th>Year</th>{% for m in month_names %}<th>{{ m }}</th>{% endfor %}<th>Year</th></tr>
+  {% for row in month_grid %}
+  <tr><td>{{ row.year }}</td>{% for cell in row.cells %}<td style="background: {{ cell.color }}">{{ cell.text }}</td>{% endfor %}<td><b>{{ row.total }}</b></td></tr>
+  {% endfor %}
+</table>
+<div class="note">Green shading marks gains and clay marks losses; darker means a larger move. The first month may be partial.</div>
+
+<h2>Your Financial Advisor</h2>
+<div class="block">{{ advisor_block }}</div>
+
+<h2>Methodology and Disclosures</h2>
+<ul class="method">
+  {% for title, text in methodology %}<li><b>{{ title }}.</b> {{ text }}</li>{% endfor %}
+</ul>
+<p class="fine">Past performance does not guarantee future results. Investing involves risk, including possible loss of principal. This report is for informational purposes only and is not an offer or solicitation to buy or sell any security, or tax or legal advice. Figures are calculated from the data described above and may differ from custodial statements because of pricing, accrual and timing differences. Your custodian's statements are the official record of your holdings and transactions.</p>
+<p class="fine">{{ firm_disclosures }}</p>
+
+</body>
+</html>

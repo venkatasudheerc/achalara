@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sleevesApi } from '@/api/endpoints/sleeves'
+import { accountsApi } from '@/api/endpoints/accounts'
+import { accountKeys } from './useAccounts'
 import type { SleeveCreate, MarketPriceUpdate } from '@/api/types'
 
 export const sleeveKeys = {
@@ -18,6 +20,8 @@ export const sleeveKeys = {
     ['sleeves', clientId, accountId, sleeveId, 'positions', 'closed'] as const,
   trades: (clientId: string, accountId: string, sleeveId: string, skip?: number) =>
     ['sleeves', clientId, accountId, sleeveId, 'trades', skip] as const,
+  cashActivities: (clientId: string, accountId: string, sleeveId: string) =>
+    ['sleeves', clientId, accountId, sleeveId, 'cash-activities'] as const,
 }
 
 export function useSleeves(clientId: string, accountId: string) {
@@ -26,6 +30,29 @@ export function useSleeves(clientId: string, accountId: string) {
     queryFn: () => sleevesApi.list(clientId, accountId),
     enabled: !!clientId && !!accountId,
   })
+}
+
+/** A client's accounts, each with the sleeves in it. */
+export function useClientSleeves(clientId: string) {
+  const accounts = useQuery({
+    queryKey: accountKeys.list(clientId),
+    queryFn: () => accountsApi.list(clientId),
+    enabled: !!clientId,
+  })
+  const sleeves = useQueries({
+    queries: (accounts.data ?? []).map((account) => ({
+      queryKey: sleeveKeys.list(clientId, account.id),
+      queryFn: () => sleevesApi.list(clientId, account.id),
+    })),
+  })
+  return {
+    isLoading: accounts.isLoading || sleeves.some((q) => q.isLoading),
+    isError: accounts.isError || sleeves.some((q) => q.isError),
+    data: (accounts.data ?? []).map((account, index) => ({
+      account,
+      sleeves: sleeves[index]?.data ?? [],
+    })),
+  }
 }
 
 export function useSleeve(clientId: string, accountId: string, sleeveId: string) {
@@ -89,6 +116,14 @@ export function useSleeveTrades(
   return useQuery({
     queryKey: sleeveKeys.trades(clientId, accountId, sleeveId, skip),
     queryFn: () => sleevesApi.getTrades(clientId, accountId, sleeveId, { skip, limit }),
+    enabled: !!clientId && !!accountId && !!sleeveId,
+  })
+}
+
+export function useSleeveCashActivities(clientId: string, accountId: string, sleeveId: string) {
+  return useQuery({
+    queryKey: sleeveKeys.cashActivities(clientId, accountId, sleeveId),
+    queryFn: () => sleevesApi.getCashActivities(clientId, accountId, sleeveId),
     enabled: !!clientId && !!accountId && !!sleeveId,
   })
 }

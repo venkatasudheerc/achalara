@@ -1,0 +1,15 @@
+meta {
+  name: Start Link
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/connections/snaptrade/link
+  body: none
+  auth: none
+}
+
+docs {
+  Returns a SnapTrade portal URL. Open it within five minutes, sign in to the brokerage, then run Discover. Needs SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY and SNAPTRADE_USER_ID in backend/.env.
+}

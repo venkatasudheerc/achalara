@@ -9,7 +9,18 @@ class PerformancePoint(BaseModel):
 
     date: date
     value: float
-    cost_basis: float
+    # None where the series is read from the daily record, which keeps no
+    # running cost.
+    cost_basis: Optional[float] = None
+    # Net money put in since the start of the series, for a value-against-
+    # contributions chart.
+    net_contributions: Optional[float] = None
+    # Cash held that day, already included in value and cost_basis. Present
+    # only for views of whole accounts whose cash is known.
+    cash: Optional[float] = None
+    # Net money put in since the previous point (negative if taken out), so a
+    # benchmark can be given the same money on the same days.
+    net_flow: float = 0.0
 
 
 class PerformanceSummary(BaseModel):
@@ -23,10 +34,22 @@ class PerformanceSummary(BaseModel):
     total_cost_basis: float = 0.0
     total_market_value: float = 0.0
     total_unrealized_gain: float = 0.0
+    # Cash held now, for views of whole accounts whose cash is known. When set,
+    # mwr_pct and twr_pct are measured on securities plus cash.
+    cash_balance: Optional[float] = None
+    # Whole-account value now (securities + cash + corrections); the last
+    # point of the value chart. None when cash is not tracked.
+    total_value: Optional[float] = None
+    # Corrections from the brokerage's own current figures, included in today's
+    # total and returns: securities it holds that our trades do not show yet,
+    # and the repricing of options held at their last traded price.
+    holdings_adjustment: Optional[float] = None
     # Closed-position fields
     total_invested: float = 0.0
     total_proceeds: float = 0.0
     total_realized_gain: float = 0.0
+    # Dividends and interest received less fees and tax withheld
+    total_income: float = 0.0
     closed_positions_count: int = 0
     trades_count: int = 0
 
@@ -53,10 +76,13 @@ class MonthlyReturn(BaseModel):
     start_value: float
     end_value: float
     cash_in: float   # BUY cash deployed this month
-    cash_out: float  # SELL proceeds received this month
+    cash_out: float  # SELL proceeds plus net investment income this month
     net_cash_flow: float
     realized_gain: float
-    return_pct: Optional[float] = None  # None for the inception month
+    return_pct: Optional[float] = None  # None while no capital is at work
+    # True for the latest month, which also carries the unrealised gain on
+    # open positions to date (earlier months reflect gains as realised).
+    includes_unrealized: bool = False
 
 
 class MonthlyReturnsResponse(BaseModel):
@@ -75,3 +101,90 @@ class LevelPerformance(BaseModel):
     summary: PerformanceSummary
     timeseries: List[PerformancePoint] = []
     children: List[ChildPerformance] = []
+
+
+class PeriodPerformance(BaseModel):
+    """One day, week, month, quarter or year of a sleeve, account or roll-up."""
+
+    period_start: date
+    period_end: date
+    opening_value: float
+    closing_value: float
+    cash_value: Optional[float] = None
+    net_flow: float  # money put in less money taken out
+    gain: float  # closing - opening - net_flow
+    twr_pct: Optional[float] = None  # decimal fraction
+    mwr_pct: Optional[float] = None
+    twr_cumulative_pct: Optional[float] = None  # since the start of the record
+    twr_ytd_pct: Optional[float] = None
+    benchmark_return_pct: Optional[float] = None
+    excess_return_pct: Optional[float] = None
+    unpriced_pct: float = 0.0  # share of securities held at last traded price
+    basis: str  # observed | reconstructed | mixed
+    is_provisional: bool = False
+
+
+class PeriodsResponse(BaseModel):
+    level: str
+    id: str
+    name: Optional[str] = None
+    grain: str
+    benchmark: Optional[str] = None
+    # market | realized — how holdings were valued; see the periods endpoints.
+    basis: str = "market"
+    periods: List[PeriodPerformance]
+
+
+class ActivityRow(BaseModel):
+    beginning_value: float
+    net_flow: float
+    gain: float
+    ending_value: float
+    twr_pct: Optional[float] = None
+    mwr_pct: Optional[float] = None
+    covers_full_period: bool = True
+
+
+class RiskStatistics(BaseModel):
+    annualized_return: Optional[float] = None
+    volatility: Optional[float] = None
+    sharpe: Optional[float] = None
+    sortino: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    max_drawdown_date: Optional[date] = None
+    max_drawdown_start: Optional[date] = None
+    max_drawdown_recovered: Optional[date] = None
+    best_month: Optional[float] = None
+    worst_month: Optional[float] = None
+    positive_months: Optional[float] = None
+
+
+class DataQuality(BaseModel):
+    days: int = 0
+    observed_days: int = 0
+    observed_pct: float = 0.0
+    provisional_days: int = 0
+    unpriced_pct: float = 0.0
+    unpriced_value: float = 0.0
+
+
+class StatisticsResponse(BaseModel):
+    """Everything an account performance report shows, as of a date."""
+
+    level: str
+    id: str
+    name: Optional[str] = None
+    as_of: Optional[date] = None
+    inception: Optional[date] = None
+    ending_value: Optional[float] = None
+    cash_value: Optional[float] = None
+    # Keys: mtd, qtd, ytd, one_year, inception. Longer than a year: annualised.
+    returns: dict = {}
+    activity: dict = {}
+    risk: RiskStatistics = RiskStatistics()
+    calendar_years: List[dict] = []
+    monthly: List[dict] = []
+    cumulative: List[dict] = []
+    drawdowns: List[dict] = []
+    net_contributions: List[dict] = []
+    quality: DataQuality = DataQuality()

@@ -8,7 +8,18 @@ from app.models.trade import Trade
 from app.models.position import Position
 from app.models.sync_log import SyncLog
 from app.models.sheet_sync_config import SheetSyncConfig
-from app.models.weekly_snapshot import WeeklyPortfolioSnapshot
+from app.models.brokerage_connection import (
+    BrokerageConnection,
+    BrokerageAccount,
+    BrokerageActivity,
+)
+from app.models.cash_activity import CashActivity
+from app.models.perf import (
+    CorporateAction,
+    DailyHolding,
+    DailyPrice,
+    DailyValuation,
+)
 
 __all__ = [
     "Base",
@@ -20,5 +31,12 @@ __all__ = [
     "Position",
     "SyncLog",
     "SheetSyncConfig",
-    "WeeklyPortfolioSnapshot",
+    "BrokerageConnection",
+    "BrokerageAccount",
+    "BrokerageActivity",
+    "CashActivity",
+    "CorporateAction",
+    "DailyHolding",
+    "DailyPrice",
+    "DailyValuation",
 ]

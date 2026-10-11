@@ -6,6 +6,10 @@ import logging
 import uuid
 
 from app.db.database import get_db
+from app.services.performance_build_service import (
+    PerformanceBuildService,
+    rebuild_for_sleeves,
+)
 from app.services.trade_import import TradeImportService
 from app.services.daily_sync import run_daily_sync
 from app.models.account import Account
@@ -116,17 +120,10 @@ def import_historical(
             response["message"] = f"Successfully imported {result['imported']} trades"
             response["sync_log_id"] = result["sync_log_id"]
 
-            # Recompute weekly snapshots for all affected sleeves.
-            try:
-                from app.services.weekly_snapshot_service import WeeklySnapshotService
-                svc = WeeklySnapshotService(db)
-                affected = result.get("affected_sleeve_ids", [])
-                if not affected and sleeve_id:
-                    affected = [sleeve_id]
-                for sid in affected:
-                    svc.rebuild_sleeve(sid)
-            except Exception:
-                pass
+            affected = result.get("affected_sleeve_ids", [])
+            if not affected and sleeve_id:
+                affected = [sleeve_id]
+            rebuild_for_sleeves(db, affected)
 
         return response
 
@@ -179,12 +176,7 @@ def sync_daily(
             detail={"message": "Sync import failed", "errors": result["errors"][:10]},
         )
 
-    # Recompute weekly snapshots for the synced sleeve.
-    try:
-        from app.services.weekly_snapshot_service import WeeklySnapshotService
-        WeeklySnapshotService(db).rebuild_sleeve(sleeve_id)
-    except Exception:
-        pass
+    rebuild_for_sleeves(db, [sleeve_id])
 
     return {
         "status": "success",
@@ -325,30 +317,29 @@ def delete_sync_config(config_id: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/rebuild-snapshots")
-def rebuild_snapshots(
-    sleeve_id: str = Query(None, description="Rebuild a single sleeve; omit for all sleeves"),
+@router.post("/rebuild-performance")
+def rebuild_performance(
+    account_id: str = Query(None, description="Rebuild one account; omit for all"),
     db: Session = Depends(get_db),
 ):
-    """Rebuild weekly portfolio snapshots.
+    """Rebuild the daily valuation rows (``perf.daily_valuation``).
 
-    Recomputes all ``weekly_portfolio_snapshots`` rows from scratch.
-    Pass ``sleeve_id`` to rebuild only one sleeve; omit to rebuild every sleeve.
-    This is idempotent — safe to run after correcting historical trade data.
+    Replaces every reconstructed row from the trades and price history on
+    file. Days captured from the brokerage are kept as captured; only their
+    flows and returns are refreshed. Idempotent — safe to run after correcting
+    historical trades or loading more price history.
     """
-    from app.services.weekly_snapshot_service import WeeklySnapshotService
-    svc = WeeklySnapshotService(db)
+    service = PerformanceBuildService(db)
     try:
-        if sleeve_id:
-            count = svc.rebuild_sleeve(sleeve_id)
-            return {"status": "success", "sleeves_rebuilt": 1, "snapshots_written": count}
+        if account_id:
+            written = {account_id: service.rebuild_account(account_id)}
         else:
-            results = svc.rebuild_all()
-            return {
-                "status": "success",
-                "sleeves_rebuilt": len(results),
-                "snapshots_written": sum(results.values()),
-            }
+            written = service.rebuild_all()
+        return {
+            "status": "success",
+            "accounts_rebuilt": len(written),
+            "rows_written": sum(written.values()),
+        }
     except Exception as e:
-        logger.error(f"Snapshot rebuild failed: {e}")
+        logger.error(f"Performance rebuild failed: {e}")
         raise HTTPException(status_code=500, detail=f"Rebuild failed: {str(e)}")

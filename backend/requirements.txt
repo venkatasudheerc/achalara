@@ -18,10 +18,16 @@ google-api-python-client==2.105.0
 # Utilities
 python-dotenv==1.0.0
 python-dateutil==2.8.2
-numpy==1.24.3
+numpy==1.26.4
 pandas==2.1.3
 apscheduler==3.10.4
 redis==5.0.1
+
+# Brokerage connectors (Bridge)
+snaptrade-python-sdk==13.0.30
+# Pinned explicitly because google-auth and the SnapTrade SDK both pull it in;
+# pinning keeps that shared transitive dependency from drifting.
+cryptography==49.0.0
 
 # Logging & Monitoring
 python-json-logger==2.0.7
@@ -31,8 +37,17 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 httpx==0.25.1
+# Reads openapi.yaml in the route-versus-spec contract test.
+pyyaml==6.0.3
 
 # Linting & Formatting
 black==23.12.0
 flake8==6.1.0
 pylint==3.0.2
+
+# Performance report: HTML template, charts, and PDF rendering.
+# WeasyPrint needs the Pango system library (macOS: brew install pango;
+# Debian/Ubuntu: apt-get install libpango-1.0-0 libpangoft2-1.0-0).
+jinja2==3.1.6
+matplotlib==3.11.2
+weasyprint==70.0

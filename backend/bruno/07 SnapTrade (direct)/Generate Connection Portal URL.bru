@@ -1,0 +1,46 @@
+meta {
+  name: Generate Connection Portal URL
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{snaptradeBaseUrl}}/snapTrade/login?userId={{snaptradeUserId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "connectionType": "read"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Creates a hosted Connection Portal session and returns a `redirectURI`.
+
+  Open that URL in a browser to link another brokerage, or to re-authorize a
+  connection that has broken. **The URL expires in about 5 minutes.**
+
+  `connectionType: "read"` keeps the grant read-only. Do not change it to
+  `trade-if-available` — trading stays dormant until it is deliberately on the
+  roadmap, and a read-only grant is the reason trading endpoints cannot be
+  called by accident.
+
+  Optional body fields:
+
+  - `customRedirect` — where to send the browser afterward. Cosmetic only:
+    SnapTrade has no code-for-token exchange, so completion is signalled by the
+    `CONNECTION_ADDED` webhook (or by the connection simply appearing in **List
+    Connections**), not by anything in the redirect.
+  - `broker` — skip the brokerage picker and go straight to one brokerage.
+  - `reconnect` — an authorization id, to repair that specific connection
+    rather than create a new one.
+
+  Brokerage credentials are entered on SnapTrade's page and never reach
+  Achalara. We only ever hold the reference SnapTrade returns.
+}

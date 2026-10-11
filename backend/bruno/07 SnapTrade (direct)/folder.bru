@@ -1,0 +1,174 @@
+meta {
+  name: 07 SnapTrade (direct)
+  seq: 7
+}
+
+script:pre-request {
+  // SnapTrade signs every request. The signature is an HMAC-SHA256 over a
+  // canonical JSON object {content, path, query} — compact separators, sorted
+  // keys — keyed with the consumer key, base64-encoded. It then rides in the
+  // `Signature` header while clientId and timestamp travel as query params.
+  //
+  // This runs for every request in this folder, so individual requests only
+  // declare their own params. Mirrors compute_request_signature() in the
+  // SnapTrade SDK (snaptrade_client/request_after_hook.py).
+  //
+  // Bruno's sandbox allows require() only for whitelisted modules, so this
+  // pulls in 'crypto-js' (whitelisted) rather than Node's 'crypto' (not), and
+  // there is no `URL` constructor — hence the string parsing below. The
+  // crypto-js HMAC was verified byte-identical to Node's, and this script was
+  // verified against the live API for both a GET and a POST-with-body.
+  const CryptoJS = require('crypto-js');
+
+  const clientId = bru.getEnvVar('snaptradeClientId');
+  const consumerKey = bru.getEnvVar('snaptradeConsumerKey');
+
+  if (!clientId || !consumerKey) {
+    throw new Error(
+      'Set snaptradeClientId and snaptradeConsumerKey in the Local.private ' +
+      'Bruno environment (copy them from backend/.env).'
+    );
+  }
+
+  // bru.interpolate is essential here, not a convenience. Bruno expands
+  // {{vars}} *after* this script runs (interpolateVars is called downstream of
+  // the pre-request hook), and req.getUrl() returns the URL raw. Signing the
+  // un-expanded template would hash "{{snaptradeBaseUrl}}/accounts" while
+  // sending the real URL, and SnapTrade rejects it:
+  //   401 {"detail":"Unable to verify signature sent","code":"1076"}
+  // Interpolating here means the string we sign is the string that is sent.
+  const rawUrl = bru.interpolate(req.getUrl());
+  const hashIdx = rawUrl.indexOf('#');
+  const noHash = hashIdx === -1 ? rawUrl : rawUrl.slice(0, hashIdx);
+  const qIdx = noHash.indexOf('?');
+  const base = qIdx === -1 ? noHash : noHash.slice(0, qIdx);
+  const rawQuery = qIdx === -1 ? '' : noHash.slice(qIdx + 1);
+
+  // Keep the request's own params, dropping any stale auth params so a replay
+  // cannot sign two different timestamps.
+  const params = [];
+  if (rawQuery) {
+    rawQuery.split('&').forEach(function (pair) {
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const key = eq === -1 ? pair : pair.slice(0, eq);
+      const value = eq === -1 ? '' : pair.slice(eq + 1);
+      if (key !== 'clientId' && key !== 'timestamp') {
+        params.push([key, value]);
+      }
+    });
+  }
+
+  params.push(['clientId', encodeURIComponent(clientId)]);
+  params.push(['timestamp', String(Math.floor(Date.now() / 1000))]);
+
+  // Sort by key: the signature covers the query string verbatim, so the order
+  // signed here has to be the order sent.
+  params.sort(function (a, b) {
+    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  });
+
+  const query = params
+    .map(function (pair) {
+      return pair[0] + '=' + pair[1];
+    })
+    .join('&');
+
+  // Path only — the signature excludes scheme and host.
+  const schemeEnd = base.indexOf('://');
+  const afterScheme = schemeEnd === -1 ? base : base.slice(schemeEnd + 3);
+  const firstSlash = afterScheme.indexOf('/');
+  const path = firstSlash === -1 ? '/' : afterScheme.slice(firstSlash);
+
+  // An absent or empty body signs as null, matching the SDK. Interpolated for
+  // the same reason as the URL: a {{var}} in the body would otherwise be
+  // expanded after signing.
+  let body = req.getBody();
+  if (body === undefined || body === null) {
+    body = null;
+  } else {
+    if (typeof body === 'string') {
+      body = bru.interpolate(body);
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        // Not JSON — sign the string as-is.
+      }
+    } else if (typeof body === 'object') {
+      body = bru.interpolate(body);
+    }
+    if (typeof body === 'object' && body !== null && Object.keys(body).length === 0) {
+      body = null;
+    }
+  }
+
+  // The three keys are already alphabetical, so this matches the SDK's
+  // sort_keys=True canonical form.
+  const sigContent = JSON.stringify({ content: body, path: path, query: query });
+
+  const signature = CryptoJS.HmacSHA256(sigContent, consumerKey).toString(
+    CryptoJS.enc.Base64
+  );
+
+  req.setUrl(base + '?' + query);
+  req.setHeader('Signature', signature);
+  req.setHeader('Accept', 'application/json');
+}
+
+docs {
+  # SnapTrade — direct API calls
+
+  These requests hit **SnapTrade's API directly**, not the Achalara backend.
+
+  Achalara has no SnapTrade routes yet (they arrive with the connections
+  service and webhook handler), so there is nothing local to call. Once those
+  land, this folder stays useful for comparing our responses against the
+  upstream source.
+
+  ## Setup
+
+  Select the **Local.private** environment. It is gitignored and holds the real
+  credentials; `Local` is the tracked, placeholder-only env.
+
+  This split exists because **Bruno writes secret var values inline into the
+  environment file** — listing a var under `vars:secret` does not keep its
+  value out of the file. Since this repo is public, any env holding real
+  credentials has to stay untracked. If you add credentials, put them in
+  `Local.private.bru`, never in `Local.bru`.
+
+  Vars the requests use (copy credential values from `backend/.env`):
+
+  ```
+  snaptradeBaseUrl:     https://api.snaptrade.com
+  snaptradeClientId:    <SNAPTRADE_CLIENT_ID>
+  snaptradeConsumerKey: <SNAPTRADE_CONSUMER_KEY>
+  snaptradeUserId:      achalara-local-test-user   (must match the linked user)
+  snaptradeAccountId:   the account to inspect — set it yourself, from
+                        "List Accounts". Nothing overwrites it.
+  snaptradeConnectionId: from "List Connections" — an authorization id, not an
+                         account id; only Refresh/Delete need it
+  ```
+
+  No request writes to the environment. Every id is yours to set, so running
+  one request never silently changes what another one targets.
+
+  ## Auth
+
+  Handled by this folder's pre-request script — it computes the `Signature`
+  header and injects `clientId` + `timestamp`. Individual requests declare
+  only their own params. Credentials never appear in a request file.
+
+  ## Rate limits
+
+  - **250 requests/minute** per clientId (customer-level).
+  - **10 requests/minute per account** — enforced for Personal keys. Reading
+    balances and reading positions share one bucket per account.
+  - Transactions: SnapTrade asks for **>= 24h between calls per account**.
+
+  Click deliberately; don't hammer these. A 429 returns `Retry-After`.
+
+  ## Read-only
+
+  Nothing here places an order. The connection was created with
+  `connectionType=read`, so trading endpoints are not authorized.
+}

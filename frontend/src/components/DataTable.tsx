@@ -28,16 +28,27 @@ export function DataTable<T>({ columns, rows, getKey, emptyMessage = 'No data.' 
     }
   }
 
+  // Each row keeps its original index so its React key is unique even when
+  // getKey is not (two closed lots of one symbol on one day, say). Duplicate
+  // keys make React leave rows where they are when the order changes.
+  const indexed = rows.map((row, index) => ({ row, index }))
   const sortedRows = (() => {
-    if (!sortKey) return rows
+    if (!sortKey) return indexed
     const col = columns.find((c) => c.key === sortKey)
-    if (!col?.sortValue) return rows
-    return [...rows].sort((a, b) => {
-      const av = col.sortValue!(a) ?? ''
-      const bv = col.sortValue!(b) ?? ''
-      if (av < bv) return sortDir === 'asc' ? -1 : 1
-      if (av > bv) return sortDir === 'asc' ? 1 : -1
-      return 0
+    if (!col?.sortValue) return indexed
+    const direction = sortDir === 'asc' ? 1 : -1
+    return [...indexed].sort((a, b) => {
+      const av = col.sortValue!(a.row)
+      const bv = col.sortValue!(b.row)
+      // Empty values go last whichever way the column is sorted.
+      const aEmpty = av == null || av === ''
+      const bEmpty = bv == null || bv === ''
+      if (aEmpty || bEmpty) return aEmpty === bEmpty ? a.index - b.index : aEmpty ? 1 : -1
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return av === bv ? a.index - b.index : (av - bv) * direction
+      }
+      const compared = String(av).localeCompare(String(bv), undefined, { numeric: true })
+      return compared === 0 ? a.index - b.index : compared * direction
     })
   })()
 
@@ -71,9 +82,9 @@ export function DataTable<T>({ columns, rows, getKey, emptyMessage = 'No data.' 
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
+          {sortedRows.map(({ row, index }) => (
             <tr
-              key={getKey(row)}
+              key={`${getKey(row)}:${index}`}
               className="border-b border-stone/10 hover:bg-mist/50 transition-colors"
             >
               {columns.map((col) => (

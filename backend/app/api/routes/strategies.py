@@ -16,7 +16,11 @@ from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
 from app.models.account import Account
 from app.services.performance_service import PerformanceService
-from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
+from app.api.schemas.performance import (
+    LevelPerformance,
+    MonthlyReturnsResponse,
+    MonthlyReturn,
+)
 
 router = APIRouter()
 
@@ -132,6 +136,12 @@ def get_strategy_returns_series(
     strategy_id: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Weekly TWR + MWR timeseries for a strategy (all sleeves running that strategy)."""
@@ -139,16 +149,26 @@ def get_strategy_returns_series(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     sleeve_ids = [
-        s[0] for s in db.query(Sleeve.id).filter(Sleeve.strategy_id == strategy_id).all()
+        s[0]
+        for s in db.query(Sleeve.id).filter(Sleeve.strategy_id == strategy_id).all()
     ]
     from app.services.weekly_snapshot_service import WeeklySnapshotService
-    series = WeeklySnapshotService(db).returns_series(sleeve_ids, start_date, end_date)
+
+    series = WeeklySnapshotService(db).returns_series(
+        sleeve_ids, start_date, end_date, basis=basis
+    )
     return {"level": "strategy", "id": strategy_id, "series": series}
 
 
 @router.get("/{strategy_id}/performance/monthly", response_model=MonthlyReturnsResponse)
 def get_strategy_monthly_returns(
     strategy_id: str,
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Month-on-month return breakdown since inception for a strategy."""
@@ -160,7 +180,7 @@ def get_strategy_monthly_returns(
         for s in db.query(Sleeve.id).filter(Sleeve.strategy_id == strategy_id).all()
     ]
     svc = PerformanceService(db)
-    months = svc.monthly_returns(sleeve_ids)
+    months = svc.monthly_returns(sleeve_ids, basis=basis)
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
     if non_none:

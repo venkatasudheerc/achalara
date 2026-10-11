@@ -39,42 +39,49 @@ function pickTicks(data: { date: string }[]): string[] {
   return ticks
 }
 
-/**
- * For each portfolio date, find the closest benchmark bar on or before that date
- * and return its normalized value. This bridges the weekly benchmark frequency
- * gap against daily portfolio points.
- */
-function interpolateBenchmark(
-  portfolioDates: string[],
-  benchmark: BenchmarkPoint[],
-  startValue: number,
-): (number | null)[] {
-  if (!benchmark.length || !portfolioDates.length) return portfolioDates.map(() => null)
-
-  const baseClose = benchmark[0].close
-  // benchmark is sorted ascending
-  const result: (number | null)[] = []
-
-  for (const date of portfolioDates) {
-    // binary search for the latest benchmark bar with date <= portfolio date
-    let lo = 0
-    let hi = benchmark.length - 1
-    let match: BenchmarkPoint | null = null
-
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1
-      if (benchmark[mid].date <= date) {
-        match = benchmark[mid]
-        lo = mid + 1
-      } else {
-        hi = mid - 1
-      }
+/** Latest benchmark close on or before `date` (benchmark sorted ascending). */
+function closeOnOrBefore(benchmark: BenchmarkPoint[], date: string): number | null {
+  let lo = 0
+  let hi = benchmark.length - 1
+  let match: BenchmarkPoint | null = null
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (benchmark[mid].date <= date) {
+      match = benchmark[mid]
+      lo = mid + 1
+    } else {
+      hi = mid - 1
     }
-
-    result.push(match ? (match.close / baseClose) * startValue : null)
   }
+  return match ? match.close : null
+}
 
-  return result
+/**
+ * What the same money would be worth in the benchmark.
+ *
+ * The benchmark starts with the portfolio's opening value and is then given
+ * every later deposit and withdrawal on the day it happened, buying or selling
+ * benchmark units at that day's close. Without this, a deposit lifts the
+ * portfolio line and not the benchmark's, and the gap between them is mostly
+ * money added rather than performance.
+ */
+function flowMatchedBenchmark(
+  data: TimeseriesPoint[],
+  benchmark: BenchmarkPoint[],
+): (number | null)[] {
+  if (!benchmark.length) return data.map(() => null)
+
+  let units: number | null = null
+  return data.map((pt) => {
+    const close = closeOnOrBefore(benchmark, pt.date)
+    if (close == null || close <= 0) return null
+    if (units == null) {
+      units = pt.value / close
+    } else {
+      units += (pt.net_flow ?? 0) / close
+    }
+    return units * close
+  })
 }
 
 export function PerformanceChart({
@@ -86,11 +93,7 @@ export function PerformanceChart({
   const chartData = useMemo(() => {
     if (!benchmark?.length || !data.length) return data as (TimeseriesPoint & { benchmark_value?: number | null })[]
 
-    const benchmarkValues = interpolateBenchmark(
-      data.map((pt) => pt.date),
-      benchmark,
-      data[0].value,
-    )
+    const benchmarkValues = flowMatchedBenchmark(data, benchmark)
 
     return data.map((pt, i) => ({ ...pt, benchmark_value: benchmarkValues[i] }))
   }, [data, benchmark])
@@ -130,7 +133,7 @@ export function PerformanceChart({
           <Tooltip
             formatter={(v: number, name: string) => [
               formatCurrency(v),
-              name === 'benchmark_value' ? benchmarkTicker : 'Portfolio',
+              name === 'benchmark_value' ? `${benchmarkTicker} (same deposits)` : 'Portfolio',
             ]}
             labelFormatter={fmtAxisDate}
             contentStyle={{
@@ -142,7 +145,7 @@ export function PerformanceChart({
           />
           {hasBenchmark && (
             <Legend
-              formatter={(value) => (value === 'benchmark_value' ? benchmarkTicker : 'Portfolio')}
+              formatter={(value) => (value === 'benchmark_value' ? `${benchmarkTicker} (same deposits)` : 'Portfolio')}
               wrapperStyle={{ fontFamily: 'IBM Plex Mono', fontSize: 11, paddingTop: 8 }}
             />
           )}

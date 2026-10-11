@@ -7,12 +7,23 @@ these types and on ``base.BrokerageConnector`` — never on a vendor shape.
 """
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+# OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
+# The root can carry a digit after a corporate action ("NFE1270115P00000500").
+_OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
+
+
+def is_option_symbol(symbol: str) -> bool:
+    """Whether ``symbol`` is an option contract rather than a security."""
+    return bool(_OCC_SYMBOL.match(symbol or ""))
 
 
 class TradeAction(str, Enum):
@@ -52,6 +63,9 @@ class NormalizedTrade(BaseModel):
     executed_at: datetime
     commission: Decimal = Decimal("0")
     source: str
+    # ETF | STOCK | ADR | MUTUAL_FUND | CLOSED_END_FUND | PREFERRED | OTHER, or
+    # None when the source does not say what kind of security this is.
+    security_type: Optional[str] = None
 
     # Routing hints (sleeve resolution); empty when the target sleeve is explicit.
     strategy: str = ""
@@ -69,8 +83,69 @@ class NormalizedPosition(BaseModel):
     avg_cost: Decimal
     currency: str = "USD"
     market_price: Optional[Decimal] = None
+    # ETF | STOCK | ADR | ... as on NormalizedTrade; None when the source does
+    # not class the holding.
+    security_type: Optional[str] = None
     as_of: Optional[datetime] = None
     raw: dict = Field(default_factory=dict)
+
+
+class NormalizedCashActivity(BaseModel):
+    """A non-trade money movement: dividend, interest, fee, transfer.
+
+    ``amount`` is signed from the holder's side — positive is cash received.
+    ``external_id`` is the idempotent dedup key, as on ``NormalizedTrade``.
+    """
+
+    external_id: str
+    type: str  # DIVIDEND | INTEREST | FEE | WITHHOLDING | CONTRIBUTION | ...
+    amount: Decimal
+    occurred_at: datetime
+    symbol: Optional[str] = None
+    security_type: Optional[str] = None
+    currency: str = "USD"
+    source: str
+    notes: str = ""
+    raw: dict = Field(default_factory=dict)
+
+
+class RawActivity(BaseModel):
+    """One activity exactly as the source sent it, with what was done with it.
+
+    Kept so trades and cash rows can be re-derived when the mapping rules
+    change, without asking a rate-limited source for the same data again.
+    ``payload`` is for storage and audit; upstream code must not interpret it.
+    """
+
+    source_id: str  # the source's own id for the row; may be empty
+    type: str  # the source's type string, unmapped
+    occurred_on: Optional[date] = None
+    symbol: Optional[str] = None
+    outcome: str  # trade | cash | skipped:<reason>
+    # What the row did to the account's cash, signed (0 for a move between
+    # cash and its sweep fund, which is cash either way).
+    cash_amount: Decimal = Decimal("0")
+    # Whether that cash came from or went outside the account (a deposit,
+    # withdrawal or transfer) rather than from trading or income within it.
+    is_external_flow: bool = False
+    payload: dict = Field(default_factory=dict)
+
+
+class ActivityBatch(BaseModel):
+    """Everything a source reported for an account over a window.
+
+    ``skipped`` counts rows that were deliberately not ingested, by reason, so
+    a gap in coverage is reported rather than silent.
+    """
+
+    trades: List[NormalizedTrade] = Field(default_factory=list)
+    cash: List[NormalizedCashActivity] = Field(default_factory=list)
+    # Every row fetched, including the skipped ones, verbatim.
+    raw: List[RawActivity] = Field(default_factory=list)
+    skipped: Dict[str, int] = Field(default_factory=dict)
+    # How each trade's security type was determined, by method, so reliance on
+    # a weak signal (a word in the description) is visible.
+    security_type_sources: Dict[str, int] = Field(default_factory=dict)
 
 
 class RawAccount(BaseModel):
@@ -80,6 +155,14 @@ class RawAccount(BaseModel):
     name: str
     account_number: Optional[str] = None
     institution: str = ""
+    # The connection (login) this account sits under, where the source has one.
+    connection_ref: Optional[str] = None
+    # The source's own report of transaction-history completeness. None when
+    # the source does not say.
+    initial_sync_completed: Optional[bool] = None
+    transactions_synced_through: Optional[date] = None
+    # What the source says the whole account is worth now, when it says.
+    total_value: Optional[Decimal] = None
     raw: dict = Field(default_factory=dict)
 
 

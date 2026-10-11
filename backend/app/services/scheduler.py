@@ -1,11 +1,21 @@
-"""APScheduler background job that runs the daily Google Sheets sync."""
+"""APScheduler background jobs: the daily syncs and the daily capture.
+
+Each market day's holdings, cash and total can only be recorded on the day, so
+the capture job also runs once at start-up if the day has not been captured —
+a server that was down at the scheduled time still gets the day, provided it
+comes up before the next one.
+"""
 import logging
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db.database import SessionLocal
 from app.services.daily_sync import run_all_enabled_syncs
+from app.services.connection_service import run_all_brokerage_syncs
+from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
+from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +33,48 @@ def _job_wrapper() -> None:
         db.close()
 
 
+def _brokerage_job_wrapper() -> None:
+    """Open a DB session, sync mapped brokerage accounts, close session."""
+    db = SessionLocal()
+    try:
+        run_all_brokerage_syncs(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in brokerage sync job: {exc}")
+    finally:
+        db.close()
+
+
+def _capture_job_wrapper() -> None:
+    """Record the day: prices first, then each account's holdings and totals."""
+    db = SessionLocal()
+    try:
+        try:
+            PriceHistoryService(db).backfill()
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"Price history top-up failed: {exc}")
+        run_daily_capture(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in daily capture job: {exc}")
+    finally:
+        db.close()
+
+
+def _catch_up_wrapper() -> None:
+    """Capture now if the latest market day has not been recorded yet."""
+    db = SessionLocal()
+    try:
+        needed = DailyCaptureService(db).needs_capture()
+    except Exception as exc:
+        logger.error(f"Could not check whether a capture is due: {exc}")
+        needed = False
+    finally:
+        db.close()
+    if needed:
+        logger.info("Latest market day not captured yet — capturing now")
+        _capture_job_wrapper()
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -36,8 +88,34 @@ def start_scheduler() -> None:
         id="daily_sheets_sync",
         replace_existing=True,
     )
+    # Brokerage transactions are a day-delayed daily batch, so once a day is
+    # as fresh as the source gets. Runs after the sheets job.
+    _scheduler.add_job(
+        _brokerage_job_wrapper,
+        CronTrigger(hour=16, minute=30),
+        id="daily_brokerage_sync",
+        replace_existing=True,
+    )
+    # After the US close (21:00 UTC) and the brokerage's own daily refresh.
+    _scheduler.add_job(
+        _capture_job_wrapper,
+        CronTrigger(day_of_week="mon-fri", hour=23, minute=30),
+        id="daily_capture",
+        replace_existing=True,
+    )
+    # Once, shortly after start-up: catch the day if the schedule was missed.
+    _scheduler.add_job(
+        _catch_up_wrapper,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
+        id="capture_catch_up",
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("APScheduler started — daily sync job scheduled at 16:00 UTC")
+    logger.info(
+        "APScheduler started — sheets sync 16:00 UTC, brokerage sync 16:30 UTC, "
+        "daily capture 23:30 UTC on weekdays"
+    )
 
 
 def stop_scheduler() -> None:

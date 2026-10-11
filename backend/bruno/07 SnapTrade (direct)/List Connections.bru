@@ -1,0 +1,31 @@
+meta {
+  name: List Connections
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{snaptradeBaseUrl}}/authorizations?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  The brokerage *connections* (authorizations) a user holds — one per
+  brokerage login, each potentially exposing several accounts.
+
+  Useful fields:
+
+  - `id` — the authorization id; what refresh and delete take
+  - `brokerage.name` — e.g. Vanguard
+  - `disabled` — a broken connection needing re-auth
+  - `type` — `read` or `trade`, reflecting the scope granted at link time
+
+  A `disabled: true` connection is what the `CONNECTION_BROKEN` webhook
+  reports, and surfacing a re-connect prompt for it is required by SnapTrade's
+  launch checklist.
+}

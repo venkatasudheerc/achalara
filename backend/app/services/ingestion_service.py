@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Iterable, List, Optional
 
 from sqlalchemy import func
@@ -33,11 +33,61 @@ from app.services.portfolio_calculation import PortfolioCalculationService
 logger = logging.getLogger(__name__)
 
 
+# Sources whose ``external_id`` is a complete identity on its own. For these the
+# legacy ``(date, symbol, qty, price)`` tuple is *not* consulted: it has no
+# action, so it would collapse a same-day buy and sell at one price — which
+# real brokerage data contains — and silently drop a leg.
+_ID_AUTHORITATIVE_SOURCES = {"snaptrade"}
+
+
+def _is_duplicate(trade: NormalizedTrade, keys: set) -> bool:
+    """Whether ``trade`` is already represented in ``keys``, and record it if not."""
+    if trade.source in _ID_AUTHORITATIVE_SOURCES and trade.external_id:
+        if trade.external_id in keys:
+            return True
+        keys.add(trade.external_id)
+        return False
+    # Either identity matching means we already have this trade: the source's
+    # own id, or the legacy economics tuple.
+    key = _trade_dedup_key(
+        trade.executed_at.date(), trade.symbol, trade.quantity, trade.price
+    )
+    if key in keys or (trade.external_id and trade.external_id in keys):
+        return True
+    keys.add(key)
+    if trade.external_id:
+        keys.add(trade.external_id)
+    return False
+
+
 def _trade_dedup_key(trade_date, symbol, quantity, price) -> tuple:
-    """Normalize a trade into the legacy comparable key (date, symbol, qty, price)."""
+    """Normalize a trade into the legacy comparable key (date, symbol, qty, price).
+
+    Quantity and price are normalized as Decimals rather than floats so
+    fractional share counts compare exactly — ``float()`` loses precision at
+    the 8 decimal places the column now stores, which would let a genuine
+    duplicate slip through or flag a distinct trade as one.
+    """
     if isinstance(trade_date, str):
         trade_date = datetime.strptime(trade_date, "%Y-%m-%d").date()
-    return (trade_date, str(symbol).upper(), float(quantity), float(price))
+    return (
+        trade_date,
+        str(symbol).upper(),
+        _exact(quantity),
+        _exact(price),
+    )
+
+
+def _exact(value) -> Decimal:
+    """Decimal form of a number with trailing zeros removed.
+
+    Normalizing means 10, 10.0 and "10.00" yield one comparable value.
+    """
+    try:
+        dec = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(0)
+    return dec.normalize()
 
 
 def csv_external_id(trade_date, symbol, quantity, price) -> str:
@@ -68,6 +118,7 @@ class IngestionService:
         import_type: str = "HISTORICAL",
         total_rows: Optional[int] = None,
         prior_error_count: int = 0,
+        dedup_sleeve_ids: Optional[List[str]] = None,
     ) -> Dict:
         """Ingest pre-validated normalized trades into a single explicit sleeve.
 
@@ -77,6 +128,9 @@ class IngestionService:
         row count (CSV/Sheets report raw rows, not valid-trade count).
         ``prior_error_count`` is the number of upstream validation errors, added
         to the SyncLog ``rows_failed`` tally as the legacy pipeline did.
+        ``dedup_sleeve_ids`` widens the duplicate check beyond the target sleeve.
+        ``earliest_trade_date`` in the result is the oldest newly imported trade,
+        so callers can recompute derived data from that point.
         """
         result = {
             "success": False,
@@ -86,6 +140,7 @@ class IngestionService:
             "errors": [],
             "sync_log_id": None,
             "affected_sleeve_ids": [],
+            "earliest_trade_date": None,
         }
 
         sleeve = self.db.query(Sleeve).filter(Sleeve.id == sleeve_id).first()
@@ -97,17 +152,22 @@ class IngestionService:
             result["errors"].insert(0, "No valid trades found")
             return result
 
-        existing_keys = self._existing_keys(sleeve_id)
+        # Dedup scope defaults to the target sleeve. A brokerage sync widens it
+        # to every sleeve of the account, so a trade that was later moved to
+        # another strategy sleeve is not re-imported into this one.
+        existing_keys: set = set()
+        for sid in dedup_sleeve_ids or [sleeve_id]:
+            existing_keys |= self._existing_keys(sid)
         to_import: List[NormalizedTrade] = []
         for t in trades:
-            key = _trade_dedup_key(t.executed_at.date(), t.symbol, t.quantity, t.price)
-            if key in existing_keys:
+            if _is_duplicate(t, existing_keys):
                 result["duplicates"] += 1
                 continue
-            existing_keys.add(key)
             to_import.append(t)
 
         result["imported"] = len(to_import)
+        if to_import:
+            result["earliest_trade_date"] = min(t.executed_at.date() for t in to_import)
 
         if mode == "VALIDATE":
             result["success"] = True
@@ -245,13 +305,9 @@ class IngestionService:
                         self._existing_keys(sleeve.id) if sleeve is not None else set()
                     )
 
-                key = _trade_dedup_key(
-                    t.executed_at.date(), t.symbol, t.quantity, t.price
-                )
-                if key in seen_keys[bucket]:
+                if _is_duplicate(t, seen_keys[bucket]):
                     result["duplicates"] += 1
                     continue
-                seen_keys[bucket].add(key)
 
                 result["imported"] += 1
                 if create:
@@ -295,11 +351,14 @@ class IngestionService:
     def _to_trade(sleeve_id: str, t: NormalizedTrade) -> Trade:
         """Map a normalized trade into a persisted ``Trade`` row.
 
-        ``google_sheet_row_id`` is intentionally left NULL: dedup is enforced in
-        this service by ``external_id`` identity, matching the legacy pipeline
-        (which deduped sheet trades on the ``(date, symbol, qty, price)`` tuple,
-        not the row id column). The unique column stays available for a future
-        row-id-keyed source without changing today's behavior.
+        ``external_id`` is persisted so idempotency is enforced by the database
+        (``UNIQUE(sleeve_id, external_id)``) rather than only by this process:
+        two concurrent syncs of the same account cannot both insert the same
+        trade.
+
+        ``google_sheet_row_id`` is intentionally left NULL — sheet trades dedup
+        through ``external_id`` like every other source. The column stays for a
+        future row-id-keyed source without changing today's behavior.
         """
         return Trade(
             sleeve_id=sleeve_id,
@@ -310,6 +369,8 @@ class IngestionService:
             price=Decimal(str(t.price)),
             commission=Decimal(str(t.commission)),
             notes=t.notes,
+            external_id=t.external_id or None,
+            security_type=t.security_type,
         )
 
     def _start_log(self, import_type: str, processed: int, duplicates: int) -> SyncLog:
@@ -325,13 +386,23 @@ class IngestionService:
         return sync_log
 
     def _existing_keys(self, sleeve_id: Optional[str]) -> set:
+        """Identities of trades already in a sleeve.
+
+        Returns both forms so either kind of match counts as a duplicate: the
+        persisted ``external_id`` where a trade has one, and the legacy
+        ``(date, symbol, qty, price)`` tuple, which is the only identity
+        available for trades created before ``external_id`` existed or entered
+        directly through the API.
+        """
         if not sleeve_id:
             return set()
         existing = self.db.query(Trade).filter(Trade.sleeve_id == sleeve_id).all()
-        return {
-            _trade_dedup_key(e.trade_date, e.symbol, float(e.quantity), float(e.price))
-            for e in existing
-        }
+        keys = set()
+        for e in existing:
+            keys.add(_trade_dedup_key(e.trade_date, e.symbol, e.quantity, e.price))
+            if e.external_id:
+                keys.add(e.external_id)
+        return keys
 
     def _refresh_positions(self, sleeve_ids: Iterable[str]) -> None:
         """Recalculate and persist positions for affected sleeves (best-effort)."""

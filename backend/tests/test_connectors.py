@@ -171,3 +171,76 @@ def test_ingest_to_sleeve_validate_mode_persists_nothing(client, db):
     assert result["imported"] == 1
     assert result["sync_log_id"] is None
     assert db.query(Trade).filter(Trade.sleeve_id == sleeve_id).count() == 0
+
+
+def test_external_id_is_persisted_for_database_level_idempotency(client, db):
+    # The source's id must reach the column, so UNIQUE(sleeve_id, external_id)
+    # can stop a concurrent sync inserting the same trade twice.
+    _c, _a, sleeve_id = create_test_strategy(client, client_email="extid@example.com")
+    IngestionService(db).ingest_to_sleeve([_trade()], sleeve_id)
+
+    stored = db.query(Trade).filter(Trade.sleeve_id == sleeve_id).one()
+    assert stored.external_id == _trade().external_id
+
+
+def test_dedup_catches_same_external_id_with_changed_economics(client, db):
+    # A reprocessed trade can come back with adjusted numbers under the same
+    # source id; the id alone must still mark it a duplicate.
+    _c, _a, sleeve_id = create_test_strategy(client, client_email="reproc@example.com")
+    ingestion = IngestionService(db)
+    ingestion.ingest_to_sleeve([_trade()], sleeve_id)
+
+    reprocessed = _trade()
+    reprocessed = reprocessed.model_copy(update={"price": Decimal("999")})
+    result = ingestion.ingest_to_sleeve([reprocessed], sleeve_id)
+
+    assert result["duplicates"] == 1
+    assert db.query(Trade).filter(Trade.sleeve_id == sleeve_id).count() == 1
+
+
+def test_dedup_still_catches_legacy_trades_without_external_id(client, db):
+    # Trades predating external_id (or entered via the API) have none, so the
+    # economics tuple must remain a valid duplicate signal.
+    _c, _a, sleeve_id = create_test_strategy(client, client_email="legacy@example.com")
+    db.add(
+        Trade(
+            sleeve_id=sleeve_id,
+            trade_date=datetime(2024, 3, 1, tzinfo=timezone.utc).date(),
+            symbol="AAPL",
+            action="BUY",
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            commission=Decimal("0"),
+            external_id=None,
+        )
+    )
+    db.commit()
+
+    result = IngestionService(db).ingest_to_sleeve([_trade()], sleeve_id)
+    assert result["duplicates"] == 1
+    assert db.query(Trade).filter(Trade.sleeve_id == sleeve_id).count() == 1
+
+
+def test_fractional_quantities_survive_a_round_trip(client, db):
+    # Dividend reinvestment produces share counts below 6 decimal places,
+    # which the old Numeric(15,6) column truncated.
+    _c, _a, sleeve_id = create_test_strategy(client, client_email="frac@example.com")
+    fractional = _trade().model_copy(
+        update={"quantity": Decimal("1.23456789"), "external_id": "frac:1"}
+    )
+    IngestionService(db).ingest_to_sleeve([fractional], sleeve_id)
+
+    stored = db.query(Trade).filter(Trade.sleeve_id == sleeve_id).one()
+    assert stored.quantity == Decimal("1.23456789")
+
+
+def test_exchange_prefixed_symbols_are_not_truncated(client, db):
+    # "NYSEARCA:VOO" is 12 chars; longer aggregator identifiers exist.
+    _c, _a, sleeve_id = create_test_strategy(client, client_email="sym@example.com")
+    prefixed = _trade().model_copy(
+        update={"symbol": "NYSEARCA:VOO", "external_id": "sym:1"}
+    )
+    IngestionService(db).ingest_to_sleeve([prefixed], sleeve_id)
+
+    stored = db.query(Trade).filter(Trade.sleeve_id == sleeve_id).one()
+    assert stored.symbol == "NYSEARCA:VOO"

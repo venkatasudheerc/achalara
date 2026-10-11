@@ -21,6 +21,8 @@ from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.market_price import MarketPriceService
 from app.connectors.webull_connector import WebullConnector
 from app.services.performance_service import PerformanceService
+from app.services.cash_activity_service import CashActivityService
+from app.api.schemas.connection import CashActivityResponse
 from app.api.schemas.position import (
     PositionResponse,
     ClosedPositionResponse,
@@ -28,7 +30,11 @@ from app.api.schemas.position import (
     ClosedPositionsResponse,
     PortfolioSummary,
 )
-from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
+from app.api.schemas.performance import (
+    LevelPerformance,
+    MonthlyReturnsResponse,
+    MonthlyReturn,
+)
 
 router = APIRouter()
 
@@ -205,12 +211,21 @@ def get_sleeve_returns_series(
     sleeve_id: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Weekly TWR + MWR timeseries for a sleeve."""
     _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
     from app.services.weekly_snapshot_service import WeeklySnapshotService
-    series = WeeklySnapshotService(db).returns_series([sleeve_id], start_date, end_date)
+
+    series = WeeklySnapshotService(db).returns_series(
+        [sleeve_id], start_date, end_date, basis=basis
+    )
     return {"level": "sleeve", "id": sleeve_id, "series": series}
 
 
@@ -222,12 +237,18 @@ def get_sleeve_monthly_returns(
     client_id: str,
     account_id: str,
     sleeve_id: str,
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Month-on-month return breakdown since inception."""
     _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
     svc = PerformanceService(db)
-    months = svc.monthly_returns([sleeve_id])
+    months = svc.monthly_returns([sleeve_id], basis=basis)
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
     if non_none:
@@ -343,6 +364,7 @@ def get_sleeve_trades(
     trades = (
         db.query(Trade)
         .filter(Trade.sleeve_id == sleeve_id)
+        .order_by(Trade.trade_date.desc(), Trade.id)
         .offset(skip)
         .limit(limit)
         .all()
@@ -361,10 +383,23 @@ def get_sleeve_trades(
                 "price": float(t.price),
                 "commission": float(t.commission),
                 "notes": t.notes,
+                "security_type": t.security_type,
             }
             for t in trades
         ],
     }
+
+
+@router.get(
+    "/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities",
+    response_model=list[CashActivityResponse],
+)
+def get_sleeve_cash_activities(
+    client_id: str, account_id: str, sleeve_id: str, db: Session = Depends(get_db)
+):
+    """Dividends, fees and other non-trade money movements for a sleeve."""
+    _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
+    return CashActivityService(db).list_for_sleeves([sleeve_id])
 
 
 @router.post("/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/market-prices")

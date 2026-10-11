@@ -1,0 +1,8 @@
+{
+  "_note": "Sanitized from a real Vanguard capture (2026-10). Live shape: rows under results, security under instrument, per-unit cost_basis. cost_basis is absent for lots bought since the last transaction sync.",
+  "results": [
+    {"instrument": {"kind": "adr", "id": "00000000-0000-4000-9000-000000000001", "symbol": "BHP", "raw_symbol": "BHP", "description": "BHP Group Ltd. Sponsored ADR", "currency": "USD", "exchange": "XNYS", "figi_instrument": {"figi_code": "BBG000BD5SC8", "figi_share_class": "BBG001S5P5K4"}}, "units": "12", "price": "86.83", "cost_basis": "85.5375", "currency": "USD"},
+    {"instrument": {"kind": "etf", "id": "00000000-0000-4000-9000-000000000002", "symbol": "CIBR", "raw_symbol": "CIBR", "description": "First Trust NASDAQ Cybersecurity ETF", "currency": "USD", "exchange": "XNAS", "figi_instrument": {"figi_code": "BBG0079L8DY9", "figi_share_class": "BBG0079L8DZ8"}}, "units": "21.001", "price": "70.10", "currency": "USD"}
+  ],
+  "data_freshness": null
+}

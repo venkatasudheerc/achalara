@@ -1,0 +1,24 @@
+meta {
+  name: Map Account
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/brokerage-accounts/{{brokerageAccountId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "status": "mapped"
+  }
+}
+docs {
+  Creates an Achalara account and a FIFO sleeve under the Unallocated strategy. Add account_id and/or strategy_id to target existing ones. Use status ignored to leave the account out.
+}

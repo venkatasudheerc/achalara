@@ -5,7 +5,6 @@ from sqlalchemy import (
     Numeric,
     DateTime,
     ForeignKey,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -26,9 +25,11 @@ class Position(BaseModel):
     sleeve_id = Column(
         String(36), ForeignKey("sleeves.id", ondelete="CASCADE"), nullable=False
     )
-    symbol = Column(String(20), nullable=False)
+    # Widths track trades.symbol / trades.quantity, since positions are
+    # derived from trades and must not truncate what a trade can hold.
+    symbol = Column(String(50), nullable=False)
     status = Column(String(10), nullable=False, default="OPEN")  # OPEN | CLOSED
-    quantity = Column(Numeric(15, 6), nullable=False)
+    quantity = Column(Numeric(18, 8), nullable=False)
     cost_basis = Column(Numeric(18, 2), nullable=False)
     current_price = Column(Numeric(15, 6))
     market_value = Column(Numeric(18, 2))

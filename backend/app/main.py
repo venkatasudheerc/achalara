@@ -14,8 +14,21 @@ from app.models import (  # noqa: F401  — side-effect imports to register mode
     Position,
     SyncLog,
     SheetSyncConfig,
+    BrokerageConnection,
+    BrokerageAccount,
+    CashActivity,
 )
-from app.api.routes import clients, accounts, strategies, sleeves, trades, admin, benchmarks
+from app.api.routes import (
+    clients,
+    accounts,
+    strategies,
+    sleeves,
+    trades,
+    admin,
+    benchmarks,
+    connections,
+    performance,
+)
 
 # Configure logging
 _log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -71,6 +84,8 @@ app.include_router(sleeves.router, prefix="/api/v1/clients", tags=["sleeves"])
 app.include_router(trades.router, prefix="/api/v1/trades", tags=["trades"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(benchmarks.router, prefix="/api/v1/benchmarks", tags=["benchmarks"])
+app.include_router(connections.router, prefix="/api/v1", tags=["connections"])
+app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 
 
 @app.get("/health")

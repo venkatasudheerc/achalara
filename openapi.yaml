@@ -32,6 +32,10 @@ tags:
     description: Individual trade creation
   - name: admin
     description: CSV import, Google Sheets sync, sync configs, and logs
+  - name: performance
+    description: Period performance, statistics and the account report, read from the daily valuation record
+  - name: connections
+    description: Linked brokerage logins — discovery, account mapping, sync, reconciliation
 
 paths:
 
@@ -224,6 +228,17 @@ paths:
       summary: Client month-on-month returns since inception
       operationId: getClientMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
       responses:
         "200":
@@ -241,6 +256,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a client
       operationId: getClientReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - name: start_date
           in: query
@@ -389,6 +415,17 @@ paths:
       summary: Account month-on-month returns since inception
       operationId: getAccountMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
       responses:
@@ -407,6 +444,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for an account
       operationId: getAccountReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - name: start_date
@@ -547,6 +595,17 @@ paths:
       summary: Sleeve month-on-month returns since inception
       operationId: getSleeveMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - $ref: "#/components/parameters/sleeve_id"
@@ -566,6 +625,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a sleeve
       operationId: getSleeveReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - $ref: "#/components/parameters/sleeve_id"
@@ -785,6 +855,17 @@ paths:
       summary: Strategy month-on-month returns since inception
       operationId: getStrategyMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/strategy_id"
       responses:
         "200":
@@ -802,6 +883,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a strategy
       operationId: getStrategyReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/strategy_id"
         - name: start_date
           in: query
@@ -825,22 +917,22 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/v1/admin/rebuild-snapshots:
+  /api/v1/admin/rebuild-performance:
     post:
       tags: [admin]
-      summary: Rebuild weekly portfolio snapshots
+      summary: Rebuild the daily valuation rows
       description: |
-        Recomputes all `weekly_portfolio_snapshots` from scratch.
-        Pass `sleeve_id` to rebuild only one sleeve; omit to rebuild all sleeves.
-        Safe to run after correcting historical trade data.
-      operationId: rebuildSnapshots
+        Replaces every reconstructed row in `perf.daily_valuation` from the
+        trades and price history on file. Days captured from the brokerage are
+        kept as captured; only their flows and returns are refreshed.
+        Pass `account_id` to rebuild one account; omit to rebuild all.
+      operationId: rebuildPerformance
       parameters:
-        - name: sleeve_id
+        - name: account_id
           in: query
           required: false
           schema:
             type: string
-          description: Optional. Rebuild only this sleeve.
       responses:
         "200":
           description: Rebuild result
@@ -851,14 +943,12 @@ paths:
                 properties:
                   status:
                     type: string
-                  sleeves_rebuilt:
+                  accounts_rebuilt:
                     type: integer
-                  snapshots_written:
+                  rows_written:
                     type: integer
         "500":
-          description: Internal error during rebuild
-
-  # ─── Trades ─────────────────────────────────────────────────────────────────
+          description: Rebuild failed
 
   /api/v1/trades/:
     post:
@@ -1131,11 +1221,567 @@ paths:
         "422":
           description: Invalid ticker symbol
 
+  # ─── Brokerage connections ──────────────────────────────────────────────────
+
+  /api/v1/clients/{client_id}/connections/snaptrade/link:
+    post:
+      tags: [connections]
+      summary: Start linking a brokerage login
+      description: |
+        Returns a hosted SnapTrade portal URL where the client signs in to their
+        brokerage. **The URL expires in about five minutes** — open it immediately.
+        There is no callback; after the portal is finished, call `discover`.
+        Read-only access is requested.
+      operationId: startBrokerageLink
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkRequest"
+      responses:
+        "200":
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: SnapTrade is not configured on the server
+
+  /api/v1/clients/{client_id}/connections/discover:
+    post:
+      tags: [connections]
+      summary: Record the logins and accounts the brokerage source reports
+      description: |
+        Run after the linking portal completes. Safe to repeat: existing rows are
+        updated, account mappings are untouched, and a login the source no longer
+        lists is marked deleted.
+      operationId: discoverConnections
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: The client's connections after discovery
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Connection"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: SnapTrade is not configured on the server
+
+  /api/v1/clients/{client_id}/connections:
+    get:
+      tags: [connections]
+      summary: List a client's brokerage connections and their accounts
+      operationId: listConnections
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: Connections (removed ones are omitted)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Connection"
+
+  /api/v1/connections/{connection_id}:
+    delete:
+      tags: [connections]
+      summary: Revoke a brokerage login
+      description: Revokes access at the source. Trades already ingested are kept.
+      operationId: removeConnection
+      parameters:
+        - name: connection_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/brokerage-accounts/{brokerage_account_id}:
+    patch:
+      tags: [connections]
+      summary: Map a discovered account into the hierarchy, or ignore it
+      description: |
+        `mapped` creates an Achalara account (unless `account_id` names one) and
+        a FIFO sleeve for `strategy_id` (default: the "Unallocated" strategy).
+        The account may belong to a different client than the login: pass
+        `client_id` to name its owner.
+        The sleeve must not already hold trades. An account cannot be remapped
+        once it has synced.
+      operationId: updateBrokerageAccount
+      parameters:
+        - $ref: "#/components/parameters/brokerage_account_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerageAccountUpdate"
+      responses:
+        "200":
+          description: Updated brokerage account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerageAccount"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Mapping not allowed (sleeve holds trades, or already synced)
+
+  /api/v1/brokerage-accounts/{brokerage_account_id}/sync:
+    post:
+      tags: [connections]
+      summary: Pull new trades and cash activity for a mapped account
+      description: |
+        At most once per 24 hours per account (the source's limit); an earlier
+        call returns `status: skipped`, `reason: synced_recently`. Also skipped
+        while the source is still loading history (`initial_sync_pending`) or
+        rate limiting (`rate_limited`). Brokerage transactions are a daily batch
+        and lag holdings by days — see `transactions_synced_through`.
+      operationId: syncBrokerageAccount
+      parameters:
+        - $ref: "#/components/parameters/brokerage_account_id"
+        - name: full_history
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Reload from the account's first day instead of from the last watermark
+      responses:
+        "200":
+          description: Sync outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerageSyncResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Account is not mapped, or its connection is broken
+        "502":
+          description: The brokerage source failed
+
+  /api/v1/brokerage-accounts/{brokerage_account_id}/reconciliation:
+    get:
+      tags: [connections]
+      summary: Brokerage holdings compared with positions derived from trades
+      operationId: getReconciliation
+      parameters:
+        - $ref: "#/components/parameters/brokerage_account_id"
+      responses:
+        "200":
+          description: Result of the last reconciliation (empty before the first sync)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reconciliation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities:
+    get:
+      tags: [sleeves]
+      summary: Dividends, fees and other non-trade money movements for a sleeve
+      operationId: getSleeveCashActivities
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Cash activities, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CashActivity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/trades/reassign:
+    post:
+      tags: [trades]
+      summary: Move a symbol's whole history to another sleeve of the same account
+      description: |
+        Moves every trade and cash activity for the named symbols. The unit is
+        the symbol, not the trade, so buys and their sells stay together.
+        Positions and snapshots are recomputed for both sleeves.
+      operationId: reassignTrades
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignRequest"
+      responses:
+        "200":
+          description: What was moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReassignResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Sleeves are in different accounts, or use different lot matching
+
+  /api/v1/webhooks/snaptrade:
+    post:
+      tags: [connections]
+      summary: SnapTrade webhook receiver
+      description: |
+        Verifies the `Signature` header (HMAC-SHA256 of the raw body, keyed with
+        the consumer key) before the body is parsed. Called by SnapTrade, not by
+        the frontend.
+      operationId: snaptradeWebhook
+      parameters:
+        - name: Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          description: Missing or invalid signature
+
+  # ─── Performance: periods, statistics, report ───────────────────────────────
+
+  /api/v1/clients/{client_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Client performance by day, week, month, quarter or year (accounts added together)
+      operationId: getClientPeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Account performance by period, cash included where known
+      operationId: getAccountPeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Sleeve performance by period (securities only)
+      operationId: getSleevePeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/strategies/{strategy_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Strategy performance by period (every sleeve running it, together)
+      operationId: getStrategyPeriods
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/statistics:
+    get:
+      tags: [performance]
+      summary: Period returns, account activity, drawdowns and risk for an account
+      operationId: getAccountStatistics
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Report date; defaults to the latest day on record
+      responses:
+        "200":
+          description: Everything the account performance report shows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceStatistics"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/report:
+    get:
+      tags: [performance]
+      summary: The account's investment performance report
+      operationId: getAccountReport
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pdf, html]
+            default: pdf
+      responses:
+        "200":
+          description: The report
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: No daily performance record exists for the account yet, or PDF rendering is unavailable
+
 # ─── Components ───────────────────────────────────────────────────────────────
 
 components:
 
   parameters:
+    brokerage_account_id:
+      name: brokerage_account_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Brokerage account UUID (a discovered account, not an Achalara account)
+
     client_id:
       name: client_id
       in: path
@@ -1375,6 +2021,10 @@ components:
           type: number
         notes:
           type: string
+        security_type:
+          type: string
+          nullable: true
+          description: ETF, STOCK, ADR, MUTUAL_FUND… as the source reported it; null for CSV, Sheets and manual trades
 
     # ── Accounts ─────────────────────────────────────────────────────────────
 
@@ -1658,6 +2308,26 @@ components:
         value:
           type: number
           nullable: true
+          description: Securities at their last traded price that day (today's prices on the final point), plus cash where known
+        cost_basis:
+          type: number
+          nullable: true
+          description: Running cost of open positions; null where the series is read from the daily record
+        net_contributions:
+          type: number
+          nullable: true
+          description: Net money put in since the start of the series
+        cash:
+          type: number
+          nullable: true
+          description: Cash held that day, already included in value and cost_basis; null when cash is not tracked
+        net_flow:
+          type: number
+          description: |
+            Net money put in since the previous point (negative if taken out):
+            deposits less withdrawals where cash is tracked, otherwise purchases
+            less sale proceeds and income. Lets a benchmark be given the same
+            money on the same days.
 
     PerformanceSummary:
       type: object
@@ -1678,20 +2348,54 @@ components:
           nullable: true
         total_cost_basis:
           type: number
+          description: Cost of the positions open at the end of the period (today, with no end_date)
         total_market_value:
           type: number
+          description: Securities value at the end of the period
         total_unrealized_gain:
           type: number
+          description: |
+            The balance on the period's last day: securities value then, less the
+            cost of the positions open then. Not the change during the period.
+        cash_balance:
+          type: number
+          nullable: true
+          description: |
+            Cash held at the end of the period (now, with no end_date). Set for account and client views where the brokerage
+            reports cash; `mwr_pct` and `twr_pct` are then measured on securities
+            plus cash, with deposits and withdrawals as the only money in or out.
+            Null for sleeve and strategy views, which are securities only.
+        total_value:
+          type: number
+          nullable: true
+          description: Whole-account value now (securities, cash and brokerage corrections); equals the last point of the value chart. Null when cash is not tracked.
+        holdings_adjustment:
+          type: number
+          nullable: true
+          description: |
+            Corrections taken from the brokerage's own current figures and
+            included in today's total and returns: the value of securities it
+            holds that the trades on file do not show yet (the transaction feed
+            trails holdings and cash), and the repricing of open options, which
+            are otherwise held at their last traded price. With it, today's
+            total equals the account total the brokerage reports. Null when
+            cash is not tracked.
         total_invested:
           type: number
         total_proceeds:
           type: number
         total_realized_gain:
           type: number
+          description: Gains on lots closed within start_date..end_date (all lots with no range)
+        total_income:
+          type: number
+          description: Dividends and interest received less fees and tax withheld, over the period
         closed_positions_count:
           type: integer
+          description: Lots closed within the period
         trades_count:
           type: integer
+          description: Trades dated within the period
 
     ChildPerformance:
       type: object
@@ -1767,7 +2471,14 @@ components:
         return_pct:
           type: number
           nullable: true
-          description: Monthly return as a decimal (e.g. 0.034 = 3.4%); null for inception month
+          description: Monthly time-weighted return as a whole-number percentage (3.4 = 3.4%); null while no capital is at work
+        includes_unrealized:
+          type: boolean
+          description: |
+            True for the latest month only. No price history is stored, so open
+            positions are carried at their last traded price and all unrealised
+            gain to date is recognised in the latest month; earlier months
+            reflect gains as they were realised.
 
     MonthlyReturnsResponse:
       type: object
@@ -2010,3 +2721,422 @@ components:
         warning:
           type: string
           nullable: true
+
+    # ── Brokerage connections ──
+
+    LinkRequest:
+      type: object
+      properties:
+        redirect_uri:
+          type: string
+          description: Where the portal sends the browser when finished (cosmetic)
+
+    LinkResponse:
+      type: object
+      required: [redirect_url, expires_in_seconds]
+      properties:
+        redirect_url:
+          type: string
+        expires_in_seconds:
+          type: integer
+
+    Connection:
+      type: object
+      required: [id, client_id, source, institution, status, brokerage_accounts]
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+        source:
+          type: string
+          example: snaptrade
+        institution:
+          type: string
+          example: Vanguard
+        status:
+          type: string
+          enum: [active, broken, deleted]
+        brokerage_accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrokerageAccount"
+
+    BrokerageAccount:
+      type: object
+      required: [id, connection_id, name, status, initial_sync_completed]
+      properties:
+        id:
+          type: string
+        connection_id:
+          type: string
+        name:
+          type: string
+        number_last4:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [unmapped, mapped, ignored]
+        account_id:
+          type: string
+          nullable: true
+        default_sleeve_id:
+          type: string
+          nullable: true
+        owner_client_id:
+          type: string
+          nullable: true
+          description: Client who owns the mapped account; may differ from the connection's client
+        sleeve_routes:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: Security type → sleeve id. Types without an entry go to `default_sleeve_id`.
+        sync_start_date:
+          type: string
+          format: date
+          nullable: true
+          description: Earliest activity date loaded; null means full history
+        initial_sync_completed:
+          type: boolean
+          description: False while the source is still loading the account's history
+        transactions_synced_through:
+          type: string
+          format: date
+          nullable: true
+          description: Last date the source reports transactions complete for
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_reconciled_at:
+          type: string
+          format: date-time
+          nullable: true
+        reconciliation:
+          allOf:
+            - $ref: "#/components/schemas/Reconciliation"
+          nullable: true
+
+    BrokerageAccountUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [mapped, ignored]
+        account_id:
+          type: string
+          nullable: true
+          description: Existing account to attach to; omit to create one
+        strategy_id:
+          type: string
+          nullable: true
+          description: Strategy the trades land in; omit for "Unallocated"
+        client_id:
+          type: string
+          nullable: true
+          description: |
+            The client who owns the account, when different from the client whose
+            login reaches it (an agent with authority over another person's
+            account). Defaults to the login's client.
+        strategy_routes:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: |
+            Split the account by what is traded: security type → strategy id,
+            e.g. `{"ETF": "<strategy id>"}`. One sleeve is created per strategy;
+            every other type goes to `strategy_id`. A symbol always stays in the
+            sleeve that first received it.
+        history_start:
+          type: string
+          format: date
+          nullable: true
+          description: Earliest activity date to load on the first sync; omit for full history
+
+    BrokerageSyncResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [synced, skipped]
+        reason:
+          type: string
+          nullable: true
+          enum: [synced_recently, initial_sync_pending, rate_limited, null]
+        imported:
+          type: integer
+        duplicates:
+          type: integer
+        cash_imported:
+          type: integer
+        skipped_rows:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Rows not ingested, by reason (corporate_action, incomplete, sweep, unrecognized)
+        next_sync_allowed_at:
+          type: string
+          format: date-time
+          nullable: true
+        transactions_synced_through:
+          type: string
+          format: date
+          nullable: true
+
+    Reconciliation:
+      type: object
+      properties:
+        matched:
+          type: integer
+          description: Symbols where brokerage and derived quantities agree
+        drifted:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationDrift"
+        unmatched_sells:
+          type: integer
+          description: Symbols left net short by the trades on file (a real short, or a sale of shares bought before the history starts)
+        skipped_rows:
+          type: object
+          additionalProperties:
+            type: integer
+
+    ReconciliationDrift:
+      type: object
+      required: [symbol, brokerage_quantity, derived_quantity, difference, awaiting_transactions]
+      properties:
+        symbol:
+          type: string
+        brokerage_quantity:
+          type: number
+        derived_quantity:
+          type: number
+        difference:
+          type: number
+        awaiting_transactions:
+          type: boolean
+          description: The brokerage holds a lot whose purchase has not reached its transaction feed
+
+    CashActivity:
+      type: object
+      required: [id, sleeve_id, activity_date, type, amount, counts_toward_returns]
+      properties:
+        id:
+          type: string
+        sleeve_id:
+          type: string
+        activity_date:
+          type: string
+          format: date
+        type:
+          type: string
+          enum: [DIVIDEND, INTEREST, FEE, WITHHOLDING, CONTRIBUTION, WITHDRAWAL, TRANSFER, OTHER]
+        symbol:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          description: Signed; positive is cash received
+        notes:
+          type: string
+          nullable: true
+        counts_toward_returns:
+          type: boolean
+          description: Whether this feeds MWR/TWR (income on held securities and fees do; transfers do not)
+
+    ReassignRequest:
+      type: object
+      required: [from_sleeve_id, to_sleeve_id, symbols]
+      properties:
+        from_sleeve_id:
+          type: string
+        to_sleeve_id:
+          type: string
+        symbols:
+          type: array
+          items:
+            type: string
+
+    ReassignResult:
+      type: object
+      required: [symbols, trades_moved, cash_activities_moved]
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+        trades_moved:
+          type: integer
+        cash_activities_moved:
+          type: integer
+
+    # ── Performance periods and statistics ──
+
+    PeriodPerformance:
+      type: object
+      required: [period_start, period_end, opening_value, closing_value, net_flow, gain, basis]
+      properties:
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        opening_value:
+          type: number
+        closing_value:
+          type: number
+        cash_value:
+          type: number
+          nullable: true
+        net_flow:
+          type: number
+          description: Money put in less money taken out during the period
+        gain:
+          type: number
+          description: closing_value − opening_value − net_flow
+        twr_pct:
+          type: number
+          nullable: true
+          description: Time-weighted return for the period, as a decimal (0.05 = 5%); null when no capital was at work
+        mwr_pct:
+          type: number
+          nullable: true
+          description: Money-weighted return for the period, as a decimal
+        twr_cumulative_pct:
+          type: number
+          nullable: true
+          description: Time-weighted return from the start of the record to the period's end
+        twr_ytd_pct:
+          type: number
+          nullable: true
+        benchmark_return_pct:
+          type: number
+          nullable: true
+        excess_return_pct:
+          type: number
+          nullable: true
+        unpriced_pct:
+          type: number
+          description: Share of securities value held at last traded price for want of a daily close
+        basis:
+          type: string
+          enum: [observed, reconstructed, mixed]
+          description: Whether the period's days were captured from the brokerage, rebuilt from trades and prices, or both
+        is_provisional:
+          type: boolean
+          description: True while the brokerage's transactions for some day in the period may still be arriving
+
+    PeriodsResponse:
+      type: object
+      required: [level, id, grain, periods]
+      properties:
+        level:
+          type: string
+          enum: [sleeve, account, client, strategy]
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        grain:
+          type: string
+          enum: [day, week, month, quarter, year]
+        benchmark:
+          type: string
+          nullable: true
+        basis:
+          type: string
+          enum: [market, realized]
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeriodPerformance"
+
+    PerformanceStatistics:
+      type: object
+      description: |
+        Figures for an account performance report. Returns are decimals; periods
+        longer than a year are annualised on a 365.25-day year.
+      properties:
+        level:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        inception:
+          type: string
+          format: date
+          nullable: true
+        ending_value:
+          type: number
+          nullable: true
+        cash_value:
+          type: number
+          nullable: true
+        returns:
+          type: object
+          description: Keys mtd, qtd, ytd, one_year, inception
+          additionalProperties:
+            type: number
+            nullable: true
+        activity:
+          type: object
+          description: Keys mtd, qtd, ytd, one_year, inception; each with beginning_value, net_flow, gain, ending_value, twr_pct, mwr_pct, covers_full_period
+          additionalProperties:
+            type: object
+        risk:
+          type: object
+          properties:
+            annualized_return: {type: number, nullable: true}
+            volatility: {type: number, nullable: true}
+            sharpe: {type: number, nullable: true}
+            sortino: {type: number, nullable: true}
+            max_drawdown: {type: number, nullable: true}
+            max_drawdown_date: {type: string, format: date, nullable: true}
+            max_drawdown_start: {type: string, format: date, nullable: true}
+            max_drawdown_recovered: {type: string, format: date, nullable: true}
+            best_month: {type: number, nullable: true}
+            worst_month: {type: number, nullable: true}
+            positive_months: {type: number, nullable: true}
+        calendar_years:
+          type: array
+          items:
+            type: object
+        monthly:
+          type: array
+          items:
+            type: object
+        cumulative:
+          type: array
+          items:
+            type: object
+        drawdowns:
+          type: array
+          items:
+            type: object
+        net_contributions:
+          type: array
+          items:
+            type: object
+        quality:
+          type: object
+          properties:
+            days: {type: integer}
+            observed_days: {type: integer}
+            observed_pct: {type: number}
+            provisional_days: {type: integer}
+            unpriced_pct: {type: number}
+            unpriced_value: {type: number}

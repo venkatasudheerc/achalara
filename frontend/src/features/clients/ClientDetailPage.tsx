@@ -3,13 +3,15 @@ import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClient, useClientPositions, useClientTrades } from '@/hooks/useClients'
 import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
-import { useScope } from '@/context/ScopeContext'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
+import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
+import { BrokerageConnections } from '@/features/connections/BrokerageConnections'
 
 export function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -27,6 +29,7 @@ export function ClientDetailPage() {
   const [accNum, setAccNum] = useState('')
   const [formError, setFormError] = useState('')
   const createAccount = useCreateAccount()
+  useScopeFollowsPage(client && { id: client.id, name: client.name })
 
   if (isLoading) return <SkeletonCard />
   if (isError || !client) return <ErrorState message="Client not found." onRetry={() => refetch()} />
@@ -47,7 +50,7 @@ export function ClientDetailPage() {
   }
 
   const positionCols: Column<AggregatedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
     { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
     { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
@@ -62,6 +65,7 @@ export function ClientDetailPage() {
   const tradeCols: Column<TradeSummary>[] = [
     { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date), sortValue: (r) => r.trade_date },
     { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'security_type', header: 'Type', render: (r) => <span className="font-mono text-xs text-stone">{r.security_type ?? '—'}</span>, sortValue: (r) => r.security_type ?? '' },
     { key: 'action', header: 'Action', render: (r) => (
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
     ), sortValue: (r) => r.action },
@@ -154,6 +158,8 @@ export function ClientDetailPage() {
           <p className="text-stone text-sm py-4">No accounts yet.</p>
         )}
       </section>
+
+      <BrokerageConnections clientId={clientId!} />
 
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">

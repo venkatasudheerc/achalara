@@ -1,4 +1,5 @@
 import { apiClient } from '../client'
+import { PERIOD_BASIS } from './performance'
 import type {
   StrategyCreate, StrategyResponse,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse,
@@ -23,11 +24,11 @@ export const strategiesApi = {
 
   getMonthlyPerformance: (strategyId: string) =>
     apiClient
-      .get<MonthlyReturnsResponse>(`${base}/${strategyId}/performance/monthly`)
+      .get<MonthlyReturnsResponse>(`${base}/${strategyId}/performance/monthly`, { params: { basis: PERIOD_BASIS } })
       .then((r) => r.data),
 
   getReturnsSeries: (strategyId: string, params?: { start_date?: string; end_date?: string }) =>
     apiClient
-      .get<ReturnsSeriesResponse>(`${base}/${strategyId}/performance/returns-series`, { params })
+      .get<ReturnsSeriesResponse>(`${base}/${strategyId}/performance/returns-series`, { params: { ...params, basis: PERIOD_BASIS } })
       .then((r) => r.data),
 }

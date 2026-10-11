@@ -1,0 +1,31 @@
+meta {
+  name: Rebuild Performance
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/v1/admin/rebuild-performance
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq success
+  res.body.rows_written: isDefined
+}
+
+docs {
+  Rebuilds the daily valuation rows (perf.daily_valuation) from the trades and
+  price history on file.
+
+  Reconstructed days are replaced. Days captured from the brokerage are kept as
+  captured; only their flows and returns are refreshed.
+
+  Pass ?account_id=<uuid> to rebuild one account; omit to rebuild all.
+  Idempotent — safe to run after correcting historical trades or loading more
+  price history.
+
+  Response: { status, accounts_rebuilt, rows_written }
+}

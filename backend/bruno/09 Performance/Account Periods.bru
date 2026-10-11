@@ -1,0 +1,15 @@
+meta {
+  name: Account Periods
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/accounts/{{AccountId}}/performance/periods?grain=quarter&benchmark=SPY
+  body: none
+  auth: none
+}
+
+docs {
+  Performance by period, read from perf.daily_valuation. grain is day, week, month, quarter or year. Each row has opening and closing value, net deposits, TWR, MWR, cumulative and year-to-date TWR, and the benchmark's return for the same period.
+}

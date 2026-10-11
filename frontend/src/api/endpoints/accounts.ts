@@ -1,4 +1,5 @@
 import { apiClient } from '../client'
+import { PERIOD_BASIS } from './performance'
 import type {
   AccountCreate, AccountResponse,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse, AccountPositionsResponse,
@@ -26,7 +27,7 @@ export const accountsApi = {
 
   getMonthlyPerformance: (clientId: string, accountId: string) =>
     apiClient
-      .get<MonthlyReturnsResponse>(`${base(clientId)}/${accountId}/performance/monthly`)
+      .get<MonthlyReturnsResponse>(`${base(clientId)}/${accountId}/performance/monthly`, { params: { basis: PERIOD_BASIS } })
       .then((r) => r.data),
 
   getReturnsSeries: (
@@ -36,7 +37,7 @@ export const accountsApi = {
     apiClient
       .get<ReturnsSeriesResponse>(
         `${base(clientId)}/${accountId}/performance/returns-series`,
-        { params }
+        { params: { ...params, basis: PERIOD_BASIS } }
       )
       .then((r) => r.data),
 

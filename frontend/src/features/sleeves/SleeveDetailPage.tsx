@@ -1,15 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useSleeve, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useFetchMarketPrices } from '@/hooks/useSleeves'
-import { useScope } from '@/context/ScopeContext'
-import { useCreateTrade } from '@/hooks/useTrades'
+import { useSleeve, useSleeves, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useSleeveCashActivities, useFetchMarketPrices } from '@/hooks/useSleeves'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
+import { useClient } from '@/hooks/useClients'
+import { useAccount } from '@/hooks/useAccounts'
+import { useCreateTrade, useReassignTrades } from '@/hooks/useTrades'
+import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
 import { GainBadge } from '@/components/StatCard'
-import type { PositionResponse, ClosedPosition, TradeSummary } from '@/api/types'
+import type { PositionResponse, ClosedPosition, TradeSummary, CashActivity } from '@/api/types'
+
+// The most the API returns in one request.
+const TRADES_PAGE = 1000
 
 export function SleeveDetailPage() {
   const { clientId, accountId, sleeveId } = useParams<{
@@ -21,11 +27,24 @@ export function SleeveDetailPage() {
   const { data: sleeve, isLoading, isError, refetch } = useSleeve(clientId!, accountId!, sleeveId!)
   const { data: portfolioData } = useSleevePositions(clientId!, accountId!, sleeveId!)
   const { data: closedPositions } = useSleeveClosedPositions(clientId!, accountId!, sleeveId!)
-  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, 100)
+  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, TRADES_PAGE)
+  const { data: cashActivities } = useSleeveCashActivities(clientId!, accountId!, sleeveId!)
+  const { data: accountSleeves } = useSleeves(clientId!, accountId!)
   const fetchPrices = useFetchMarketPrices()
   const createTrade = useCreateTrade()
+  const reassign = useReassignTrades()
+  const { data: client } = useClient(clientId!)
+  const { data: account } = useAccount(clientId!, accountId!)
+  useScopeFollowsPage(
+    client && { id: client.id, name: client.name },
+    account && { id: account.id, name: account.name },
+    sleeve && { id: sleeve.id, name: sleeve.strategy_name ?? sleeve.strategy_id },
+  )
 
-  const [activeTab, setActiveTab] = useState<'positions' | 'closed' | 'trades'>('positions')
+  const [activeTab, setActiveTab] = useState<'positions' | 'closed' | 'trades' | 'income'>('positions')
+  const [moveSymbol, setMoveSymbol] = useState('')
+  const [moveTarget, setMoveTarget] = useState('')
+  const [moveMessage, setMoveMessage] = useState('')
   const [showTradeForm, setShowTradeForm] = useState(false)
   const [trade, setTrade] = useState({
     symbol: '', action: 'BUY' as 'BUY' | 'SELL', trade_date: '',
@@ -57,8 +76,38 @@ export function SleeveDetailPage() {
     }
   }
 
+  const otherSleeves = (accountSleeves ?? []).filter((s) => s.id !== sleeveId)
+  const heldSymbols = [...new Set((tradesData?.trades ?? []).map((t) => t.symbol))].sort()
+
+  const handleMove = async (e: FormEvent) => {
+    e.preventDefault()
+    setMoveMessage('')
+    try {
+      const result = await reassign.mutateAsync({
+        from_sleeve_id: sleeveId!, to_sleeve_id: moveTarget, symbols: [moveSymbol],
+      })
+      setMoveMessage(`Moved ${result.trades_moved} ${moveSymbol} trades.`)
+      setMoveSymbol('')
+    } catch {
+      setMoveMessage('Could not move those trades. The destination may match lots a different way.')
+    }
+  }
+
+  const incomeCols: Column<CashActivity>[] = [
+    { key: 'activity_date', header: 'Date', render: (r) => formatDate(r.activity_date), sortValue: (r) => r.activity_date },
+    { key: 'type', header: 'Type', render: (r) => <span className="font-mono text-xs">{r.type}</span>, sortValue: (r) => r.type },
+    { key: 'symbol', header: 'Symbol', render: (r) => r.symbol ?? '—', sortValue: (r) => r.symbol ?? '' },
+    { key: 'amount', header: 'Amount', render: (r) => (
+      <span className={r.amount >= 0 ? 'text-gain' : 'text-loss'}>{formatCurrency(r.amount)}</span>
+    ), sortValue: (r) => r.amount, numeric: true },
+    { key: 'counts_toward_returns', header: 'In returns', render: (r) => (
+      <span className="text-stone">{r.counts_toward_returns ? 'Yes' : 'No'}</span>
+    ), sortValue: (r) => (r.counts_toward_returns ? 1 : 0) },
+    { key: 'notes', header: 'Notes', render: (r) => <span className="text-stone">{r.notes}</span> },
+  ]
+
   const openPosCols: Column<PositionResponse>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
     { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
     { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), sortValue: (r) => r.cost_basis, numeric: true },
@@ -94,6 +143,7 @@ export function SleeveDetailPage() {
   const tradeCols: Column<TradeSummary>[] = [
     { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date), sortValue: (r) => r.trade_date },
     { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'security_type', header: 'Type', render: (r) => <span className="font-mono text-xs text-stone">{r.security_type ?? '—'}</span>, sortValue: (r) => r.security_type ?? '' },
     { key: 'action', header: 'Action', render: (r) => (
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
     ), sortValue: (r) => r.action },
@@ -169,7 +219,7 @@ export function SleeveDetailPage() {
       {/* Tabs */}
       <section className="border border-stone/20 rounded-card overflow-hidden">
         <div className="flex border-b border-stone/20">
-          {(['positions', 'closed', 'trades'] as const).map((tab) => (
+          {(['positions', 'closed', 'trades', 'income'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -179,7 +229,7 @@ export function SleeveDetailPage() {
                   : 'text-stone hover:text-summit-ink'
               }`}
             >
-              {tab === 'positions' ? 'Open positions' : tab === 'closed' ? 'Closed / Realised' : 'Trades'}
+              {tab === 'positions' ? 'Open positions' : tab === 'closed' ? 'Closed / Realised' : tab === 'trades' ? 'Trades' : 'Income & cash'}
             </button>
           ))}
           {activeTab === 'trades' && (
@@ -272,11 +322,62 @@ export function SleeveDetailPage() {
             </>
           )}
           {activeTab === 'trades' && (
+            <>
+              {otherSleeves.length > 0 && heldSymbols.length > 0 && (
+                <form onSubmit={handleMove} className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-stone">Move all trades of</span>
+                  <select
+                    required
+                    value={moveSymbol}
+                    onChange={(e) => setMoveSymbol(e.target.value)}
+                    aria-label="Symbol to move"
+                    className="border border-stone/30 rounded-btn px-2 py-1.5 focus:outline-none focus:border-pine"
+                  >
+                    <option value="">Symbol…</option>
+                    {heldSymbols.map((symbol) => <option key={symbol}>{symbol}</option>)}
+                  </select>
+                  <span className="text-stone">to</span>
+                  <select
+                    required
+                    value={moveTarget}
+                    onChange={(e) => setMoveTarget(e.target.value)}
+                    aria-label="Destination strategy"
+                    className="border border-stone/30 rounded-btn px-2 py-1.5 focus:outline-none focus:border-pine"
+                  >
+                    <option value="">Strategy…</option>
+                    {otherSleeves.map((s) => (
+                      <option key={s.id} value={s.id}>{s.strategy_name ?? s.strategy_id}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={reassign.isPending}
+                    className="border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper disabled:opacity-50"
+                  >
+                    {reassign.isPending ? 'Moving…' : 'Move'}
+                  </button>
+                  {moveMessage && <span className="text-stone">{moveMessage}</span>}
+                </form>
+              )}
+              {tradesData && tradesData.total > tradesData.trades.length && (
+                <p className="text-xs text-stone mb-3">
+                  Showing the {tradesData.trades.length} most recent of {tradesData.total} trades. Sorting applies to these.
+                </p>
+              )}
+              <DataTable
+                columns={tradeCols}
+                rows={tradesData?.trades ?? []}
+                getKey={(r) => r.id}
+                emptyMessage="No trades yet. Add a trade above."
+              />
+            </>
+          )}
+          {activeTab === 'income' && (
             <DataTable
-              columns={tradeCols}
-              rows={tradesData?.trades ?? []}
+              columns={incomeCols}
+              rows={cashActivities ?? []}
               getKey={(r) => r.id}
-              emptyMessage="No trades yet. Add a trade above."
+              emptyMessage="No dividends, fees or transfers recorded for this sleeve."
             />
           )}
         </div>

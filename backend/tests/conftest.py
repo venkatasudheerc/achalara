@@ -20,6 +20,8 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 def db_engine():
     """Create test database engine (session-scoped)"""
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    # SQLite has no schemas, so the perf schema's tables live in the default one.
+    engine = engine.execution_options(schema_translate_map={"perf": None})
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
@@ -52,6 +54,58 @@ def client(db):
     yield test_client
 
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Live-API fixtures (opt-in, `-m live`)
+#
+# These exist so a live test *cannot* run by accident: the default pytest run
+# deselects the `live` marker, and even when selected these skip unless real
+# credentials are present. Nothing here is used by the offline suite.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def snaptrade_credentials():
+    """Real SnapTrade API credentials, or skip the test.
+
+    Skips rather than fails: a missing key means "not configured here", not a
+    defect, so CI and other machines stay green.
+    """
+    from app.config import settings
+
+    if not (settings.snaptrade_client_id and settings.snaptrade_consumer_key):
+        pytest.skip("SnapTrade credentials not configured (see backend/.env.example)")
+    return settings.snaptrade_client_id, settings.snaptrade_consumer_key
+
+
+@pytest.fixture
+def live_snaptrade(snaptrade_credentials):
+    """A SnapTrade connector wired to the real API.
+
+    Read-only by construction: the connector advertises ``can_trade=False``
+    and raises on ``place_order``, so a live test cannot place an order.
+    """
+    from app.connectors.snaptrade_connector import SnapTradeConnector
+
+    connector = SnapTradeConnector()
+    assert connector.is_configured()
+    return connector
+
+
+@pytest.fixture
+def live_snaptrade_user_id():
+    """The SnapTrade userId to exercise, from SNAPTRADE_TEST_USER_ID.
+
+    Kept in the environment rather than the repo so no personal account
+    identifier is committed.
+    """
+    import os
+
+    user_id = os.environ.get("SNAPTRADE_TEST_USER_ID", "").strip()
+    if not user_id:
+        pytest.skip("SNAPTRADE_TEST_USER_ID not set; export it to run live tests")
+    return user_id
 
 
 def create_test_client_and_account(

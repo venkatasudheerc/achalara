@@ -1,0 +1,15 @@
+meta {
+  name: Sleeve Periods
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/accounts/{{AccountId}}/sleeves/{{sleeveId}}/performance/periods?grain=week
+  body: none
+  auth: none
+}
+
+docs {
+  A sleeve's performance by period, securities only.
+}

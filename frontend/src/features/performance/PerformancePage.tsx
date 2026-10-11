@@ -26,10 +26,12 @@ import { PerformanceChart } from '@/components/PerformanceChart'
 import { ReturnsSeriesChart } from '@/components/ReturnsSeriesChart'
 import { MonthlyReturnsHeatmap } from '@/components/MonthlyReturnsHeatmap'
 import { LevelBreakdown } from '@/components/LevelBreakdown'
+import { PeriodTable } from '@/components/PeriodTable'
+import { SleeveFilter } from '@/components/SleeveFilter'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
-import { formatCurrency, formatPercent } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
 import { useNavigate } from 'react-router-dom'
 import type { LevelPerformance, PerformanceChild, WeeklyReturnPoint } from '@/api/types'
 
@@ -38,17 +40,23 @@ interface PointWithClose extends WeeklyReturnPoint {
   _bmk_close: number | null
 }
 
-function PerformanceHero({ perf }: { perf: LevelPerformance }) {
+function PerformanceHero({
+  perf, startDate, endDate,
+}: { perf: LevelPerformance; startDate?: string | null; endDate?: string | null }) {
   const { summary, level, name } = perf
+  const ranged = !!(startDate || endDate)
   const gainPos = (summary.total_unrealized_gain ?? 0) >= 0
 
   return (
     <div className="rounded-card p-8 bg-pine-deep text-paper mb-8">
       <div>
-        <p className="text-xs font-mono tracking-widest text-mist/60 uppercase mb-1">
-          {level} · {name}
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-xs font-mono tracking-widest text-mist/60 uppercase mb-1">
+            {level} · {name}
+          </p>
+          {level !== 'strategy' && <SleeveFilter />}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mt-6">
           <div>
             <p className="text-xs text-mist/60 mb-1">TWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
@@ -68,12 +76,16 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
             <p className="text-xs text-mist/40 mt-0.5">Money Weighted</p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">Market value</p>
+            <p className="text-xs text-mist/60 mb-1">
+              {summary.cash_balance != null ? 'Total value' : 'Market value'}
+            </p>
             <p className="font-mono text-2xl text-paper tabular-nums">
-              {formatCurrency(summary.total_market_value)}
+              {formatCurrency(summary.total_value ?? summary.total_market_value)}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              {formatCurrency(summary.total_cost_basis)} cost basis
+              {summary.cash_balance != null
+                ? `${formatCurrency((summary.total_value ?? 0) - summary.cash_balance)} securities · ${formatCurrency(summary.cash_balance)} cash`
+                : `${formatCurrency(summary.total_cost_basis)} cost basis`}
             </p>
           </div>
           <div>
@@ -82,9 +94,19 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
               {formatCurrency(summary.total_unrealized_gain)}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              {summary.twr_pct != null && summary.mwr_pct != null
-                ? `TWR vs MWR: ${formatPercent(summary.twr_pct - summary.mwr_pct)}`
-                : 'Since inception'}
+              {endDate ? `On positions open ${formatDate(endDate)}` : 'On open positions'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-mist/60 mb-1">Realised gain</p>
+            <p className={`font-mono text-2xl tabular-nums ${
+              summary.total_realized_gain >= 0 ? 'text-gain' : 'text-loss'
+            }`}>
+              {formatCurrency(summary.total_realized_gain)}
+            </p>
+            <p className="text-xs text-mist/40 mt-0.5">
+              {summary.closed_positions_count} closed{ranged ? ' in period' : ''}
+              {summary.total_income ? ` · ${formatCurrency(summary.total_income)} income` : ''}
             </p>
           </div>
         </div>
@@ -283,7 +305,7 @@ export function PerformancePage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      <PerformanceHero perf={perf} />
+      <PerformanceHero perf={perf} startDate={startDate} endDate={endDate} />
 
       {/* Timeseries chart */}
       <section className="bg-paper border border-stone/20 rounded-card p-6">
@@ -396,6 +418,18 @@ export function PerformancePage() {
           <MonthlyReturnsHeatmap monthlyReturns={monthly.months} />
         </section>
       )}
+
+      {/* Day / week / month / quarter */}
+      <PeriodTable
+        target={{
+          level: scope.level,
+          clientId: scope.clientId,
+          accountId: scope.accountId,
+          sleeveId: scope.sleeveId,
+          strategyId: scope.strategyId,
+        }}
+        benchmark={benchmarkTicker}
+      />
 
       {/* Level breakdown */}
       {perf.children.length > 0 && (

@@ -1,0 +1,15 @@
+meta {
+  name: Account Report (PDF)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/accounts/{{AccountId}}/report
+  body: none
+  auth: none
+}
+
+docs {
+  The investment performance report as a PDF. Add ?format=html for the page it is rendered from, or ?as_of=YYYY-MM-DD for an earlier report date.
+}

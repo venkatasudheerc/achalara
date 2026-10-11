@@ -21,7 +21,12 @@ from app.models.trade import Trade
 from app.services.mwr_calculation import MWRCalculationService
 from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
+from app.services.cash_activity_service import CashActivityService
+from app.services.cash_ledger import CashLedger
+from app.services.performance_stats_service import PerformanceStatsService
+from app.services.performance_build_service import last_market_day
 from app.connectors.webull_connector import WebullConnector
+from app.connectors.models import is_option_symbol
 
 import logging
 
@@ -36,11 +41,17 @@ class PerformanceService:
         self.mwr = MWRCalculationService(db)
         self.twr = TWRCalculationService(db)
         self.portfolio = PortfolioCalculationService(db)
+        self.cash = CashActivityService(db)
+        self.stats = PerformanceStatsService(db)
 
     # -- sleeve-set resolution ------------------------------------------------
 
     def sleeve_ids_for_account(self, account_id: str) -> List[str]:
         rows = self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
+        return [r[0] for r in rows]
+
+    def account_ids_for_client(self, client_id: str) -> List[str]:
+        rows = self.db.query(Account.id).filter(Account.client_id == client_id).all()
         return [r[0] for r in rows]
 
     def sleeve_ids_for_client(self, client_id: str) -> List[str]:
@@ -96,6 +107,9 @@ class PerformanceService:
             return prices
 
         for symbol, pos in seen_symbols.items():
+            # The market-data source quotes securities, not option contracts.
+            if is_option_symbol(symbol):
+                continue
             try:
                 live = connector.get_price(symbol)
                 if live is not None:
@@ -121,14 +135,26 @@ class PerformanceService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         prices: Optional[Dict[str, Decimal]] = None,
+        cash_account_ids: Optional[List[str]] = None,
     ) -> Dict:
         """Summary metrics + value time-series for a set of sleeves.
+
+        ``cash_account_ids`` names the accounts being viewed as a whole. Where
+        their cash is known it is added to the value and the returns are
+        measured on the total, with deposits and withdrawals as the only money
+        in or out. Leave it out for a view of securities alone (a sleeve, a
+        strategy).
 
         Returns an empty/zeroed payload when the sleeve set has no trades.
         """
         sleeve_ids = list(sleeve_ids)
+        ledger = CashLedger.for_accounts(self.db, cash_account_ids or [])
         if prices is None:
-            prices = self._fetch_live_prices(sleeve_ids) if sleeve_ids else {}
+            # The last price on file for each open position. Fetching live
+            # quotes here made every performance view wait on the market-data
+            # source; prices are refreshed by the daily capture and by the
+            # positions views instead.
+            prices = self._persisted_prices(sleeve_ids)
 
         trades = (
             self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids)).all()
@@ -145,30 +171,189 @@ class PerformanceService:
                     "total_cost_basis": 0.0,
                     "total_market_value": 0.0,
                     "total_unrealized_gain": 0.0,
+                    "total_income": 0.0,
                     "trades_count": 0,
                 },
                 "timeseries": [],
             }
 
         s_start = start_date or min(t.trade_date for t in trades)
-        s_end = end_date or max(t.trade_date for t in trades)
+        last_activity = self.cash.last_activity_date(sleeve_ids)
+        # Current prices belong in the return only when the window runs up to
+        # the present; a window ending in the past is valued as of then.
+        to_present = end_date is None or end_date >= last_activity
+        # Today's prices are a value as of today, so an open-ended window runs
+        # to today even if nothing has happened since the last trade.
+        s_end = end_date or max(last_activity, date.today())
+        market = prices if to_present else None
+        # Whether the selected period itself is over. (``to_present`` above is
+        # about pricing: it also holds for a past window with no later trades.)
+        current = end_date is None or end_date >= last_market_day()
+        valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
+
+        # Where the daily record has been built, returns and the value series
+        # are read from it. The calculation from trades below is the fallback
+        # for sleeve sets that have no daily rows yet.
+        stored = self._from_daily_rows(
+            sleeve_ids, cash_account_ids, start_date, end_date
+        )
+        if stored is not None:
+            return self._summary_payload(
+                valued,
+                trades,
+                sleeve_ids,
+                stored["start"],
+                stored["end"],
+                stored["twr"],
+                stored["mwr"],
+                stored["timeseries"],
+                # To the present: the cash the brokerage reports now. For a
+                # window that ended earlier: the cash held on its last day.
+                (
+                    float(ledger.reported)
+                    if ledger is not None and current
+                    else stored["cash"]
+                ),
+                stored["total"],
+                # Until a day has been captured from the brokerage, the
+                # correction for securities it holds that our trades lack.
+                (
+                    float(ledger.pending)
+                    if ledger is not None and current and not stored["observed"]
+                    else None
+                ),
+                self._window(
+                    sleeve_ids, start_date, end_date, current, stored["securities"]
+                ),
+            )
 
         try:
-            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end)
+            mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end, market, ledger)
         except Exception as exc:
             _log.error("MWR failed for sleeves=%s: %s", sleeve_ids, exc)
             mwr = None
         try:
-            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end)
+            twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end, market, ledger)
         except Exception as exc:
             _log.error("TWR failed for sleeves=%s: %s", sleeve_ids, exc)
             twr = None
 
-        valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
         timeseries = self.portfolio.value_series(sleeve_ids, prices)
+        # Securities alone on the window's last day, before cash joins below.
+        in_window = [p for p in timeseries if end_date is None or p["date"] <= end_date]
+        securities_at_end = in_window[-1]["value"] if in_window else 0.0
 
-        # Closed-position roll-ups
+        self._attach_net_flows(timeseries, trades, sleeve_ids, ledger)
+
+        # The chart's running cost is an average-cost estimate; the headline
+        # uses exact lots. End the chart on the headline's figure so the gap at
+        # the last point is the unrealised gain shown above it.
+        if timeseries and to_present:
+            timeseries[-1]["cost_basis"] = valued.get("total_cost_basis", 0.0)
+
+        # With cash known, every point of the chart is securities plus the
+        # cash held that day. Cash is worth what it cost, so it joins both
+        # lines and the gap between them stays the unrealised gain.
+        cash_now = None
+        pending = None
+        if ledger is not None:
+            for point in timeseries:
+                held = float(ledger.balance_on(point["date"]))
+                point["cash"] = held
+                point["value"] += held
+                point["cost_basis"] += held
+            cash_now = float(ledger.reported)
+            # Both corrections come from the brokerage's own current figures:
+            # securities it holds that our trades do not show yet, and options
+            # we can only price at their last trade.
+            pending = float(ledger.pending + ledger.mark)
+            if timeseries and to_present:
+                timeseries[-1]["value"] += float(ledger.mark)
+
+        return self._summary_payload(
+            valued,
+            trades,
+            sleeve_ids,
+            s_start,
+            s_end,
+            twr,
+            mwr,
+            timeseries,
+            cash_now,
+            (
+                timeseries[-1]["value"]
+                if ledger is not None and timeseries and to_present
+                else None
+            ),
+            pending,
+            self._window(sleeve_ids, start_date, end_date, current, securities_at_end),
+        )
+
+    def _window(self, sleeve_ids, start_date, end_date, current, securities) -> Dict:
+        """What the summary needs to describe a selected period.
+
+        For a window that ended before the present, positions are taken as
+        they stood on its last day: what was open then, and what it had cost.
+        """
+        window = {"start": start_date, "end": end_date, "past": False}
+        if not current:
+            as_of = self.portfolio.calculate_positions(sleeve_ids, as_of_date=end_date)
+            window.update(
+                past=True,
+                securities=float(securities or 0.0),
+                open_cost=float(
+                    sum((p["cost_basis"] for p in as_of["open"]), Decimal(0))
+                ),
+                positions_count=len(as_of["open"]),
+            )
+        return window
+
+    def _summary_payload(
+        self,
+        valued,
+        trades,
+        sleeve_ids,
+        s_start,
+        s_end,
+        twr,
+        mwr,
+        timeseries,
+        cash_now,
+        total_value,
+        pending,
+        window,
+    ) -> Dict:
+        """Assemble the response: returns and series as given, the rest from
+        the positions.
+
+        Every figure describes the selected period. Gains count as realised in
+        the period their lot was closed; what is unrealised is the balance on
+        the period's last day, on the positions open that day.
+        """
+        start, end = window["start"], window["end"]
+
+        def within(day) -> bool:
+            return (
+                day is not None
+                and (start is None or day >= start)
+                and (end is None or day <= end)
+            )
+
         closed = valued.get("closed_positions", [])
+        if start is not None or end is not None:
+            closed = [p for p in closed if within(p.get("closed_at"))]
+            trades = [t for t in trades if within(t.trade_date)]
+        realized = float(sum((p["realized_gain"] for p in closed), Decimal(0)))
+
+        cost_basis = valued.get("total_cost_basis", 0.0)
+        market_value = valued.get("total_market_value", 0.0)
+        unrealized = valued.get("total_unrealized_gain", 0.0)
+        return_pct = valued.get("total_return_pct")
+        if window["past"]:
+            cost_basis = window["open_cost"]
+            market_value = window["securities"]
+            unrealized = market_value - cost_basis
+            return_pct = (unrealized / cost_basis * 100) if cost_basis > 0 else None
         total_invested = sum(
             float(p.get("matched_quantity", 0)) * float(p.get("entry_price", 0))
             for p in closed
@@ -177,34 +362,140 @@ class PerformanceService:
             float(p.get("matched_quantity", 0)) * float(p.get("exit_price", 0))
             for p in closed
         )
-        total_realized_gain = valued.get("total_realized_gain", 0.0)
-
-        twr_note = (
-            "N/A — TWR requires open positions to mark to market; "
-            "all positions are closed (round-trip portfolio)"
-            if twr is None
-            else None
-        )
-
         return {
             "summary": {
                 "mwr_pct": float(mwr) if mwr is not None else None,
                 "twr_pct": float(twr) if twr is not None else None,
-                "twr_note": twr_note,
-                "total_return_pct": valued.get("total_return_pct"),
-                "total_cost_basis": valued.get("total_cost_basis", 0.0),
-                "total_market_value": valued.get("total_market_value", 0.0),
-                "total_unrealized_gain": valued.get("total_unrealized_gain", 0.0),
+                "twr_note": (
+                    "N/A — no capital was at work in this period"
+                    if twr is None
+                    else None
+                ),
+                "total_return_pct": return_pct,
+                "total_cost_basis": cost_basis,
+                "total_market_value": market_value,
+                "total_unrealized_gain": unrealized,
+                "cash_balance": cash_now,
+                # Securities, cash and any brokerage corrections together, on
+                # the same valuation as the chart and the returns.
+                "total_value": total_value,
+                "holdings_adjustment": pending,
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,
-                "total_realized_gain": total_realized_gain,
-                "closed_positions_count": valued.get("closed_positions_count", 0),
+                "total_realized_gain": realized,
+                "total_income": self.cash.total_income(sleeve_ids, s_start, s_end),
+                "closed_positions_count": len(closed),
                 "trades_count": len(trades),
             },
             "start_date": s_start,
             "end_date": s_end,
             "timeseries": timeseries,
         }
+
+    def _persisted_prices(self, sleeve_ids: List[str]) -> Dict[str, Decimal]:
+        """The last price on file for each open position in the sleeve set."""
+        if not sleeve_ids:
+            return {}
+        return {
+            row.symbol: row.current_price
+            for row in self.db.query(Position).filter(
+                Position.sleeve_id.in_(sleeve_ids),
+                Position.status == "OPEN",
+                Position.current_price.isnot(None),
+            )
+        }
+
+    def _daily_series(self, sleeve_ids, cash_account_ids, basis: str = "market"):
+        """The stored day-by-day series for this view, or None if not built.
+
+        A view of whole accounts reads the account rows (which carry cash); a
+        view of sleeves reads the sleeve rows.
+        """
+        if cash_account_ids:
+            series = self.stats.daily(account_ids=cash_account_ids, basis=basis)
+        else:
+            series = self.stats.daily(sleeve_ids=sleeve_ids, basis=basis)
+        return series or None
+
+    def _from_daily_rows(self, sleeve_ids, cash_account_ids, start_date, end_date):
+        """Returns and value series over the window, read from the daily rows."""
+        series = self._daily_series(sleeve_ids, cash_account_ids)
+        if series is None:
+            return None
+        window = [
+            d
+            for d in series
+            if (start_date is None or d.date >= start_date)
+            and (end_date is None or d.date <= end_date)
+        ]
+        if not window:
+            return None
+        before = [d for d in series if d.date < window[0].date]
+        opening = before[-1].total if before else Decimal(0)
+
+        contributed = Decimal(0)
+        timeseries = []
+        for day in window:
+            contributed += day.net_flow
+            timeseries.append(
+                {
+                    "date": day.date,
+                    "value": float(day.total),
+                    # No running cost is kept per day; the chart does not draw one.
+                    "cost_basis": None,
+                    "cash": float(day.cash) if day.cash is not None else None,
+                    "net_flow": float(day.net_flow),
+                    "net_contributions": float(contributed),
+                }
+            )
+        last = window[-1]
+        return {
+            "start": start_date or window[0].date,
+            "end": end_date or last.date,
+            "twr": self.stats._twr(window),
+            "mwr": self.stats._mwr(opening, window),
+            "timeseries": timeseries,
+            "cash": float(last.cash) if last.cash is not None else None,
+            "total": float(last.total) if last.cash is not None else None,
+            "securities": float(last.securities),
+            "observed": last.observed,
+        }
+
+    def _attach_net_flows(self, timeseries, trades, sleeve_ids, ledger) -> None:
+        """Give each chart point the net money put in since the point before.
+
+        A benchmark is only a fair comparison if it receives the same money on
+        the same days; this is what lets the chart buy and sell the benchmark
+        alongside. "Money in" is what it is for the returns: deposits less
+        withdrawals where cash is tracked, and otherwise purchases less sale
+        proceeds and income.
+        """
+        tracked = ledger.sleeve_ids if ledger is not None else set()
+        by_date: Dict[date, Decimal] = {}
+        for trade in trades:
+            if trade.sleeve_id in tracked:
+                continue
+            gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
+            commission = Decimal(str(trade.commission or 0))
+            signed = gross + commission if trade.action == "BUY" else commission - gross
+            by_date[trade.trade_date] = (
+                by_date.get(trade.trade_date, Decimal(0)) + signed
+            )
+        untracked = [sid for sid in sleeve_ids if sid not in tracked]
+        for day, income in self.cash.income_flows(untracked):
+            by_date[day] = by_date.get(day, Decimal(0)) - income
+        if ledger is not None:
+            for day, deposited in ledger.external.items():
+                by_date[day] = by_date.get(day, Decimal(0)) + deposited
+
+        days = sorted(by_date)
+        index = 0
+        for point in timeseries:
+            total = Decimal(0)
+            while index < len(days) and days[index] <= point["date"]:
+                total += by_date[days[index]]
+                index += 1
+            point["net_flow"] = float(total)
 
     def positions_payload(self, sleeve_ids: List[str]) -> Dict:
         """Fetch live prices, compute open-position values and totals.
@@ -244,14 +535,16 @@ class PerformanceService:
             symbol = pos["symbol"]
             cost = pos["cost_basis"]
             qty = pos["quantity"]
-            avg_cost = cost / qty if qty > 0 else Decimal(0)
+            # A short carries negative quantity and negative cost (the proceeds
+            # received), so the ratio is still its per-share price.
+            avg_cost = cost / qty if qty != 0 else Decimal(0)
 
             if symbol in prices:
                 price = Decimal(str(prices[symbol]))
                 market_value = qty * price
                 unrealized_gain = market_value - cost
                 unrealized_gain_pct = (
-                    float(unrealized_gain / cost * 100) if cost > 0 else 0.0
+                    float(unrealized_gain / abs(cost) * 100) if cost != 0 else 0.0
                 )
             else:
                 price = None
@@ -284,7 +577,12 @@ class PerformanceService:
             "positions": result_positions,
         }
 
-    def monthly_returns(self, sleeve_ids: List[str]) -> List[Dict]:
+    def monthly_returns(
+        self,
+        sleeve_ids: List[str],
+        cash_account_ids: Optional[List[str]] = None,
+        basis: str = "market",
+    ) -> List[Dict]:
         """Month-on-month return breakdown since inception.
 
         For each calendar month:
@@ -294,13 +592,38 @@ class PerformanceService:
             or at end-of-month if no trade fell in that month
           - cash_in / cash_out: gross BUY / SELL amounts during the month
           - realized_gain: net realized P&L from SELLs closed in the month
-          - return_pct: (end_value + cash_out - cash_in - start_value) / start_value
-            (modified Dietz approximation); None for the inception month
+          - return_pct: the month's time-weighted return, from the same
+            calculation as the headline TWR; None while no capital is at work
 
         Open positions are valued at live prices fetched in _fetch_live_prices.
         """
         sleeve_ids = list(sleeve_ids)
-        prices = self._fetch_live_prices(sleeve_ids)
+        series = self._daily_series(sleeve_ids, cash_account_ids, basis)
+        if series is not None:
+            return [
+                {
+                    "year": m["period_end"].year,
+                    "month": m["period_end"].month,
+                    "month_label": m["period_end"].strftime("%b %Y"),
+                    "start_value": m["opening_value"],
+                    "end_value": m["closing_value"],
+                    "cash_in": max(m["net_flow"], 0.0),
+                    "cash_out": max(-m["net_flow"], 0.0),
+                    "net_cash_flow": m["net_flow"],
+                    "realized_gain": 0.0,
+                    "return_pct": (
+                        round(m["twr_pct"] * 100, 2)
+                        if m["twr_pct"] is not None
+                        else None
+                    ),
+                    # With a close for every day, each month carries its own
+                    # gains; nothing is deferred to the latest one.
+                    "includes_unrealized": False,
+                }
+                for m in self.stats.periods(series, "month")
+            ]
+        prices = self._persisted_prices(sleeve_ids)
+        ledger = CashLedger.for_accounts(self.db, cash_account_ids or [])
 
         trades = (
             self.db.query(Trade)
@@ -312,16 +635,9 @@ class PerformanceService:
             return []
 
         first_date = min(t.trade_date for t in trades)
-        last_date = max(t.trade_date for t in trades)
-
-        # Build a lookup: date → portfolio value from value_series
-        series = self.portfolio.value_series(sleeve_ids, prices)
-        value_by_date: Dict[date, float] = {pt["date"]: pt["value"] for pt in series}
-
-        def value_at_or_before(d: date) -> float:
-            """Latest portfolio value on or before date d."""
-            candidates = [v for dt, v in value_by_date.items() if dt <= d]
-            return candidates[-1] if candidates else 0.0
+        # Run to the last trade or income payment, whichever is later, as the
+        # headline window does.
+        last_date = self.cash.last_activity_date(sleeve_ids)
 
         # Enumerate calendar months from inception to last trade month
         months = []
@@ -339,7 +655,29 @@ class PerformanceService:
                     p["realized_gain"]
                 )
 
+        # Dividends and fees, bucketed by month; they leave the sleeve like
+        # sale proceeds, so they are added to cash_out below.
+        income_by_month: Dict[tuple, float] = {}
+        for flow_date, amount in self.cash.income_flows(sleeve_ids):
+            key = (flow_date.year, flow_date.month)
+            income_by_month[key] = income_by_month.get(key, 0.0) + float(amount)
+
+        # One pass of the shared time-weighted calculation, read at each month
+        # end (the last one clamped to the last trade and valued at market).
+        month_ends = []
+        y, m = first_date.year, first_date.month
+        while (y, m) <= (last_date.year, last_date.month):
+            month_ends.append(min(date(y, m, calendar.monthrange(y, m)[1]), last_date))
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        growth_by_date = {
+            point["date"]: point
+            for point in self.twr.growth_at(
+                sleeve_ids, first_date, month_ends, prices, ledger
+            )
+        }
+
         prev_end_value = 0.0  # value carried from previous month
+        prev_growth = 0.0  # cumulative TWR at the previous month end
 
         while (year, month) <= (end_year, end_month):
             month_last_day = calendar.monthrange(year, month)[1]
@@ -349,7 +687,9 @@ class PerformanceService:
             # Clamp to the actual data range
             effective_end = min(month_end, last_date)
 
-            end_value = value_at_or_before(effective_end)
+            point = growth_by_date[effective_end]
+            end_value = point["value"]
+            growth = point["twr"]
 
             # Cash flows within this month
             month_trades = [
@@ -366,28 +706,17 @@ class PerformanceService:
                 float(t.quantity) * float(t.price) - float(t.commission)
                 for t in month_trades
                 if t.action == "SELL"
-            )
+            ) + income_by_month.get((year, month), 0.0)
 
             realized_this_month = realized_by_month.get((year, month), 0.0)
 
-            # Modified Dietz return
-            is_inception = year == first_date.year and month == first_date.month
-            net_invested = cash_in - cash_out
-            if is_inception:
-                # No prior value — can't compute a return
+            # The month's return is the growth of the time-weighted series
+            # across it, so months compound to the headline TWR.
+            if growth is None:
                 return_pct = None
-            elif prev_end_value == 0 and cash_in > 0:
-                # Portfolio was fully liquidated; treat cash_in as the opening base
-                # so fresh deployments show their gain rather than null
-                return_pct = (
-                    ((end_value - net_invested) / cash_in * 100) if cash_in else None
-                )
-            elif prev_end_value > 0:
-                return_pct = (
-                    (end_value - prev_end_value - net_invested) / prev_end_value * 100
-                )
             else:
-                return_pct = None
+                return_pct = ((1 + growth) / (1 + prev_growth) - 1) * 100
+                prev_growth = growth
 
             month_label = date(year, month, 1).strftime("%b %Y")
             months.append(
@@ -414,5 +743,13 @@ class PerformanceService:
                 year, month = year + 1, 1
             else:
                 month += 1
+
+        # No price history is stored, so open positions sit at their last
+        # traded price until the final point brings them up to market. The
+        # latest month therefore carries all the unrealised gain to date.
+        if months:
+            for entry in months:
+                entry["includes_unrealized"] = False
+            months[-1]["includes_unrealized"] = bool(prices)
 
         return months

@@ -82,6 +82,11 @@
 - Tech debt: migrate Pydantic `class Config` → `model_config = ConfigDict(...)`.
 - Replace Postgres-only `DISTINCT ON` in `twr_calculation.py` for portability.
 - Exercise live Google Sheets sync end-to-end once a `SheetSyncConfig` is registered.
+- **Trade tables load a capped page and sort it in the browser.** The sleeve Trades tab shows
+  the 1,000 most recent trades and the client page the 100 most recent; sorting and the
+  move-symbol list only see those rows, so a sleeve with more (ETFs has 1,067) is displayed
+  incompletely. Fix with server-side sort and pagination on the trades endpoints
+  (`sort`/`order` params alongside `skip`/`limit`) and paging controls in `DataTable`.
 
 ## Phase — Bridge (universal brokerage connectivity)
 
@@ -120,25 +125,34 @@
 
 Original plan was a throwaway repo. Dropped after reading SnapTrade's live docs: the auth flow,
 endpoints, `UniversalActivity` shape, daily-batch freshness model, rate limits and webhook events
-are now documented in `app/connectors/SNAPTRADE_PLAN.md`, so the unknowns are narrow and
-Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
+were researched up front (what still holds is in `app/connectors/CONNECTORS.md` and the
+connector's docstrings), so the unknowns were narrow and Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
 addition rather than a bet.
 
 Replaced by: build the connector in this repo, exercise it against a real Vanguard account with a
-throwaway script in the scratchpad, then sanitize those payloads into CI fixtures. Execution order
-lives in `app/connectors/SNAPTRADE_BUILD_PLAN.md`.
+throwaway script in the scratchpad, then sanitize those payloads into CI fixtures.
 
 ### B4 — SnapTrade adapter (production, in main repo)
 
-- [ ] `snaptrade_connector.py` implementing the interface: linking + read first.
-- [ ] App-level keys in `.env`; per-client connection tokens **encrypted at rest in the DB**.
-- [ ] Add link/callback/connection-management endpoints to root `openapi.yaml`.
-- [ ] Recorded-fixture tests (no live network in CI).
+- [x] `snaptrade_connector.py` implementing the interface: linking + read, verified against a
+      real Vanguard capture.
+- [x] App-level keys in `.env`. No per-client token is stored: the Personal flow issues none.
+      Encrypted `userSecret` storage arrives with the Commercial key (multi-client), not before.
+- [x] Connections persisted (`brokerage_connections`, `brokerage_accounts`); link / discover /
+      map / sync / reconcile / delete endpoints in root `openapi.yaml`.
+- [x] Recorded-fixture tests (no live network in CI).
+- [x] FIFO lot accounting for brokerage sleeves; dividends and fees feed MWR/TWR.
+- [x] Reassign a symbol's history between sleeves of one account (split by strategy).
+- [ ] Options, splits/mergers and assignments — currently skipped and reported as drift.
+- [ ] Live end-to-end run against the real account (link → map → sync → compare holdings).
 
-### B5 — Real-time freshness
+### B5 — Freshness
 
-- [ ] Wire SnapTrade webhooks to trigger `ingestion_service.sync_connection`, so connected
-      accounts stay current without manual refresh.
+- [x] Daily scheduler job syncs every mapped account (transactions are a day-delayed batch, so
+      daily is as fresh as the source gets).
+- [x] HMAC-verified SnapTrade webhook endpoint calling the same shared sync.
+- [ ] Register the webhook URL in the SnapTrade dashboard once there is a public host, and
+      confirm the signature encoding against a real delivery.
 
 ### B6 — Trading (deferred — enables Grow)
 

@@ -1,0 +1,53 @@
+meta {
+  name: Account Positions
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{snaptradeBaseUrl}}/accounts/{{snaptradeAccountId}}/positions/all?userId={{snaptradeUserId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Current holdings for the account in `snaptradeAccountId`. Set that env var
+  yourself — use **List Accounts** to find the id you want.
+
+  Note the path is `/positions/all`. The bare `/positions` path is deprecated
+  and returns **410 Gone**.
+
+  The live response nests each row under `results`, and the security sits in
+  an **`instrument`** object:
+
+  ```json
+  {
+    "instrument": {
+      "kind": "stock",
+      "symbol": "AMD",
+      "raw_symbol": "AMD",
+      "description": "Advanced Micro Devices Inc.",
+      "currency": "USD",
+      "exchange": "XNAS",
+      "figi_instrument": { "figi_code": "BBG000BBQPP1" }
+    },
+    "units": "3",
+    "price": "633.91",
+    "cost_basis": "612.00666667",
+    "currency": "USD"
+  }
+  ```
+
+  Note this differs from the SDK's generated `Position` model, which documents
+  a `symbol` object and `average_purchase_price`. The live API returns
+  `instrument` and `cost_basis`, and `currency` as a plain string rather than
+  an object. The connector reads the live shape first and falls back to the
+  SDK one.
+
+  `cost_basis` is **per-unit** (confirmed against real holdings). It is absent
+  for lots bought since SnapTrade's last transaction sync.
+}

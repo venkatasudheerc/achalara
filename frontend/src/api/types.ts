@@ -33,13 +33,23 @@ export interface TradeSummary {
   id: string; sleeve_id: string; trade_date: string; symbol: string
   action: TradeAction; quantity: number; price: number
   commission: number; notes: string
+  /** ETF, STOCK, ADR… as the source reported it; null for CSV/Sheets/manual trades */
+  security_type?: string | null
 }
 
 export interface PerformanceSummary {
   mwr_pct: number | null; twr_pct: number | null; twr_note: string | null
   total_return_pct: number | null
   total_cost_basis: number; total_market_value: number; total_unrealized_gain: number
+  /** Cash held now; set for whole-account views, where returns include cash */
+  cash_balance?: number | null
+  /** Whole-account value now; the last point of the value chart */
+  total_value?: number | null
+  /** Securities the brokerage holds that our trades don't show yet, at current prices */
+  holdings_adjustment?: number | null
   total_invested: number; total_proceeds: number; total_realized_gain: number
+  /** Dividends and interest received less fees and tax withheld */
+  total_income?: number
   closed_positions_count: number; trades_count: number
 }
 export interface PerformanceChild {
@@ -48,7 +58,13 @@ export interface PerformanceChild {
   account_id?: string | null
   client_id?: string | null
 }
-export interface TimeseriesPoint { date: string; value: number; cost_basis: number }
+export interface TimeseriesPoint {
+  date: string; value: number; cost_basis: number | null
+  net_contributions?: number | null
+  cash?: number | null
+  /** Net money put in since the previous point (negative if taken out) */
+  net_flow?: number
+}
 export interface LevelPerformance {
   level: string; id: string; name: string
   start_date: string | null; end_date: string | null
@@ -62,6 +78,8 @@ export interface MonthlyReturn {
   start_value: number; end_value: number
   cash_in: number; cash_out: number; net_cash_flow: number
   realized_gain: number; return_pct: number | null
+  /** Latest month only: also carries all unrealised gain on open positions */
+  includes_unrealized?: boolean
 }
 export interface MonthlyReturnsResponse {
   months: MonthlyReturn[]
@@ -165,4 +183,96 @@ export interface BenchmarkResponse {
   ticker: string
   timeseries: BenchmarkPoint[]
   warning: string | null
+}
+
+// ── Brokerage connections ──
+
+export type ConnectionStatus = 'active' | 'broken' | 'deleted'
+export type BrokerageAccountStatus = 'unmapped' | 'mapped' | 'ignored'
+
+export interface LinkResponse { redirect_url: string; expires_in_seconds: number }
+
+export interface ReconciliationDrift {
+  symbol: string; brokerage_quantity: number; derived_quantity: number
+  difference: number; awaiting_transactions: boolean
+}
+export interface Reconciliation {
+  matched: number; drifted: ReconciliationDrift[]
+  unmatched_sells: number; skipped_rows: Record<string, number>
+}
+
+export interface BrokerageAccount {
+  id: string; connection_id: string; name: string; number_last4: string | null
+  status: BrokerageAccountStatus
+  account_id: string | null; default_sleeve_id: string | null
+  /** Client who owns the mapped account; may differ from the connection's client */
+  owner_client_id: string | null
+  sleeve_routes: Record<string, string> | null
+  sync_start_date: string | null
+  initial_sync_completed: boolean
+  transactions_synced_through: string | null
+  last_synced_at: string | null; last_reconciled_at: string | null
+  reconciliation: Reconciliation | null
+}
+export interface Connection {
+  id: string; client_id: string; source: string; institution: string
+  status: ConnectionStatus; brokerage_accounts: BrokerageAccount[]
+}
+
+export interface BrokerageAccountUpdate {
+  status: 'mapped' | 'ignored'
+  account_id?: string | null; strategy_id?: string | null
+  /** Owner of the account when it is not the client whose login reaches it */
+  client_id?: string | null
+  /** Security type → strategy id; other types use strategy_id */
+  strategy_routes?: Record<string, string> | null
+  history_start?: string | null
+}
+export interface BrokerageSyncResult {
+  status: 'synced' | 'skipped'
+  reason: 'synced_recently' | 'initial_sync_pending' | 'rate_limited' | null
+  imported: number; duplicates: number; cash_imported: number
+  skipped_rows: Record<string, number>
+  next_sync_allowed_at: string | null
+  transactions_synced_through: string | null
+}
+
+export type CashActivityType =
+  | 'DIVIDEND' | 'INTEREST' | 'FEE' | 'WITHHOLDING'
+  | 'CONTRIBUTION' | 'WITHDRAWAL' | 'TRANSFER' | 'OTHER'
+export interface CashActivity {
+  id: string; sleeve_id: string; activity_date: string; type: CashActivityType
+  symbol: string | null; amount: number; notes: string | null
+  counts_toward_returns: boolean
+}
+
+export interface ReassignRequest { from_sleeve_id: string; to_sleeve_id: string; symbols: string[] }
+export interface ReassignResult { symbols: string[]; trades_moved: number; cash_activities_moved: number }
+
+// ── Performance periods (read from the daily valuation record) ──
+
+export type PeriodGrain = 'day' | 'week' | 'month' | 'quarter' | 'year'
+
+export interface PeriodPerformance {
+  period_start: string; period_end: string
+  opening_value: number; closing_value: number; cash_value: number | null
+  /** Money put in less money taken out during the period */
+  net_flow: number
+  /** closing − opening − net_flow */
+  gain: number
+  /** Decimal fractions (0.05 = 5%); null when no capital was at work */
+  twr_pct: number | null; mwr_pct: number | null
+  twr_cumulative_pct: number | null; twr_ytd_pct: number | null
+  benchmark_return_pct: number | null; excess_return_pct: number | null
+  unpriced_pct: number
+  /** Captured from the brokerage on the day, rebuilt from trades and prices, or both */
+  basis: 'observed' | 'reconstructed' | 'mixed'
+  is_provisional: boolean
+}
+export interface PeriodsResponse {
+  level: string; id: string; name: string | null
+  grain: PeriodGrain; benchmark: string | null
+  /** market: holdings at each day's prices. realized: at cost, unrealised gains left out */
+  basis: 'market' | 'realized'
+  periods: PeriodPerformance[]
 }

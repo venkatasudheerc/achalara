@@ -1,0 +1,15 @@
+meta {
+  name: Reconciliation
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/brokerage-accounts/{{brokerageAccountId}}/reconciliation
+  body: none
+  auth: none
+}
+
+docs {
+  Brokerage holdings vs positions derived from trades, per symbol, plus the rows the last sync skipped.
+}
