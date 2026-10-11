@@ -2,6 +2,7 @@
 
 All read from ``perf.daily_valuation``; nothing here is computed from trades.
 """
+import re
 from datetime import date
 from typing import List, Optional
 
@@ -223,7 +224,11 @@ def account_report(
     db: Session = Depends(get_db),
 ):
     """The account's investment performance report."""
-    from app.services.report_service import ReportService, ReportUnavailable
+    from app.services.report_service import (
+        ReportService,
+        ReportUnavailable,
+        _display_name,
+    )
 
     client = _client_or_404(db, client_id)
     account = _account_or_404(db, client_id, account_id)
@@ -236,7 +241,10 @@ def account_report(
         pdf = service.pdf(client, account, as_of)
     except ReportUnavailable as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    name = f"{account.name} performance {as_of or date.today()}.pdf".replace("/", "-")
+    # Header values must be plain ASCII, and custodians' account names are not
+    # (and carry the full account number, which a filename should not).
+    label = re.sub(r"[^A-Za-z0-9]+", "-", _display_name(account.name)).strip("-")
+    name = f"{label or 'account'}-performance-{as_of or date.today()}.pdf"
     return Response(
         pdf,
         media_type="application/pdf",

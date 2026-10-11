@@ -59,7 +59,8 @@ export interface PerformanceChild {
   client_id?: string | null
 }
 export interface TimeseriesPoint {
-  date: string; value: number; cost_basis: number
+  date: string; value: number; cost_basis: number | null
+  net_contributions?: number | null
   cash?: number | null
   /** Net money put in since the previous point (negative if taken out) */
   net_flow?: number
@@ -247,3 +248,29 @@ export interface CashActivity {
 
 export interface ReassignRequest { from_sleeve_id: string; to_sleeve_id: string; symbols: string[] }
 export interface ReassignResult { symbols: string[]; trades_moved: number; cash_activities_moved: number }
+
+// ── Performance periods (read from the daily valuation record) ──
+
+export type PeriodGrain = 'day' | 'week' | 'month' | 'quarter' | 'year'
+
+export interface PeriodPerformance {
+  period_start: string; period_end: string
+  opening_value: number; closing_value: number; cash_value: number | null
+  /** Money put in less money taken out during the period */
+  net_flow: number
+  /** closing − opening − net_flow */
+  gain: number
+  /** Decimal fractions (0.05 = 5%); null when no capital was at work */
+  twr_pct: number | null; mwr_pct: number | null
+  twr_cumulative_pct: number | null; twr_ytd_pct: number | null
+  benchmark_return_pct: number | null; excess_return_pct: number | null
+  unpriced_pct: number
+  /** Captured from the brokerage on the day, rebuilt from trades and prices, or both */
+  basis: 'observed' | 'reconstructed' | 'mixed'
+  is_provisional: boolean
+}
+export interface PeriodsResponse {
+  level: string; id: string; name: string | null
+  grain: PeriodGrain; benchmark: string | null
+  periods: PeriodPerformance[]
+}

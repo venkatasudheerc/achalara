@@ -1,0 +1,15 @@
+meta {
+  name: Client Periods
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/performance/periods?grain=month
+  body: none
+  auth: none
+}
+
+docs {
+  A client's accounts added together per day, then measured. Returns are never averaged across accounts.
+}

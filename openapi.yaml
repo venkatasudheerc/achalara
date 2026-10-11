@@ -32,6 +32,8 @@ tags:
     description: Individual trade creation
   - name: admin
     description: CSV import, Google Sheets sync, sync configs, and logs
+  - name: performance
+    description: Period performance, statistics and the account report, read from the daily valuation record
   - name: connections
     description: Linked brokerage logins — discovery, account mapping, sync, reconciliation
 
@@ -827,22 +829,22 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/v1/admin/rebuild-snapshots:
+  /api/v1/admin/rebuild-performance:
     post:
       tags: [admin]
-      summary: Rebuild weekly portfolio snapshots
+      summary: Rebuild the daily valuation rows
       description: |
-        Recomputes all `weekly_portfolio_snapshots` from scratch.
-        Pass `sleeve_id` to rebuild only one sleeve; omit to rebuild all sleeves.
-        Safe to run after correcting historical trade data.
-      operationId: rebuildSnapshots
+        Replaces every reconstructed row in `perf.daily_valuation` from the
+        trades and price history on file. Days captured from the brokerage are
+        kept as captured; only their flows and returns are refreshed.
+        Pass `account_id` to rebuild one account; omit to rebuild all.
+      operationId: rebuildPerformance
       parameters:
-        - name: sleeve_id
+        - name: account_id
           in: query
           required: false
           schema:
             type: string
-          description: Optional. Rebuild only this sleeve.
       responses:
         "200":
           description: Rebuild result
@@ -853,14 +855,12 @@ paths:
                 properties:
                   status:
                     type: string
-                  sleeves_rebuilt:
+                  accounts_rebuilt:
                     type: integer
-                  snapshots_written:
+                  rows_written:
                     type: integer
         "500":
-          description: Internal error during rebuild
-
-  # ─── Trades ─────────────────────────────────────────────────────────────────
+          description: Rebuild failed
 
   /api/v1/trades/:
     post:
@@ -1389,6 +1389,253 @@ paths:
                     type: string
         "401":
           description: Missing or invalid signature
+
+  # ─── Performance: periods, statistics, report ───────────────────────────────
+
+  /api/v1/clients/{client_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Client performance by day, week, month, quarter or year (accounts added together)
+      operationId: getClientPeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Account performance by period, cash included where known
+      operationId: getAccountPeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Sleeve performance by period (securities only)
+      operationId: getSleevePeriods
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/strategies/{strategy_id}/performance/periods:
+    get:
+      tags: [performance]
+      summary: Strategy performance by period (every sleeve running it, together)
+      operationId: getStrategyPeriods
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: grain
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, quarter, year]
+            default: month
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: benchmark
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Benchmark ticker (e.g. SPY) to compare each period against
+      responses:
+        "200":
+          description: One row per period, read from the daily valuation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeriodsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown grain
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/statistics:
+    get:
+      tags: [performance]
+      summary: Period returns, account activity, drawdowns and risk for an account
+      operationId: getAccountStatistics
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Report date; defaults to the latest day on record
+      responses:
+        "200":
+          description: Everything the account performance report shows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceStatistics"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/report:
+    get:
+      tags: [performance]
+      summary: The account's investment performance report
+      operationId: getAccountReport
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pdf, html]
+            default: pdf
+      responses:
+        "200":
+          description: The report
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: No daily performance record exists for the account yet, or PDF rendering is unavailable
 
 # ─── Components ───────────────────────────────────────────────────────────────
 
@@ -1932,6 +2179,12 @@ components:
           description: Securities at their last traded price that day (today's prices on the final point), plus cash where known
         cost_basis:
           type: number
+          nullable: true
+          description: Running cost of open positions; null where the series is read from the daily record
+        net_contributions:
+          type: number
+          nullable: true
+          description: Net money put in since the start of the series
         cash:
           type: number
           nullable: true
@@ -2582,3 +2835,165 @@ components:
           type: integer
         cash_activities_moved:
           type: integer
+
+    # ── Performance periods and statistics ──
+
+    PeriodPerformance:
+      type: object
+      required: [period_start, period_end, opening_value, closing_value, net_flow, gain, basis]
+      properties:
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        opening_value:
+          type: number
+        closing_value:
+          type: number
+        cash_value:
+          type: number
+          nullable: true
+        net_flow:
+          type: number
+          description: Money put in less money taken out during the period
+        gain:
+          type: number
+          description: closing_value − opening_value − net_flow
+        twr_pct:
+          type: number
+          nullable: true
+          description: Time-weighted return for the period, as a decimal (0.05 = 5%); null when no capital was at work
+        mwr_pct:
+          type: number
+          nullable: true
+          description: Money-weighted return for the period, as a decimal
+        twr_cumulative_pct:
+          type: number
+          nullable: true
+          description: Time-weighted return from the start of the record to the period's end
+        twr_ytd_pct:
+          type: number
+          nullable: true
+        benchmark_return_pct:
+          type: number
+          nullable: true
+        excess_return_pct:
+          type: number
+          nullable: true
+        unpriced_pct:
+          type: number
+          description: Share of securities value held at last traded price for want of a daily close
+        basis:
+          type: string
+          enum: [observed, reconstructed, mixed]
+          description: Whether the period's days were captured from the brokerage, rebuilt from trades and prices, or both
+        is_provisional:
+          type: boolean
+          description: True while the brokerage's transactions for some day in the period may still be arriving
+
+    PeriodsResponse:
+      type: object
+      required: [level, id, grain, periods]
+      properties:
+        level:
+          type: string
+          enum: [sleeve, account, client, strategy]
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        grain:
+          type: string
+          enum: [day, week, month, quarter, year]
+        benchmark:
+          type: string
+          nullable: true
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeriodPerformance"
+
+    PerformanceStatistics:
+      type: object
+      description: |
+        Figures for an account performance report. Returns are decimals; periods
+        longer than a year are annualised on a 365.25-day year.
+      properties:
+        level:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        inception:
+          type: string
+          format: date
+          nullable: true
+        ending_value:
+          type: number
+          nullable: true
+        cash_value:
+          type: number
+          nullable: true
+        returns:
+          type: object
+          description: Keys mtd, qtd, ytd, one_year, inception
+          additionalProperties:
+            type: number
+            nullable: true
+        activity:
+          type: object
+          description: Keys mtd, qtd, ytd, one_year, inception; each with beginning_value, net_flow, gain, ending_value, twr_pct, mwr_pct, covers_full_period
+          additionalProperties:
+            type: object
+        risk:
+          type: object
+          properties:
+            annualized_return: {type: number, nullable: true}
+            volatility: {type: number, nullable: true}
+            sharpe: {type: number, nullable: true}
+            sortino: {type: number, nullable: true}
+            max_drawdown: {type: number, nullable: true}
+            max_drawdown_date: {type: string, format: date, nullable: true}
+            max_drawdown_start: {type: string, format: date, nullable: true}
+            max_drawdown_recovered: {type: string, format: date, nullable: true}
+            best_month: {type: number, nullable: true}
+            worst_month: {type: number, nullable: true}
+            positive_months: {type: number, nullable: true}
+        calendar_years:
+          type: array
+          items:
+            type: object
+        monthly:
+          type: array
+          items:
+            type: object
+        cumulative:
+          type: array
+          items:
+            type: object
+        drawdowns:
+          type: array
+          items:
+            type: object
+        net_contributions:
+          type: array
+          items:
+            type: object
+        quality:
+          type: object
+          properties:
+            days: {type: integer}
+            observed_days: {type: integer}
+            observed_pct: {type: number}
+            provisional_days: {type: integer}
+            unpriced_pct: {type: number}
+            unpriced_value: {type: number}

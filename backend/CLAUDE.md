@@ -59,6 +59,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 | `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
+| `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 
 **Performance roll-ups** (`services/performance_service.py`): a level resolves to a _set of sleeve ids_, then one calc runs over the **merged** trade stream — returns are NOT averaged from child returns. Account = all sleeves in the account; Client = all sleeves under the client's accounts; Strategy = all sleeves for that strategy. Each response is `{ level, id, name, summary, timeseries, children }`.
 
@@ -78,6 +79,13 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
 | `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
 | `app/services/connection_service.py`    | Brokerage link/discover/map/reconcile + `sync_brokerage_account` (the one sync path)    |
+| `app/models/perf.py`                    | The `perf` schema: daily valuation, holdings, prices, corporate actions                  |
+| `app/services/performance_build_service.py` | Rebuilds reconstructed daily rows from trades, prices and cash; `dietz_factor`       |
+| `app/services/daily_capture_service.py` | Captures the brokerage's holdings, cash and total as observed daily rows                 |
+| `app/services/performance_stats_service.py` | Periods, account activity, drawdowns, risk — all read from daily rows                |
+| `app/services/price_history_service.py` | Daily closes from Webull for held securities and benchmarks                             |
+| `app/services/corporate_actions.py`     | Splits; `adjusted_trades` restates trades in today's shares on read                     |
+| `app/services/report_service.py`        | The account performance report (HTML template → PDF)                                    |
 | `app/services/cash_ledger.py`           | Cash balance on any date, worked back from the brokerage's reported balance             |
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
@@ -125,22 +133,32 @@ per account, <=4 background holdings calls per user per day) — never loop them
 
 The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from `daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
 
-## One Return Calculation
+## Performance: the `perf` schema
 
-Every time-weighted figure — headline `twr_pct`, the weekly returns series, monthly
-`return_pct` — comes from `TWRCalculationService.growth_at`, and every money-weighted figure
-from `MWRCalculationService.calculate_mwr`. Do not add a second formula for a new view; add a
-checkpoint to `growth_at`. Rules they share:
+Performance over time lives in the Postgres schema `perf` (`app/models/perf.py`); new
+performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. Read
+`DATA_MODEL.md` § "The `perf` schema" before touching it. The rules that must hold:
 
-- Returns are linked through **time** on the merged sleeve set, never multiplied across
-  positions or averaged across sleeves.
-- Current prices value only the present (the final point); past dates use last traded prices,
-  because no price history is stored.
-- A window "to the present" ends at `CashActivityService.last_activity_date` (last trade or
-  counted income payment).
-- Account and client views pass `cash_account_ids`; where a `CashLedger` exists the return is
-  on securities plus cash with deposits/withdrawals as the only flows. Sleeve and strategy
-  views never include cash.
+- **The day is the only stored grain.** Do not add tables or columns for weeks, months,
+  quarters, or client/strategy roll-ups. Derive them in `PerformanceStatsService` from
+  `perf.daily_valuation`. Returns are chained through time and summed-then-computed across
+  members, never averaged.
+- **Observed days are fact.** `DailyCaptureService` records the brokerage's holdings, cash and
+  total for the day (`basis = "observed"`). Nothing may overwrite an observed value; a rebuild
+  refreshes only its flows, return and `is_provisional`.
+- **Reconstructed days are disposable.** `PerformanceBuildService.rebuild_account` replaces
+  them wholesale. After anything that changes trades, call
+  `performance_build_service.rebuild_for_sleeves`.
+- **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
+  value or returns, so splits are applied. Never mutate a stored trade for a split.
+- **Webull closes are adjusted** (splits and dividends). Never multiply a past adjusted close by
+  a share count directly; value through the build service's trade-price anchoring.
+- **One daily-return formula:** `performance_build_service.dietz_factor`.
+- Existing performance endpoints read from the daily record when it exists and fall back to
+  `TWRCalculationService.growth_at` / `MWRCalculationService.calculate_mwr` (from trades) when it
+  does not. Keep both paths returning the same response shape.
+- Account and client views include cash where a `CashLedger` exists; sleeve and strategy views
+  are securities-only.
 - No return is quoted when no money was ever invested (written options, shorts): `None`, not 0.
 
 ## Brokerage Sync Rules

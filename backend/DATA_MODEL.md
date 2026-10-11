@@ -11,13 +11,15 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           ├──< Trade
                           ├──< Position
                           ├──< CashActivity
-                          ├──< SheetSyncConfig
-                          └──< WeeklyPortfolioSnapshot
+                          └──< SheetSyncConfig
 
 Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sleeve   (linked logins)
                                         └──< BrokerageActivity            (source rows, verbatim)
 
 SyncLog                                            (standalone import/sync audit trail)
+
+perf.daily_valuation  (per sleeve and per account, per day)     perf.daily_price
+perf.daily_holding    (per account, per security, per day)      perf.corporate_action
 ```
 
 - A **Strategy** is a firm-wide *definition* ("Growth", "Income") — reusable across accounts
@@ -37,7 +39,6 @@ erDiagram
     SLEEVE ||--o{ TRADE : has
     SLEEVE ||--o{ POSITION : has
     SLEEVE ||--o{ SHEET_SYNC_CONFIG : feeds
-    SLEEVE ||--o{ WEEKLY_PORTFOLIO_SNAPSHOT : snapshots
 
     CLIENT {
         string id PK
@@ -244,26 +245,85 @@ Client is derived via `sleeve → account.client_id` (the old `client_id` column
 
 Standalone audit trail — no FK to the entity hierarchy.
 
-### `weekly_portfolio_snapshots`
+## The `perf` schema — performance over time
+
+Everything that describes how accounts and sleeves performed over time lives in its own
+Postgres schema, `perf`, apart from the operational tables in `public`. New performance tables
+go here. Foreign keys point back to `public.accounts` / `public.sleeves` with `ON DELETE
+CASCADE`. (Tests run on SQLite, which has no schemas; `tests/conftest.py` maps `perf` onto the
+default schema with `schema_translate_map`.)
+
+**One stored grain: the day.** Weeks, months, quarters, years, year-to-date, since-inception,
+and the client and strategy roll-ups are *not stored*; `PerformanceStatsService` reads them from
+the daily rows by one rule each, so two views cannot disagree and there is one thing to restate.
+
+**Two kinds of day.** An *observed* day was captured from the brokerage's own holdings, cash
+and total on the day (`DailyCaptureService`); its values are fact and are never rewritten. A
+*reconstructed* day was rebuilt from trades and price history (`PerformanceBuildService`): the
+past before capture began, and any day the capture did not run. Reconstructed rows are replaced
+on every rebuild; on observed rows only the flows and the day's return are refreshed, as late
+transactions arrive.
+
+### `perf.daily_valuation`
+One row per sleeve per market day and one per account per market day, including days when
+nothing happened. Every return and report figure is read from this table.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | String(36) PK | uuid |
-| sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
-| week_start_date | Date | not null; always a **Monday** |
-| twr_period | Float | nullable; modified-Dietz HPR for this single week |
-| twr_cumul | Float | nullable; geometric-linked TWR from inception to this Monday |
-| mwr_cumul | Float | nullable; IRR (holding-period) from inception to this Monday |
-| cost_basis | Float | open-position cost basis at Monday close |
-| market_value | Float | open-position market value at Monday close (last-trade price) |
-| cash_in | Float | gross BUY notional during the week |
-| cash_out | Float | gross SELL proceeds during the week |
-| realized_gain | Float | net realized P&L from round-trips closed during the week |
+| sleeve_id | String(36) FK→sleeves.id | **CASCADE** — set for a sleeve row |
+| account_id | String(36) FK→accounts.id | **CASCADE** — set for an account row |
+| as_of_date | Date | |
+| securities_value | Numeric(18,2) | holdings at the day's close; a short is negative |
+| cash_value | Numeric(18,2) | account rows only; NULL where cash is not tracked |
+| total_value | Numeric(18,2) | securities + cash |
+| flow_in / flow_out | Numeric(18,2) | money put in / taken out that day |
+| advisory_fees | Numeric(18,2) | 0 until advisory fees are in use |
+| return_factor | Numeric(18,10) | 1 + the day's time-weighted return; NULL with no capital at work |
+| unpriced_value | Numeric(18,2) | part of securities held at last traded price (options, delisted names) |
+| basis | String(15) | `observed` \| `reconstructed` |
+| is_provisional | Boolean | the brokerage's transactions for the day may still be arriving |
+| computed_at | DateTime(tz) | |
 
-Constraints: `UNIQUE(sleeve_id, week_start_date)` — one snapshot per sleeve per Monday.
+Constraints: exactly one of `sleeve_id` / `account_id` (CHECK); `UNIQUE(sleeve_id, as_of_date)`;
+`UNIQUE(account_id, as_of_date)`.
 
-**Write path:** upserted automatically after any trade write (`POST /trades`) or import/sync. Full rebuild available via `POST /admin/rebuild-snapshots`. The `WeeklySnapshotService` walks all Mondays from the sleeve's first trade date. Snapshots are stored per-sleeve; at read time `WeeklySnapshotService.returns_series()` aggregates across the requested sleeve set (account / client / strategy) using market-value weighting for TWR and MWR.
+"Money in / out": for an **account**, deposits, withdrawals and transfers across its boundary
+(trades and dividends only move value between cash and securities). For a **sleeve**, which has
+no cash, purchases in and sale proceeds and income out. An account with no reported cash is
+treated like a sleeve. On a provisional captured day a sleeve's flows are read off the change
+in what it holds, until the trades themselves arrive.
 
-**Migration:** `afc155b89ef6_add_weekly_portfolio_snapshots`.
+Conventions: daily return is Modified Dietz with flows at mid-day
+(`performance_build_service.dietz_factor`); period returns chain the daily factors; periods
+longer than a year are annualised on a 365.25-day year; a roll-up adds values and flows across
+its members and applies the same rules to the sums.
+
+### `perf.daily_holding`
+What the brokerage reported an account as holding on one day: `account_id` (CASCADE),
+`sleeve_id` (SET NULL), `as_of_date`, `symbol`, `security_type`, `quantity`, `price`,
+`market_value`, `captured_at`; `UNIQUE(account_id, as_of_date, symbol)`. A record of fact,
+captured on the day and not recoverable afterwards; not a per-position performance history. A
+holding's sleeve is the one already holding its symbol, else the route for its security type,
+else the default sleeve.
+
+### `perf.daily_price`
+`symbol`, `price_date`, `close`, `source`, `fetched_at`; `UNIQUE(symbol, price_date, source)`.
+`webull` closes are **adjusted for later splits and dividends** and the source restates the
+whole series when a new one occurs, so a symbol's series is always replaced whole
+(`PriceHistoryService.backfill`). `brokerage` closes are the price the brokerage put on a
+holding the day it was captured, unadjusted. Also holds benchmark tickers (SPY, QQQ, AGG, DIA);
+SPY's dates serve as the market calendar. Because the history is adjusted, a past holding is
+valued by tying the series to the price it actually traded at and using only its movement
+since (see `PerformanceBuildService`); an option assignment, which trades at the strike and not
+the market, is not used to calibrate.
+
+### `perf.corporate_action`
+`symbol`, `effective_date`, `action_type` (`SPLIT` so far), `ratio`, `source`;
+`UNIQUE(symbol, effective_date, action_type)`. Recorded from the SPLIT rows in
+`brokerage_activities`. Trades are never altered: `corporate_actions.adjusted_trades` restates
+earlier trades in today's shares **on read** (4 shares at 1,000 before a 10-for-1 split is read
+as 40 at 100), which every position, value and return calculation goes through.
 
 ### `cash_activities`
 | Column | Type | Notes |
@@ -383,25 +443,19 @@ the **merged** trade stream (not by averaging child returns):
 
 Each returns `{ level, id, name, summary, timeseries, children }`.
 
-### Weekly returns series
+### Reading performance
 
-A weekly TWR + MWR chart endpoint, computed on request from the trades of the whole sleeve
-set with the same `TWRCalculationService.growth_at` and `MWRCalculationService` as the headline
-figures, so its last point equals the headline at every level. The series has one point per
-Monday plus one for today. `weekly_portfolio_snapshots` rows are still written after trade
-writes but are **no longer read** for this chart (averaging per-sleeve figures cannot reproduce
-a return on the merged portfolio).
-
-| Level | Endpoint |
+| What | Endpoint |
 |---|---|
-| Sleeve | `GET /clients/{c}/accounts/{a}/sleeves/{s}/performance/returns-series` |
-| Account | `GET /clients/{c}/accounts/{a}/performance/returns-series` |
-| Client | `GET /clients/{c}/performance/returns-series` |
-| Strategy | `GET /strategies/{s}/performance/returns-series` |
+| Periods by `grain=day\|week\|month\|quarter\|year` | `GET …/performance/periods` at sleeve, account, client and strategy level |
+| Report figures (period returns, activity, drawdowns, risk) | `GET /clients/{c}/accounts/{a}/performance/statistics` |
+| The account report (PDF or HTML) | `GET /clients/{c}/accounts/{a}/report` |
+| Summary, value series, weekly returns series, monthly returns | the existing `…/performance`, `…/performance/returns-series`, `…/performance/monthly` |
 
-Each returns `{ level, id, series: [{ date, twr_cumul, mwr_cumul }] }` where values are decimal
-fractions (0.05 = 5%). Supports optional `start_date` / `end_date` query params.
-Rebuild all snapshots: `POST /admin/rebuild-snapshots` (pass `sleeve_id` to scope to one sleeve).
+All are read from `perf.daily_valuation` where it has been built. For a sleeve set with no daily
+rows yet (trades entered without a rebuild), the existing endpoints fall back to calculating
+from trades. Rebuild the reconstructed rows with `POST /admin/rebuild-performance` (pass
+`account_id` to scope to one account).
 
 ## Notes / known trade-offs
 

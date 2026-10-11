@@ -26,6 +26,7 @@ import { PerformanceChart } from '@/components/PerformanceChart'
 import { ReturnsSeriesChart } from '@/components/ReturnsSeriesChart'
 import { MonthlyReturnsHeatmap } from '@/components/MonthlyReturnsHeatmap'
 import { LevelBreakdown } from '@/components/LevelBreakdown'
+import { PeriodTable } from '@/components/PeriodTable'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
@@ -408,6 +409,18 @@ export function PerformancePage() {
           <MonthlyReturnsHeatmap monthlyReturns={monthly.months} />
         </section>
       )}
+
+      {/* Day / week / month / quarter */}
+      <PeriodTable
+        target={{
+          level: scope.level,
+          clientId: scope.clientId,
+          accountId: scope.accountId,
+          sleeveId: scope.sleeveId,
+          strategyId: scope.strategyId,
+        }}
+        benchmark={benchmarkTicker}
+      />
 
       {/* Level breakdown */}
       {perf.children.length > 0 && (

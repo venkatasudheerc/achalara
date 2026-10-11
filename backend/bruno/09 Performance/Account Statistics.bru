@@ -1,0 +1,15 @@
+meta {
+  name: Account Statistics
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{ClientId}}/accounts/{{AccountId}}/performance/statistics
+  body: none
+  auth: none
+}
+
+docs {
+  Everything the account report shows: MTD/QTD/YTD/1Y/inception returns, account activity, cumulative return, drawdowns, risk statistics, calendar-year and monthly returns, and how much of the record is observed.
+}

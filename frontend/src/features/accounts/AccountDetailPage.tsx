@@ -13,6 +13,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency } from '@/lib/formatters'
 import type { SleeveResponse, AggregatedPosition } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
+import { performanceApi } from '@/api/endpoints/performance'
 
 export function AccountDetailPage() {
   const { clientId, accountId } = useParams<{ clientId: string; accountId: string }>()
@@ -87,12 +88,20 @@ export function AccountDetailPage() {
             <p className="text-stone text-sm font-mono mt-1"># {account.account_number}</p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <a
+            href={performanceApi.reportUrl(clientId!, accountId!)}
+            className="px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
+          >
+            Download report
+          </a>
         <button
           onClick={() => { flushSync(() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name) }); navigate('/app/performance') }}
           className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance
         </button>
+        </div>
       </div>
 
       {/* Sleeves */}
