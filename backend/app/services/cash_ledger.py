@@ -42,6 +42,16 @@ class CashLedger:
             ),
             Decimal(0),
         )
+        # How far our stale option prices are from what the brokerage's total
+        # implies. A price correction, so unlike ``pending`` it belongs to
+        # today alone, as any other move to market prices does.
+        self.mark = sum(
+            (
+                Decimal(str((a.reconciliation or {}).get("valuation_adjustment", 0)))
+                for a in brokerage_accounts
+            ),
+            Decimal(0),
+        )
         # Walking back from the reported cash alone would carry that unrecorded
         # payment into every earlier date and understate them all. So the
         # unreported securities are held as if still cash: the balance then

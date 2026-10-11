@@ -103,7 +103,9 @@ class TWRCalculationService:
         )
         if not all_trades:
             return []
-        to_present = bool(prices) and horizon >= all_trades[-1].trade_date
+        # None means "not to the present"; an empty dict is the present with
+        # nothing quoted.
+        to_present = prices is not None and horizon >= all_trades[-1].trade_date
         trades = [t for t in all_trades if t.trade_date <= horizon]
 
         tracked = ledger.sleeve_ids if ledger is not None else set()
@@ -165,6 +167,8 @@ class TWRCalculationService:
                 if to_present and not pending and until is None:
                     # Bring holdings from their last traded prices up to market.
                     worth = securities(prices) + previous_cash
+                    if ledger is not None:
+                        worth += ledger.mark
                     if previous_value > 0:
                         twr = growth * float(worth / previous_value) - 1.0
                 points.append({"date": checkpoint, "twr": twr, "value": float(worth)})

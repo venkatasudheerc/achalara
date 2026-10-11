@@ -29,8 +29,9 @@ class PerformanceSummary(BaseModel):
     # Cash held now, for views of whole accounts whose cash is known. When set,
     # mwr_pct and twr_pct are measured on securities plus cash.
     cash_balance: Optional[float] = None
-    # Value of securities the brokerage holds that our trades do not show yet
-    # (negative if it holds less), included in today's total and returns.
+    # Corrections from the brokerage's own current figures, included in today's
+    # total and returns: securities it holds that our trades do not show yet,
+    # and the repricing of options held at their last traded price.
     holdings_adjustment: Optional[float] = None
     # Closed-position fields
     total_invested: float = 0.0

@@ -707,10 +707,56 @@ class ConnectionService:
                 theirs.get(symbol, Decimal(0)) - ours.get(symbol, Decimal(0))
             ) * price
         report["holdings_adjustment"] = float(adjustment)
+        report["valuation_adjustment"] = float(
+            self._valuation_adjustment(ba, holdings, sleeve_ids)
+        )
         ba.reconciliation = report
 
         self.db.commit()
         return report
+
+    def _valuation_adjustment(self, ba, holdings, sleeve_ids) -> Decimal:
+        """What the brokerage's account total implies our options are mispriced by.
+
+        Nothing here can quote an option, so open contracts sit at their last
+        traded price, which can be far from market. The brokerage's total is
+        its holdings plus cash plus those contracts at market; taking the
+        first two away leaves what the contracts are really worth, and the gap
+        to our figure is the correction. Zero when the brokerage reports no
+        total or no cash, or when no options are open.
+        """
+        if ba.cash_balance is None:
+            return Decimal(0)
+        remote = self._remote_account(
+            ba.connection.external_user_id, ba.external_account_ref
+        )
+        if remote is None or remote.total_value is None:
+            return Decimal(0)
+
+        net: Dict[str, Decimal] = {}
+        last_price: Dict[str, Decimal] = {}
+        for trade in (
+            self.db.query(Trade)
+            .filter(Trade.sleeve_id.in_(sleeve_ids), Trade.security_type == "OPTION")
+            .order_by(Trade.trade_date, Trade.id)
+        ):
+            signed = trade.quantity if trade.action == "BUY" else -trade.quantity
+            net[trade.symbol] = net.get(trade.symbol, Decimal(0)) + signed
+            last_price[trade.symbol] = trade.price
+        ours = sum((qty * last_price[s] for s, qty in net.items()), Decimal(0))
+        if not any(net.values()):
+            return Decimal(0)
+
+        holdings_value = sum(
+            (
+                h.quantity * h.market_price
+                for h in holdings
+                if h.market_price is not None
+            ),
+            Decimal(0),
+        )
+        implied = remote.total_value - holdings_value - Decimal(str(ba.cash_balance))
+        return implied - ours
 
     # ------------------------------------------------------------------
     # Webhooks

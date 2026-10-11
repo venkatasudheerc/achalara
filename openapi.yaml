@@ -1972,10 +1972,13 @@ components:
           type: number
           nullable: true
           description: |
-            Value, at current prices, of securities the brokerage holds that the
-            trades on file do not show yet (negative if it holds less). The
-            transaction feed trails holdings and cash, so today's total and the
-            returns to date include this. Null when cash is not tracked.
+            Corrections taken from the brokerage's own current figures and
+            included in today's total and returns: the value of securities it
+            holds that the trades on file do not show yet (the transaction feed
+            trails holdings and cash), and the repricing of open options, which
+            are otherwise held at their last traded price. With it, today's
+            total equals the account total the brokerage reports. Null when
+            cash is not tracked.
         total_invested:
           type: number
         total_proceeds:

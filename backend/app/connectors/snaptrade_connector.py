@@ -339,6 +339,9 @@ class SnapTradeConnector:
                     connection_ref=_opt_str(_get(item, "brokerage_authorization")),
                     initial_sync_completed=_initial_sync_completed(item),
                     transactions_synced_through=_synced_through(item),
+                    total_value=_decimal(
+                        _get(_get(_get(item, "balance"), "total"), "amount")
+                    ),
                     raw=_dict(item),
                 )
             )

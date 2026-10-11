@@ -212,7 +212,12 @@ class PerformanceService:
                 point["value"] += held
                 point["cost_basis"] += held
             cash_now = float(ledger.reported)
-            pending = float(ledger.pending)
+            # Both corrections come from the brokerage's own current figures:
+            # securities it holds that our trades do not show yet, and options
+            # we can only price at their last trade.
+            pending = float(ledger.pending + ledger.mark)
+            if timeseries and to_present:
+                timeseries[-1]["value"] += float(ledger.mark)
 
         # Closed-position roll-ups
         closed = valued.get("closed_positions", [])

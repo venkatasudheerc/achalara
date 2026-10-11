@@ -53,6 +53,8 @@ class MWRCalculationService:
                     held, day_before
                 ) + ledger.balance_on(day_before)
                 closing_value += ledger.balance_on(end_date)
+                if prices is not None:
+                    closing_value += ledger.mark
                 for day, deposited in ledger.external.items():
                     if start_date <= day <= end_date:
                         # A deposit is money the investor puts in: an outflow

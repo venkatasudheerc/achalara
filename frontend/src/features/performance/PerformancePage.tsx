@@ -80,7 +80,7 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
               {summary.cash_balance != null
                 ? `${formatCurrency(summary.total_market_value)} securities · ${formatCurrency(summary.cash_balance)} cash` +
                   (summary.holdings_adjustment
-                    ? ` · ${formatCurrency(summary.holdings_adjustment)} not yet in trades`
+                    ? ` · ${formatCurrency(summary.holdings_adjustment)} brokerage adjustments`
                     : '')
                 : `${formatCurrency(summary.total_cost_basis)} cost basis`}
             </p>

@@ -158,6 +158,8 @@ class RawAccount(BaseModel):
     # the source does not say.
     initial_sync_completed: Optional[bool] = None
     transactions_synced_through: Optional[date] = None
+    # What the source says the whole account is worth now, when it says.
+    total_value: Optional[Decimal] = None
     raw: dict = Field(default_factory=dict)
 
 

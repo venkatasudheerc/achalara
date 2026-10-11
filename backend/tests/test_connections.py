@@ -64,6 +64,7 @@ class _StubSDK:
         ]
         self.rate_limited = False
         self.cash = None
+        self.total = None
         self.calls = []
         self.account_information = self
         self.connections = self
@@ -99,6 +100,11 @@ class _StubSDK:
                     "institution_name": "Vanguard",
                     "brokerage_authorization": "auth-1",
                     "sync_status": status,
+                    "balance": (
+                        {"total": {"amount": self.total, "currency": "USD"}}
+                        if self.total is not None
+                        else None
+                    ),
                 },
                 {
                     "id": "acct-2",
@@ -1466,6 +1472,36 @@ def test_full_history_sync_reloads_from_the_first_day_and_adds_only_what_is_new(
     assert (result["imported"], result["duplicates"]) == (1, 7)
     ba = db.query(BrokerageAccount).filter(BrokerageAccount.id == ba_id).one()
     assert ba.sync_start_date is None
+
+
+def test_options_are_repriced_to_what_the_brokerages_total_implies(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+
+    # 10,000 in; 10 puts written for 2,000. They last traded at 200 a contract
+    # but the brokerage's total says they now cost 500 each to buy back.
+    put = _option_row("SELL", -10, 2.0, 2000.0, "2026-01-05")
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [_cash_row("CONTRIBUTION", 10000.0, "2026-01-05"), put],
+        cash_now=12000.0,
+    )
+    sdk.total = 7000.0
+    report = ConnectionService(db).reconcile(ba.id)
+
+    # Implied option value 7,000 - 12,000 = -5,000, against -2,000 on our books.
+    assert report["valuation_adjustment"] == -3000.0
+    result = PerformanceService(db).performance(
+        [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
+    )
+    summary = result["summary"]
+    # Today's total is the brokerage's, and the 3,000 lost shows as return.
+    assert summary["total_market_value"] + summary["cash_balance"] + summary[
+        "holdings_adjustment"
+    ] == pytest.approx(7000.0)
+    assert summary["twr_pct"] == pytest.approx(-0.30)
+    assert result["timeseries"][-1]["value"] == pytest.approx(7000.0)
 
 
 def test_account_without_reported_cash_stays_securities_only(
