@@ -58,7 +58,10 @@ class MonthlyReturn(BaseModel):
     cash_out: float  # SELL proceeds plus net investment income this month
     net_cash_flow: float
     realized_gain: float
-    return_pct: Optional[float] = None  # None for the inception month
+    return_pct: Optional[float] = None  # None while no capital is at work
+    # True for the latest month, which also carries the unrealised gain on
+    # open positions to date (earlier months reflect gains as realised).
+    includes_unrealized: bool = False
 
 
 class MonthlyReturnsResponse(BaseModel):

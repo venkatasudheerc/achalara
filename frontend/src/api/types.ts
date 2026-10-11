@@ -66,6 +66,8 @@ export interface MonthlyReturn {
   start_value: number; end_value: number
   cash_in: number; cash_out: number; net_cash_flow: number
   realized_gain: number; return_pct: number | null
+  /** Latest month only: also carries all unrealised gain on open positions */
+  includes_unrealized?: boolean
 }
 export interface MonthlyReturnsResponse {
   months: MonthlyReturn[]

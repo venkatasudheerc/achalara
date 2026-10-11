@@ -2034,7 +2034,14 @@ components:
         return_pct:
           type: number
           nullable: true
-          description: Monthly return as a decimal (e.g. 0.034 = 3.4%); null for inception month
+          description: Monthly time-weighted return as a whole-number percentage (3.4 = 3.4%); null while no capital is at work
+        includes_unrealized:
+          type: boolean
+          description: |
+            True for the latest month only. No price history is stored, so open
+            positions are carried at their last traded price and all unrealised
+            gain to date is recognised in the latest month; earlier months
+            reflect gains as they were realised.
 
     MonthlyReturnsResponse:
       type: object

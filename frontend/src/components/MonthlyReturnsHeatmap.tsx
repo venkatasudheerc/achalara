@@ -28,6 +28,9 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
     monthlyReturns.map((r) => [`${r.year}-${r.month}`, r.return_pct])
   )
 
+  const marked = monthlyReturns.find((r) => r.includes_unrealized)
+  const markedKey = marked ? `${marked.year}-${marked.month}` : null
+
   // Only show months that have data in at least one year
   const activeMonths = monthlyReturns.map((r) => r.month)
   const minMonth = Math.min(...activeMonths)
@@ -62,9 +65,12 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
                     {ret != null ? (
                       <div
                         className={`rounded text-center py-1 px-1 tabular-nums ${cellColor(ret)}`}
-                        title={`${MONTHS[idx]} ${year}: ${ret.toFixed(2)}%`}
+                        title={
+                          `${MONTHS[idx]} ${year}: ${ret.toFixed(2)}%` +
+                          (markedKey === `${year}-${idx + 1}` ? ' — includes unrealised gain to date' : '')
+                        }
                       >
-                        {ret.toFixed(1)}%
+                        {ret.toFixed(1)}%{markedKey === `${year}-${idx + 1}` ? '*' : ''}
                       </div>
                     ) : (
                       <div className="text-center text-stone/30 py-1">—</div>
@@ -76,6 +82,12 @@ export function MonthlyReturnsHeatmap({ monthlyReturns }: Props) {
           ))}
         </tbody>
       </table>
+      {marked && (
+        <p className="text-xs text-stone/60 mt-3 font-sans">
+          * {marked.month_label} includes all unrealised gain on open positions to date. Earlier
+          months show gains in the month they were realised.
+        </p>
+      )}
     </div>
   )
 }

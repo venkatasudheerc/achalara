@@ -432,4 +432,12 @@ class PerformanceService:
             else:
                 month += 1
 
+        # No price history is stored, so open positions sit at their last
+        # traded price until the final point brings them up to market. The
+        # latest month therefore carries all the unrealised gain to date.
+        if months:
+            for entry in months:
+                entry["includes_unrealized"] = False
+            months[-1]["includes_unrealized"] = bool(prices)
+
         return months
