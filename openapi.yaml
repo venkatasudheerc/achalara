@@ -3000,15 +3000,7 @@ components:
           description: Money put in less money taken out during the period
         gain:
           type: number
-          description: closing_value − opening_value − net_flow − adjustment
-        adjustment:
-          type: number
-          description: |
-            A correction to the record inside the period, not a gain. Where days
-            rebuilt from trades and prices meet days recorded from the brokerage,
-            the two value the same holdings differently (options above all) and
-            the value steps without anything having happened. That step is kept
-            out of gain and of every return.
+          description: closing_value − opening_value − net_flow
         twr_pct:
           type: number
           nullable: true

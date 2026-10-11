@@ -80,6 +80,8 @@ frontend ~5,300 lines; 62 API operations; 13 tables across `public` and `perf`.
   on rules a reviewer cannot see from the output. The seam adjustment in particular makes
   returns and total value tell different stories.
 - **Do.** Decide the seam treatment deliberately (my recommendation stands: include it).
+  **Decided 2026-10-11:** the step is counted as a return on the first recorded day; the
+  separate adjustment is removed (see `backend/DATA_MODEL.md`).
   Add a reconciliation report per account that states, in dollars, how much of current value is
   unpriced, adjusted, or provisional. Either retire `ROUND_TRIP` for brokerage-era data or make
   cost consistent. Remove the unused realised basis or put it on a screen.

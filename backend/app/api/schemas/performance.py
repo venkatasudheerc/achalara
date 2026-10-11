@@ -112,10 +112,7 @@ class PeriodPerformance(BaseModel):
     closing_value: float
     cash_value: Optional[float] = None
     net_flow: float  # money put in less money taken out
-    gain: float  # closing - opening - net_flow - adjustment
-    # A correction to the record inside the period, not a gain: the step in
-    # value where days rebuilt from trades meet days recorded from the brokerage.
-    adjustment: float = 0.0
+    gain: float  # closing - opening - net_flow
     twr_pct: Optional[float] = None  # decimal fraction
     mwr_pct: Optional[float] = None
     twr_cumulative_pct: Optional[float] = None  # since the start of the record
@@ -141,7 +138,6 @@ class PeriodsResponse(BaseModel):
 class ActivityRow(BaseModel):
     beginning_value: float
     net_flow: float
-    adjustment: float = 0.0
     gain: float
     ending_value: float
     twr_pct: Optional[float] = None
