@@ -650,3 +650,112 @@ def test_report_says_so_when_there_is_no_record(db, client):
         f"/api/v1/clients/{account.client_id}/accounts/{account.id}/report"
     )
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# The summary follows the selected period
+# ---------------------------------------------------------------------------
+
+
+def _two_year_sleeve(db):
+    """Bought in 2024; half sold in 2024, the rest in 2025; a second holding kept."""
+    from app.services.performance_service import PerformanceService
+
+    account = _account(db, "Windowed")
+    sleeve = _sleeve(db, account)
+    _closes(db, "SPY", date(2024, 1, 2), [1] * 520)  # market calendar to end-2025
+    _closes(db, "ABC", date(2024, 1, 2), [100 + n * 0.1 for n in range(520)])
+    _closes(db, "KEEP", date(2024, 1, 2), [50 + n * 0.05 for n in range(520)])
+    _trade(db, sleeve, date(2024, 1, 2), "BUY", 20, 100)
+    _trade(db, sleeve, date(2024, 1, 2), "BUY", 10, 50, symbol="KEEP")
+    _trade(db, sleeve, date(2024, 6, 3), "SELL", 10, 120)
+    _trade(db, sleeve, date(2025, 6, 2), "SELL", 10, 150)
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 12, 30))
+    return sleeve, PerformanceService(db)
+
+
+def test_realised_gain_counts_only_lots_closed_in_the_period(db, no_live_prices):
+    sleeve, service = _two_year_sleeve(db)
+
+    first = service.performance([sleeve.id], date(2024, 1, 1), date(2024, 12, 31))[
+        "summary"
+    ]
+    second = service.performance([sleeve.id], date(2025, 1, 1), date(2025, 12, 31))[
+        "summary"
+    ]
+    whole = service.performance([sleeve.id])["summary"]
+
+    assert (first["total_realized_gain"], first["closed_positions_count"]) == (200.0, 1)
+    assert (second["total_realized_gain"], second["closed_positions_count"]) == (
+        500.0,
+        1,
+    )
+    assert (whole["total_realized_gain"], whole["closed_positions_count"]) == (700.0, 2)
+    assert (first["trades_count"], second["trades_count"], whole["trades_count"]) == (
+        3,
+        1,
+        4,
+    )
+
+
+def test_unrealised_gain_is_the_balance_on_the_periods_last_day(db, no_live_prices):
+    sleeve, service = _two_year_sleeve(db)
+
+    summary = service.performance([sleeve.id], date(2024, 1, 1), date(2024, 12, 31))[
+        "summary"
+    ]
+
+    row = (
+        db.query(DailyValuation)
+        .filter(
+            DailyValuation.sleeve_id == sleeve.id,
+            DailyValuation.as_of_date <= date(2024, 12, 31),
+        )
+        .order_by(DailyValuation.as_of_date.desc())
+        .first()
+    )
+    # Open at the end of 2024: 10 ABC at a cost of 100 and 10 KEEP at 50.
+    assert summary["total_cost_basis"] == 1500.0
+    assert summary["total_market_value"] == pytest.approx(float(row.securities_value))
+    assert summary["total_unrealized_gain"] == pytest.approx(
+        float(row.securities_value) - 1500.0
+    )
+    # Not what is open today, when ABC has been sold out entirely.
+    today = service.performance([sleeve.id])["summary"]
+    assert today["total_cost_basis"] == 500.0
+
+
+def test_cash_in_a_past_period_is_what_was_held_then(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+
+    ba = _cash_account(
+        db,
+        client,
+        client_id,
+        sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2025-01-06"),
+            _cash_row("BUY", -4000.0, "2025-01-06", "ABC", 40, 100),
+            _cash_row("CONTRIBUTION", 5000.0, "2026-02-02"),
+        ],
+        cash_now=11000.0,
+    )
+
+    past = PerformanceService(db).performance(
+        [ba.default_sleeve_id],
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        cash_account_ids=[ba.account_id],
+    )["summary"]
+    now = PerformanceService(db).performance(
+        [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
+    )["summary"]
+
+    # At the end of 2025 the second deposit had not arrived.
+    assert past["cash_balance"] == 6000.0
+    assert past["total_value"] == pytest.approx(
+        past["total_market_value"] + past["cash_balance"]
+    )
+    assert now["cash_balance"] == 11000.0

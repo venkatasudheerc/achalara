@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sleevesApi } from '@/api/endpoints/sleeves'
+import { accountsApi } from '@/api/endpoints/accounts'
+import { accountKeys } from './useAccounts'
 import type { SleeveCreate, MarketPriceUpdate } from '@/api/types'
 
 export const sleeveKeys = {
@@ -28,6 +30,29 @@ export function useSleeves(clientId: string, accountId: string) {
     queryFn: () => sleevesApi.list(clientId, accountId),
     enabled: !!clientId && !!accountId,
   })
+}
+
+/** A client's accounts, each with the sleeves in it. */
+export function useClientSleeves(clientId: string) {
+  const accounts = useQuery({
+    queryKey: accountKeys.list(clientId),
+    queryFn: () => accountsApi.list(clientId),
+    enabled: !!clientId,
+  })
+  const sleeves = useQueries({
+    queries: (accounts.data ?? []).map((account) => ({
+      queryKey: sleeveKeys.list(clientId, account.id),
+      queryFn: () => sleevesApi.list(clientId, account.id),
+    })),
+  })
+  return {
+    isLoading: accounts.isLoading || sleeves.some((q) => q.isLoading),
+    isError: accounts.isError || sleeves.some((q) => q.isError),
+    data: (accounts.data ?? []).map((account, index) => ({
+      account,
+      sleeves: sleeves[index]?.data ?? [],
+    })),
+  }
 }
 
 export function useSleeve(clientId: string, accountId: string, sleeveId: string) {

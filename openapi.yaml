@@ -2216,15 +2216,20 @@ components:
           nullable: true
         total_cost_basis:
           type: number
+          description: Cost of the positions open at the end of the period (today, with no end_date)
         total_market_value:
           type: number
+          description: Securities value at the end of the period
         total_unrealized_gain:
           type: number
+          description: |
+            The balance on the period's last day: securities value then, less the
+            cost of the positions open then. Not the change during the period.
         cash_balance:
           type: number
           nullable: true
           description: |
-            Cash held now. Set for account and client views where the brokerage
+            Cash held at the end of the period (now, with no end_date). Set for account and client views where the brokerage
             reports cash; `mwr_pct` and `twr_pct` are then measured on securities
             plus cash, with deposits and withdrawals as the only money in or out.
             Null for sleeve and strategy views, which are securities only.
@@ -2249,13 +2254,16 @@ components:
           type: number
         total_realized_gain:
           type: number
+          description: Gains on lots closed within start_date..end_date (all lots with no range)
         total_income:
           type: number
           description: Dividends and interest received less fees and tax withheld, over the period
         closed_positions_count:
           type: integer
+          description: Lots closed within the period
         trades_count:
           type: integer
+          description: Trades dated within the period
 
     ChildPerformance:
       type: object

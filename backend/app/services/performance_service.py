@@ -24,6 +24,7 @@ from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.cash_activity_service import CashActivityService
 from app.services.cash_ledger import CashLedger
 from app.services.performance_stats_service import PerformanceStatsService
+from app.services.performance_build_service import last_market_day
 from app.connectors.webull_connector import WebullConnector
 from app.connectors.models import is_option_symbol
 
@@ -185,6 +186,9 @@ class PerformanceService:
         # to today even if nothing has happened since the last trade.
         s_end = end_date or max(last_activity, date.today())
         market = prices if to_present else None
+        # Whether the selected period itself is over. (``to_present`` above is
+        # about pricing: it also holds for a past window with no later trades.)
+        current = end_date is None or end_date >= last_market_day()
         valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
 
         # Where the daily record has been built, returns and the value series
@@ -203,15 +207,23 @@ class PerformanceService:
                 stored["twr"],
                 stored["mwr"],
                 stored["timeseries"],
-                # The cash the brokerage reports, where it reports one; and,
-                # until a day has been captured from it, the correction for
-                # securities it holds that our trades do not show yet.
-                float(ledger.reported) if ledger is not None else stored["cash"],
+                # To the present: the cash the brokerage reports now. For a
+                # window that ended earlier: the cash held on its last day.
+                (
+                    float(ledger.reported)
+                    if ledger is not None and current
+                    else stored["cash"]
+                ),
                 stored["total"],
+                # Until a day has been captured from the brokerage, the
+                # correction for securities it holds that our trades lack.
                 (
                     float(ledger.pending)
-                    if ledger is not None and not stored["observed"]
+                    if ledger is not None and current and not stored["observed"]
                     else None
+                ),
+                self._window(
+                    sleeve_ids, start_date, end_date, current, stored["securities"]
                 ),
             )
 
@@ -227,6 +239,9 @@ class PerformanceService:
             twr = None
 
         timeseries = self.portfolio.value_series(sleeve_ids, prices)
+        # Securities alone on the window's last day, before cash joins below.
+        in_window = [p for p in timeseries if end_date is None or p["date"] <= end_date]
+        securities_at_end = in_window[-1]["value"] if in_window else 0.0
 
         self._attach_net_flows(timeseries, trades, sleeve_ids, ledger)
 
@@ -271,7 +286,27 @@ class PerformanceService:
                 else None
             ),
             pending,
+            self._window(sleeve_ids, start_date, end_date, current, securities_at_end),
         )
+
+    def _window(self, sleeve_ids, start_date, end_date, current, securities) -> Dict:
+        """What the summary needs to describe a selected period.
+
+        For a window that ended before the present, positions are taken as
+        they stood on its last day: what was open then, and what it had cost.
+        """
+        window = {"start": start_date, "end": end_date, "past": False}
+        if not current:
+            as_of = self.portfolio.calculate_positions(sleeve_ids, as_of_date=end_date)
+            window.update(
+                past=True,
+                securities=float(securities or 0.0),
+                open_cost=float(
+                    sum((p["cost_basis"] for p in as_of["open"]), Decimal(0))
+                ),
+                positions_count=len(as_of["open"]),
+            )
+        return window
 
     def _summary_payload(
         self,
@@ -286,10 +321,39 @@ class PerformanceService:
         cash_now,
         total_value,
         pending,
+        window,
     ) -> Dict:
         """Assemble the response: returns and series as given, the rest from
-        the positions."""
+        the positions.
+
+        Every figure describes the selected period. Gains count as realised in
+        the period their lot was closed; what is unrealised is the balance on
+        the period's last day, on the positions open that day.
+        """
+        start, end = window["start"], window["end"]
+
+        def within(day) -> bool:
+            return (
+                day is not None
+                and (start is None or day >= start)
+                and (end is None or day <= end)
+            )
+
         closed = valued.get("closed_positions", [])
+        if start is not None or end is not None:
+            closed = [p for p in closed if within(p.get("closed_at"))]
+            trades = [t for t in trades if within(t.trade_date)]
+        realized = float(sum((p["realized_gain"] for p in closed), Decimal(0)))
+
+        cost_basis = valued.get("total_cost_basis", 0.0)
+        market_value = valued.get("total_market_value", 0.0)
+        unrealized = valued.get("total_unrealized_gain", 0.0)
+        return_pct = valued.get("total_return_pct")
+        if window["past"]:
+            cost_basis = window["open_cost"]
+            market_value = window["securities"]
+            unrealized = market_value - cost_basis
+            return_pct = (unrealized / cost_basis * 100) if cost_basis > 0 else None
         total_invested = sum(
             float(p.get("matched_quantity", 0)) * float(p.get("entry_price", 0))
             for p in closed
@@ -307,10 +371,10 @@ class PerformanceService:
                     if twr is None
                     else None
                 ),
-                "total_return_pct": valued.get("total_return_pct"),
-                "total_cost_basis": valued.get("total_cost_basis", 0.0),
-                "total_market_value": valued.get("total_market_value", 0.0),
-                "total_unrealized_gain": valued.get("total_unrealized_gain", 0.0),
+                "total_return_pct": return_pct,
+                "total_cost_basis": cost_basis,
+                "total_market_value": market_value,
+                "total_unrealized_gain": unrealized,
                 "cash_balance": cash_now,
                 # Securities, cash and any brokerage corrections together, on
                 # the same valuation as the chart and the returns.
@@ -318,9 +382,9 @@ class PerformanceService:
                 "holdings_adjustment": pending,
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,
-                "total_realized_gain": valued.get("total_realized_gain", 0.0),
+                "total_realized_gain": realized,
                 "total_income": self.cash.total_income(sleeve_ids, s_start, s_end),
-                "closed_positions_count": valued.get("closed_positions_count", 0),
+                "closed_positions_count": len(closed),
                 "trades_count": len(trades),
             },
             "start_date": s_start,
@@ -393,6 +457,7 @@ class PerformanceService:
             "timeseries": timeseries,
             "cash": float(last.cash) if last.cash is not None else None,
             "total": float(last.total) if last.cash is not None else None,
+            "securities": float(last.securities),
             "observed": last.observed,
         }
 

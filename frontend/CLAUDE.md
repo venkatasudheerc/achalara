@@ -87,6 +87,7 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `Skeleton` | Loading placeholders; every data-fetching screen shows skeletons |
 | `ShortBadge` | "Short" tag beside a symbol when a position's quantity is negative |
 | `PeriodTable` | Performance by day / week / month / quarter for the entity in scope, from `…/performance/periods`; shows whether each period was observed or rebuilt |
+| `SleeveFilter` | Dropdown in the performance headline that re-scopes the page to one sleeve or back to all; sets `ScopeContext`, holds no state of its own |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
 
 ### Features (`src/features/`)
