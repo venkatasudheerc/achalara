@@ -1281,7 +1281,21 @@ def _cash_account(db, client, client_id, sdk, rows, cash_now):
     from app.services import performance_service
 
     sdk.activities = {"data": rows}
-    sdk.positions = {"results": []}
+    # The brokerage holds exactly what these trades add up to.
+    held = {}
+    for row in rows:
+        symbol = (row["symbol"] or {}).get("raw_symbol")
+        if row["type"] in ("BUY", "SELL") and symbol and len(symbol) < 10:
+            units, price = held.get(symbol, (0, 0))
+            held[symbol] = (units + row["units"], row["price"])
+    sdk.positions = {
+        "results": [
+            {"instrument": {"symbol": sym, "raw_symbol": sym}, "units": str(units),
+             "price": str(price), "cost_basis": str(price)}
+            for sym, (units, price) in held.items()
+            if units
+        ]
+    }
     sdk.cash = cash_now
     ba = _mapped_account(db, client_id)
     sync_brokerage_account(db, ba.id)

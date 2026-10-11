@@ -689,14 +689,21 @@ class ConnectionService:
         # Its holdings and cash are both current, while our trades trail them;
         # this is the correction that puts today's total on its footing.
         # Options are left out: the holdings feed does not list them.
-        fallback = {
-            position.symbol: Decimal(str(position.current_price))
-            for position in self.db.query(Position).filter(
-                Position.sleeve_id.in_(sleeve_ids),
-                Position.status == "OPEN",
-                Position.current_price.isnot(None),
-            )
-        }
+        # Price each symbol as the valuation of our own positions will: the
+        # current price where one is on file, else what it last traded for.
+        fallback: Dict[str, Decimal] = {}
+        for symbol, price in (
+            self.db.query(Trade.symbol, Trade.price)
+            .filter(Trade.sleeve_id.in_(sleeve_ids))
+            .order_by(Trade.trade_date, Trade.id)
+        ):
+            fallback[symbol] = Decimal(str(price))
+        for position in self.db.query(Position).filter(
+            Position.sleeve_id.in_(sleeve_ids),
+            Position.status == "OPEN",
+            Position.current_price.isnot(None),
+        ):
+            fallback[position.symbol] = Decimal(str(position.current_price))
         adjustment = Decimal(0)
         for row in drifted:
             symbol = row["symbol"]
