@@ -105,7 +105,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 - **Pydantic schemas** live in `api/schemas/`; ORM models stay in `models/`.
 - **Config via `.env`** through `config.py` — no hardcoded secrets/connection strings/API keys.
 - **Schema changes go through Alembic** (`alembic revision --autogenerate`) — never edit tables directly.
-- **Update `../openapi.yaml`** whenever an endpoint is added or its contract changes.
+- **Update `../openapi.yaml`** whenever an endpoint is added or its contract changes. `tests/test_openapi_contract.py`
+  fails when the routes and the spec list different operations.
 
 ## Offline vs Live Tests
 
