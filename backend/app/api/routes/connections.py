@@ -7,7 +7,7 @@ import logging
 from contextlib import contextmanager
 from typing import List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas.connection import (
@@ -113,10 +113,20 @@ def update_brokerage_account(
 @router.post(
     "/brokerage-accounts/{brokerage_account_id}/sync", response_model=SyncResult
 )
-def sync_account(brokerage_account_id: str, db: Session = Depends(get_db)):
-    """Pull new activity for a mapped account (at most once per 24 hours)."""
+def sync_account(
+    brokerage_account_id: str,
+    full_history: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Pull new activity for a mapped account (at most once per 24 hours).
+
+    ``full_history`` reloads from the account's first day rather than from
+    where the last sync left off.
+    """
     with _http_errors():
-        return sync_brokerage_account(db, brokerage_account_id)
+        return sync_brokerage_account(
+            db, brokerage_account_id, full_history=full_history
+        )
 
 
 @router.get(

@@ -1409,6 +1409,61 @@ def test_account_views_with_cash_agree_with_each_other(
     assert compounded - 1 == pytest.approx(headline["twr_pct"], abs=1e-3)
 
 
+def test_todays_total_rests_on_the_brokerages_current_holdings(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+
+    # 10,000 in, 4,000 of it in ABC. The brokerage has since bought 3,000 of
+    # XYZ: its cash already shows that, but the trade has not reached us.
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
+        ],
+        cash_now=3000.0,
+    )
+    sdk.positions = {
+        "results": [
+            {"instrument": {"symbol": "ABC", "raw_symbol": "ABC"}, "units": "40",
+             "price": "100", "cost_basis": "100"},
+            {"instrument": {"symbol": "XYZ", "raw_symbol": "XYZ"}, "units": "30",
+             "price": "100"},
+        ]
+    }
+    report = ConnectionService(db).reconcile(ba.id)
+    assert report["holdings_adjustment"] == 3000.0
+
+    result = PerformanceService(db).performance(
+        [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
+    )
+
+    # Without the correction the account would look 30% down.
+    assert result["summary"]["holdings_adjustment"] == 3000.0
+    assert result["summary"]["twr_pct"] == pytest.approx(0.0, abs=1e-9)
+    assert result["timeseries"][-1]["value"] == pytest.approx(10000.0)
+
+
+def test_full_history_sync_reloads_from_the_first_day_and_adds_only_what_is_new(
+    db, client, client_id, sdk
+):
+    ba_id, _, _ = _split_account(db, client, client_id, history_start="2026-01-01")
+    sync_brokerage_account(db, ba_id)
+    older = dict(
+        sdk.activities["data"][0], id="older-uso", trade_date="2024-05-06T05:00:00Z"
+    )
+    sdk.activities["data"].append(older)
+
+    result = sync_brokerage_account(db, ba_id, force=True, full_history=True)
+
+    call = [c for c in sdk.calls if c[0] == "activities"][-1][1]
+    assert call["start_date"] is None
+    assert (result["imported"], result["duplicates"]) == (1, 7)
+    ba = db.query(BrokerageAccount).filter(BrokerageAccount.id == ba_id).one()
+    assert ba.sync_start_date is None
+
+
 def test_account_without_reported_cash_stays_securities_only(
     db, client, client_id, sdk, no_live_prices
 ):

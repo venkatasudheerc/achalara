@@ -1270,6 +1270,13 @@ paths:
       operationId: syncBrokerageAccount
       parameters:
         - $ref: "#/components/parameters/brokerage_account_id"
+        - name: full_history
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Reload from the account's first day instead of from the last watermark
       responses:
         "200":
           description: Sync outcome
@@ -1961,6 +1968,14 @@ components:
             reports cash; `mwr_pct` and `twr_pct` are then measured on securities
             plus cash, with deposits and withdrawals as the only money in or out.
             Null for sleeve and strategy views, which are securities only.
+        holdings_adjustment:
+          type: number
+          nullable: true
+          description: |
+            Value, at current prices, of securities the brokerage holds that the
+            trades on file do not show yet (negative if it holds less). The
+            transaction feed trails holdings and cash, so today's total and the
+            returns to date include this. Null when cash is not tracked.
         total_invested:
           type: number
         total_proceeds:

@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.connectors.models import NotSupported, RawAccount
+from app.connectors.models import NotSupported, RawAccount, is_option_symbol
 from app.connectors.registry import get_connector
 from app.models.account import Account
 from app.models.brokerage_connection import (
@@ -282,7 +282,12 @@ class ConnectionService:
     # Sync
     # ------------------------------------------------------------------
 
-    def sync(self, brokerage_account_id: str, force: bool = False) -> Dict:
+    def sync(
+        self,
+        brokerage_account_id: str,
+        force: bool = False,
+        full_history: bool = False,
+    ) -> Dict:
         """Pull new activity for one mapped account. See ``sync_brokerage_account``."""
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
@@ -322,7 +327,11 @@ class ConnectionService:
             return result
 
         since = None
-        if last is None and ba.sync_start_date is not None:
+        if full_history:
+            # Everything the source holds, back to the account's first day.
+            # Rows already on file are recognised and left alone.
+            ba.sync_start_date = None
+        elif last is None and ba.sync_start_date is not None:
             since = datetime.combine(
                 ba.sync_start_date, datetime.min.time(), tzinfo=timezone.utc
             )
@@ -662,7 +671,6 @@ class ConnectionService:
                 else previous.get("skipped_rows", {})
             ),
         }
-        ba.reconciliation = report
         ba.last_reconciled_at = datetime.now(timezone.utc)
 
         if prices:
@@ -677,6 +685,30 @@ class ConnectionService:
                 position.unrealized_gain = position.market_value - Decimal(
                     str(position.cost_basis)
                 )
+        # What the brokerage's holdings are worth beyond (or short of) ours.
+        # Its holdings and cash are both current, while our trades trail them;
+        # this is the correction that puts today's total on its footing.
+        # Options are left out: the holdings feed does not list them.
+        fallback = {
+            position.symbol: Decimal(str(position.current_price))
+            for position in self.db.query(Position).filter(
+                Position.sleeve_id.in_(sleeve_ids),
+                Position.status == "OPEN",
+                Position.current_price.isnot(None),
+            )
+        }
+        adjustment = Decimal(0)
+        for row in drifted:
+            symbol = row["symbol"]
+            price = prices.get(symbol, fallback.get(symbol))
+            if price is None or is_option_symbol(symbol):
+                continue
+            adjustment += (
+                theirs.get(symbol, Decimal(0)) - ours.get(symbol, Decimal(0))
+            ) * price
+        report["holdings_adjustment"] = float(adjustment)
+        ba.reconciliation = report
+
         self.db.commit()
         return report
 
@@ -829,7 +861,10 @@ def _aware(value: Optional[datetime]) -> Optional[datetime]:
 
 
 def sync_brokerage_account(
-    db: Session, brokerage_account_id: str, force: bool = False
+    db: Session,
+    brokerage_account_id: str,
+    force: bool = False,
+    full_history: bool = False,
 ) -> Dict:
     """Pull new trades and cash activity for one mapped brokerage account.
 
@@ -837,10 +872,14 @@ def sync_brokerage_account(
     the source has not finished its first history pull, or when it rate limits
     us. Otherwise ingests through the shared pipeline, advances the watermark,
     recomputes snapshots, and reconciles against the brokerage's holdings.
+    ``full_history`` reloads from the account's first day instead of from the
+    last watermark.
 
     Raises LookupError / ValueError so callers can translate to HTTP errors.
     """
-    return ConnectionService(db).sync(brokerage_account_id, force=force)
+    return ConnectionService(db).sync(
+        brokerage_account_id, force=force, full_history=full_history
+    )
 
 
 def run_all_brokerage_syncs(db: Session) -> Dict[str, str]:

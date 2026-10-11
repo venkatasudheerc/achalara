@@ -35,6 +35,9 @@ class Reconciliation(BaseModel):
     drifted: List[ReconciliationDrift] = []
     # Symbols the trades on file leave net short.
     unmatched_sells: int = 0
+    # Value of the brokerage's holdings beyond ours (negative if short of
+    # them), at current prices. Added to today's total where cash is tracked.
+    holdings_adjustment: float = 0.0
     skipped_rows: Dict[str, int] = {}
 
 

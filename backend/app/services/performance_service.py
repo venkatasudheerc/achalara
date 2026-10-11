@@ -204,6 +204,7 @@ class PerformanceService:
         # cash held that day. Cash is worth what it cost, so it joins both
         # lines and the gap between them stays the unrealised gain.
         cash_now = None
+        pending = None
         if ledger is not None:
             for point in timeseries:
                 held = float(ledger.balance_on(point["date"]))
@@ -211,6 +212,10 @@ class PerformanceService:
                 point["value"] += held
                 point["cost_basis"] += held
             cash_now = float(ledger.balance_on(date.today()))
+            pending = float(ledger.pending)
+            if timeseries and to_present:
+                timeseries[-1]["value"] += pending
+                timeseries[-1]["cost_basis"] += pending
 
         # Closed-position roll-ups
         closed = valued.get("closed_positions", [])
@@ -238,6 +243,7 @@ class PerformanceService:
                 "total_market_value": valued.get("total_market_value", 0.0),
                 "total_unrealized_gain": valued.get("total_unrealized_gain", 0.0),
                 "cash_balance": cash_now,
+                "holdings_adjustment": pending,
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,
                 "total_realized_gain": total_realized_gain,

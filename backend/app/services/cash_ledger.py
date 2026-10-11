@@ -31,6 +31,16 @@ class CashLedger:
         self.anchor = sum(
             (Decimal(str(a.cash_balance)) for a in brokerage_accounts), Decimal(0)
         )
+        # Securities the brokerage holds that our trades do not yet show (or
+        # the reverse), valued now. Its cash already reflects those trades, so
+        # today's total is only right with this added.
+        self.pending = sum(
+            (
+                Decimal(str((a.reconciliation or {}).get("holdings_adjustment", 0)))
+                for a in brokerage_accounts
+            ),
+            Decimal(0),
+        )
         account_ids = [a.account_id for a in brokerage_accounts]
         # Trades in these sleeves swap cash for securities inside the account,
         # so they are not money in or out.
