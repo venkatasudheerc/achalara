@@ -308,8 +308,8 @@ its members and applies the same rules to the sums.
   from the start of the day and money out at its end (`realized_factor`), since at cost a gain
   appears at the moment the proceeds leave. The two bases agree once nothing is left open.
 
-The Performance page's headline is at market; its returns chart, monthly grid and period table
-are on the realised basis.
+The Performance page reads everything at market. The realised basis is available from the API
+but no screen uses it at present.
 
 ### `perf.daily_holding`
 What the brokerage reported an account as holding on one day: `account_id` (CASCADE),

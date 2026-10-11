@@ -67,10 +67,10 @@ export function PeriodTable({
         </span>
       ),
     },
-    { key: 'opening', header: 'Opening (at cost)', numeric: true, sortValue: (r) => r.opening_value, render: (r) => formatCurrency(r.opening_value) },
+    { key: 'opening', header: 'Opening', numeric: true, sortValue: (r) => r.opening_value, render: (r) => formatCurrency(r.opening_value) },
     { key: 'net_flow', header: 'Net deposits', numeric: true, sortValue: (r) => r.net_flow, render: (r) => (r.net_flow === 0 ? <span className="text-stone">—</span> : formatCurrency(r.net_flow)) },
-    { key: 'gain', header: 'Realised gain', numeric: true, sortValue: (r) => r.gain, render: (r) => <span className={r.gain >= 0 ? 'text-gain' : 'text-loss'}>{formatCurrency(r.gain)}</span> },
-    { key: 'closing', header: 'Closing (at cost)', numeric: true, sortValue: (r) => r.closing_value, render: (r) => formatCurrency(r.closing_value) },
+    { key: 'gain', header: 'Gain / loss', numeric: true, sortValue: (r) => r.gain, render: (r) => <span className={r.gain >= 0 ? 'text-gain' : 'text-loss'}>{formatCurrency(r.gain)}</span> },
+    { key: 'closing', header: 'Closing', numeric: true, sortValue: (r) => r.closing_value, render: (r) => formatCurrency(r.closing_value) },
     ...(showCash
       ? [{ key: 'cash', header: 'Cash', numeric: true, sortValue: (r: PeriodPerformance) => r.cash_value ?? 0, render: (r: PeriodPerformance) => formatCurrency(r.cash_value) }]
       : []),
@@ -105,12 +105,7 @@ export function PeriodTable({
   return (
     <section className="bg-paper border border-stone/20 rounded-card p-6">
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Performance by period</h2>
-          <p className="text-xs text-stone/60 mt-1">
-            Realised basis: positions are carried at cost, so unrealised gains are left out of values and returns.
-          </p>
-        </div>
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Performance by period</h2>
         <div className="flex gap-1" role="tablist" aria-label="Period length">
           {GRAINS.map((g) => (
             <button

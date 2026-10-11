@@ -400,7 +400,7 @@ export function PerformancePage() {
             </div>
           </div>
           <p className="text-xs text-stone/60 mb-4">
-            Realised basis: a gain counts when its position is closed, so unrealised gains are left out · rebased to 0% at the start of the selected period
+            All lines rebased to 0% at the start of the selected period · lifetime returns shown in the hero above
           </p>
           <ReturnsSeriesChart
             data={filteredSeries ?? []}
@@ -415,9 +415,6 @@ export function PerformancePage() {
           <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">
             Month-on-month returns
           </h2>
-          <p className="text-xs text-stone/60 -mt-2 mb-4">
-            Realised basis: unrealised gains are left out.
-          </p>
           <MonthlyReturnsHeatmap monthlyReturns={monthly.months} />
         </section>
       )}

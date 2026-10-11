@@ -3,10 +3,10 @@ import type { PeriodGrain, PeriodsResponse } from '../types'
 
 /**
  * How the period widgets (returns chart, monthly grid, period table) value
- * holdings: at cost, so a gain counts only when its position is closed and
- * unrealised gains are left out. The headline stays at market value.
+ * holdings: at each day's closing prices, like the headline. The API can also
+ * read the same record at cost ('realized'), leaving unrealised gains out.
  */
-export const PERIOD_BASIS = 'realized' as const
+export const PERIOD_BASIS: 'market' | 'realized' = 'market'
 
 /** Which entity a performance view is of; mirrors ScopeContext. */
 export interface PerformanceTarget {
