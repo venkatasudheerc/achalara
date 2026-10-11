@@ -388,9 +388,6 @@ export function PerformancePage() {
           <p className="text-xs text-stone/60 mb-4">
             All lines rebased to 0% at the start of the selected period · lifetime returns shown in the hero above
           </p>
-          <p className="text-xs text-stone/60 -mt-3 mb-4">
-            The last point values open positions at today&apos;s prices, so it includes all unrealised gain to date.
-          </p>
           <ReturnsSeriesChart
             data={filteredSeries ?? []}
             benchmarkTicker={benchmarkTicker}
