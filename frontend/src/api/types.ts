@@ -272,5 +272,7 @@ export interface PeriodPerformance {
 export interface PeriodsResponse {
   level: string; id: string; name: string | null
   grain: PeriodGrain; benchmark: string | null
+  /** market: holdings at each day's prices. realized: at cost, unrealised gains left out */
+  basis: 'market' | 'realized'
   periods: PeriodPerformance[]
 }

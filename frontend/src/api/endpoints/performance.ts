@@ -1,6 +1,13 @@
 import { apiClient } from '../client'
 import type { PeriodGrain, PeriodsResponse } from '../types'
 
+/**
+ * How the period widgets (returns chart, monthly grid, period table) value
+ * holdings: at cost, so a gain counts only when its position is closed and
+ * unrealised gains are left out. The headline stays at market value.
+ */
+export const PERIOD_BASIS = 'realized' as const
+
 /** Which entity a performance view is of; mirrors ScopeContext. */
 export interface PerformanceTarget {
   level: 'client' | 'account' | 'sleeve' | 'strategy'
@@ -25,7 +32,9 @@ export const performanceApi = {
     params: { grain: PeriodGrain; benchmark?: string; start_date?: string; end_date?: string },
   ) =>
     apiClient
-      .get<PeriodsResponse>(`${basePath(target)}/performance/periods`, { params })
+      .get<PeriodsResponse>(`${basePath(target)}/performance/periods`, {
+        params: { ...params, basis: PERIOD_BASIS },
+      })
       .then((r) => r.data),
 
   /** Where the account's PDF report is served; opened directly by the browser. */

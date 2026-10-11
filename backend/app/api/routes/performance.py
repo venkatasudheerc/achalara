@@ -23,6 +23,12 @@ router = APIRouter()
 
 _GRAIN = Query("month", description="day | week | month | quarter | year")
 _BENCHMARK = Query(None, description="Benchmark ticker, e.g. SPY")
+_BASIS = Query(
+    "market",
+    pattern="^(market|realized)$",
+    description="market: holdings at each day's prices. realized: at cost, so "
+    "unrealised gains are left out",
+)
 
 
 def _periods(
@@ -36,6 +42,7 @@ def _periods(
     benchmark,
     sleeve_ids=(),
     account_ids=(),
+    basis="market",
 ):
     if grain not in GRAINS:
         raise HTTPException(
@@ -46,13 +53,14 @@ def _periods(
             status_code=400, detail="start_date must be before end_date"
         )
     stats = PerformanceStatsService(db)
-    series = stats.daily(sleeve_ids=sleeve_ids, account_ids=account_ids)
+    series = stats.daily(sleeve_ids=sleeve_ids, account_ids=account_ids, basis=basis)
     return {
         "level": level,
         "id": entity_id,
         "name": name,
         "grain": grain,
         "benchmark": benchmark.upper() if benchmark else None,
+        "basis": basis,
         "periods": stats.periods(series, grain, start_date, end_date, benchmark),
     }
 
@@ -82,6 +90,7 @@ def client_periods(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     benchmark: Optional[str] = _BENCHMARK,
+    basis: str = _BASIS,
     db: Session = Depends(get_db),
 ):
     """A client's performance by period: all their accounts added together."""
@@ -99,6 +108,7 @@ def client_periods(
         end_date,
         benchmark,
         account_ids=account_ids,
+        basis=basis,
     )
 
 
@@ -113,6 +123,7 @@ def account_periods(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     benchmark: Optional[str] = _BENCHMARK,
+    basis: str = _BASIS,
     db: Session = Depends(get_db),
 ):
     """An account's performance by period, cash included where it is known."""
@@ -127,6 +138,7 @@ def account_periods(
         end_date,
         benchmark,
         account_ids=[account_id],
+        basis=basis,
     )
 
 
@@ -142,6 +154,7 @@ def sleeve_periods(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     benchmark: Optional[str] = _BENCHMARK,
+    basis: str = _BASIS,
     db: Session = Depends(get_db),
 ):
     """A sleeve's performance by period (securities only)."""
@@ -164,6 +177,7 @@ def sleeve_periods(
         end_date,
         benchmark,
         sleeve_ids=[sleeve_id],
+        basis=basis,
     )
 
 
@@ -176,6 +190,7 @@ def strategy_periods(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     benchmark: Optional[str] = _BENCHMARK,
+    basis: str = _BASIS,
     db: Session = Depends(get_db),
 ):
     """A strategy's performance by period: every sleeve running it, together."""
@@ -195,6 +210,7 @@ def strategy_periods(
         end_date,
         benchmark,
         sleeve_ids=sleeve_ids,
+        basis=basis,
     )
 
 

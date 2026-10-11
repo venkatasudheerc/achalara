@@ -405,16 +405,16 @@ class PerformanceService:
             )
         }
 
-    def _daily_series(self, sleeve_ids, cash_account_ids):
+    def _daily_series(self, sleeve_ids, cash_account_ids, basis: str = "market"):
         """The stored day-by-day series for this view, or None if not built.
 
         A view of whole accounts reads the account rows (which carry cash); a
         view of sleeves reads the sleeve rows.
         """
         if cash_account_ids:
-            series = self.stats.daily(account_ids=cash_account_ids)
+            series = self.stats.daily(account_ids=cash_account_ids, basis=basis)
         else:
-            series = self.stats.daily(sleeve_ids=sleeve_ids)
+            series = self.stats.daily(sleeve_ids=sleeve_ids, basis=basis)
         return series or None
 
     def _from_daily_rows(self, sleeve_ids, cash_account_ids, start_date, end_date):
@@ -578,7 +578,10 @@ class PerformanceService:
         }
 
     def monthly_returns(
-        self, sleeve_ids: List[str], cash_account_ids: Optional[List[str]] = None
+        self,
+        sleeve_ids: List[str],
+        cash_account_ids: Optional[List[str]] = None,
+        basis: str = "market",
     ) -> List[Dict]:
         """Month-on-month return breakdown since inception.
 
@@ -595,7 +598,7 @@ class PerformanceService:
         Open positions are valued at live prices fetched in _fetch_live_prices.
         """
         sleeve_ids = list(sleeve_ids)
-        series = self._daily_series(sleeve_ids, cash_account_ids)
+        series = self._daily_series(sleeve_ids, cash_account_ids, basis)
         if series is not None:
             return [
                 {

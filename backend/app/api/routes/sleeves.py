@@ -30,7 +30,11 @@ from app.api.schemas.position import (
     ClosedPositionsResponse,
     PortfolioSummary,
 )
-from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
+from app.api.schemas.performance import (
+    LevelPerformance,
+    MonthlyReturnsResponse,
+    MonthlyReturn,
+)
 
 router = APIRouter()
 
@@ -207,12 +211,21 @@ def get_sleeve_returns_series(
     sleeve_id: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Weekly TWR + MWR timeseries for a sleeve."""
     _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
     from app.services.weekly_snapshot_service import WeeklySnapshotService
-    series = WeeklySnapshotService(db).returns_series([sleeve_id], start_date, end_date)
+
+    series = WeeklySnapshotService(db).returns_series(
+        [sleeve_id], start_date, end_date, basis=basis
+    )
     return {"level": "sleeve", "id": sleeve_id, "series": series}
 
 
@@ -224,12 +237,18 @@ def get_sleeve_monthly_returns(
     client_id: str,
     account_id: str,
     sleeve_id: str,
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Month-on-month return breakdown since inception."""
     _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
     svc = PerformanceService(db)
-    months = svc.monthly_returns([sleeve_id])
+    months = svc.monthly_returns([sleeve_id], basis=basis)
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
     if non_none:

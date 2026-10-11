@@ -12,7 +12,11 @@ from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.api.schemas.client import ClientCreate, ClientResponse, ClientLogin
 from app.config import settings
-from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
+from app.api.schemas.performance import (
+    LevelPerformance,
+    MonthlyReturnsResponse,
+    MonthlyReturn,
+)
 from app.services.performance_service import PerformanceService
 
 router = APIRouter()
@@ -39,17 +43,14 @@ def list_clients(
     db: Session = Depends(get_db),
 ):
     """List all clients with pagination, ordered by creation date."""
-    return (
-        db.query(Client)
-        .order_by(Client.created_at)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    return db.query(Client).order_by(Client.created_at).offset(skip).limit(limit).all()
 
 
 @router.get("/lookup", response_model=ClientResponse)
-def lookup_client_by_email(email: str = Query(..., description="Client email address"), db: Session = Depends(get_db)):
+def lookup_client_by_email(
+    email: str = Query(..., description="Client email address"),
+    db: Session = Depends(get_db),
+):
     """Look up a client by email address"""
     client = db.query(Client).filter(Client.email == email).first()
     if not client:
@@ -64,7 +65,9 @@ def login_client(body: ClientLogin, db: Session = Depends(get_db)):
     Disabled when CLIENT_DEV_PASSWORD is not set in the environment.
     """
     if not settings.client_dev_password:
-        raise HTTPException(status_code=503, detail="Dev login is disabled on this server")
+        raise HTTPException(
+            status_code=503, detail="Dev login is disabled on this server"
+        )
     # Constant-time comparison to prevent timing-oracle attacks
     if not secrets.compare_digest(body.password, settings.client_dev_password):
         raise HTTPException(status_code=401, detail="Incorrect password")
@@ -143,6 +146,12 @@ def get_client_returns_series(
     client_id: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Weekly TWR + MWR timeseries for a client (aggregated from sleeve snapshots)."""
@@ -150,6 +159,7 @@ def get_client_returns_series(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     from app.services.weekly_snapshot_service import WeeklySnapshotService
+
     svc = PerformanceService(db)
     sleeve_ids = svc.sleeve_ids_for_client(client_id)
     series = WeeklySnapshotService(db).returns_series(
@@ -157,6 +167,7 @@ def get_client_returns_series(
         start_date,
         end_date,
         cash_account_ids=svc.account_ids_for_client(client_id),
+        basis=basis,
     )
     return {"level": "client", "id": client_id, "series": series}
 
@@ -164,6 +175,12 @@ def get_client_returns_series(
 @router.get("/{client_id}/performance/monthly", response_model=MonthlyReturnsResponse)
 def get_client_monthly_returns(
     client_id: str,
+    basis: str = Query(
+        "market",
+        pattern="^(market|realized)$",
+        description="market: holdings at each day's prices. realized: at cost, "
+        "so unrealised gains are left out",
+    ),
     db: Session = Depends(get_db),
 ):
     """Month-on-month return breakdown since inception for a client."""
@@ -173,7 +190,7 @@ def get_client_monthly_returns(
     svc = PerformanceService(db)
     sleeve_ids = svc.sleeve_ids_for_client(client_id)
     months = svc.monthly_returns(
-        sleeve_ids, cash_account_ids=svc.account_ids_for_client(client_id)
+        sleeve_ids, cash_account_ids=svc.account_ids_for_client(client_id), basis=basis
     )
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]

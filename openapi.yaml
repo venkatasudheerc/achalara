@@ -228,6 +228,17 @@ paths:
       summary: Client month-on-month returns since inception
       operationId: getClientMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
       responses:
         "200":
@@ -245,6 +256,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a client
       operationId: getClientReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - name: start_date
           in: query
@@ -393,6 +415,17 @@ paths:
       summary: Account month-on-month returns since inception
       operationId: getAccountMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
       responses:
@@ -411,6 +444,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for an account
       operationId: getAccountReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - name: start_date
@@ -551,6 +595,17 @@ paths:
       summary: Sleeve month-on-month returns since inception
       operationId: getSleeveMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - $ref: "#/components/parameters/sleeve_id"
@@ -570,6 +625,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a sleeve
       operationId: getSleeveReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/client_id"
         - $ref: "#/components/parameters/account_id"
         - $ref: "#/components/parameters/sleeve_id"
@@ -789,6 +855,17 @@ paths:
       summary: Strategy month-on-month returns since inception
       operationId: getStrategyMonthlyPerformance
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/strategy_id"
       responses:
         "200":
@@ -806,6 +883,17 @@ paths:
       summary: Weekly TWR + MWR timeseries for a strategy
       operationId: getStrategyReturnsSeries
       parameters:
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
         - $ref: "#/components/parameters/strategy_id"
         - name: start_date
           in: query
@@ -1424,6 +1512,17 @@ paths:
           schema:
             type: string
           description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
       responses:
         "200":
           description: One row per period, read from the daily valuation record
@@ -1469,6 +1568,17 @@ paths:
           schema:
             type: string
           description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
       responses:
         "200":
           description: One row per period, read from the daily valuation record
@@ -1515,6 +1625,17 @@ paths:
           schema:
             type: string
           description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
       responses:
         "200":
           description: One row per period, read from the daily valuation record
@@ -1563,6 +1684,17 @@ paths:
           schema:
             type: string
           description: Benchmark ticker (e.g. SPY) to compare each period against
+        - name: basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, realized]
+            default: market
+          description: |
+            How holdings are valued. `market`: at each day's prices. `realized`:
+            at cost, so a gain counts only on the day its position is closed and
+            unrealised gains are left out of values and returns.
       responses:
         "200":
           description: One row per period, read from the daily valuation record
@@ -2919,6 +3051,9 @@ components:
         benchmark:
           type: string
           nullable: true
+        basis:
+          type: string
+          enum: [market, realized]
         periods:
           type: array
           items:

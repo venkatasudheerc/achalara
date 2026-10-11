@@ -58,6 +58,7 @@ class WeeklySnapshotService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         cash_account_ids: Optional[List[str]] = None,
+        basis: str = "market",
     ) -> List[Dict]:
         """Cumulative TWR and MWR since inception, at each Monday and today.
 
@@ -80,7 +81,9 @@ class WeeklySnapshotService:
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
         if not sleeve_ids:
             return []
-        stored = self._from_daily_rows(sleeve_ids, cash_account_ids, start_date, end_date)
+        stored = self._from_daily_rows(
+            sleeve_ids, cash_account_ids, start_date, end_date, basis
+        )
         if stored is not None:
             return stored
         bounds = (
@@ -141,7 +144,9 @@ class WeeklySnapshotService:
             )
         return result
 
-    def _from_daily_rows(self, sleeve_ids, cash_account_ids, start_date, end_date):
+    def _from_daily_rows(
+        self, sleeve_ids, cash_account_ids, start_date, end_date, basis="market"
+    ):
         """The same series read from ``perf.daily_valuation``, one point a week.
 
         None when the daily record has not been built for this set, in which
@@ -151,9 +156,9 @@ class WeeklySnapshotService:
 
         stats = PerformanceStatsService(self.db)
         if cash_account_ids:
-            series = stats.daily(account_ids=cash_account_ids)
+            series = stats.daily(account_ids=cash_account_ids, basis=basis)
         else:
-            series = stats.daily(sleeve_ids=sleeve_ids)
+            series = stats.daily(sleeve_ids=sleeve_ids, basis=basis)
         if not series:
             return None
 
@@ -168,7 +173,8 @@ class WeeklySnapshotService:
             # The last market day of each week, and the latest day.
             week_ends = (
                 index + 1 == len(series)
-                or series[index + 1].date.isocalendar()[:2] != day.date.isocalendar()[:2]
+                or series[index + 1].date.isocalendar()[:2]
+                != day.date.isocalendar()[:2]
             )
             if not week_ends:
                 continue

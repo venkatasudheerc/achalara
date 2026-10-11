@@ -759,3 +759,118 @@ def test_cash_in_a_past_period_is_what_was_held_then(
         past["total_market_value"] + past["cash_balance"]
     )
     assert now["cash_balance"] == 11000.0
+
+
+# ---------------------------------------------------------------------------
+# The realised basis: holdings at cost, unrealised gains left out
+# ---------------------------------------------------------------------------
+
+
+def _held_then_sold(db):
+    """Bought at 100, rises to 150 while held, sold at 150 on the last day."""
+    account = _account(db, "Realised")
+    sleeve = _sleeve(db, account)
+    start = date(2025, 1, 6)
+    _closes(db, "SPY", start, [1] * 5)
+    _closes(db, "ABC", start, [100, 120, 140, 150, 150])
+    _trade(db, sleeve, start, "BUY", 10, 100)
+    _trade(db, sleeve, date(2025, 1, 10), "SELL", 10, 150)
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 1, 10))
+    return account, sleeve
+
+
+def test_cost_of_what_is_open_is_recorded_each_day(db):
+    account, sleeve = _held_then_sold(db)
+
+    rows = (
+        db.query(DailyValuation)
+        .filter(DailyValuation.sleeve_id == sleeve.id)
+        .order_by(DailyValuation.as_of_date)
+        .all()
+    )
+    assert [float(r.securities_value) for r in rows] == [1000, 1200, 1400, 1500, 0]
+    # Cost does not move with the price; it goes when the position is closed.
+    assert [float(r.cost_value) for r in rows] == [1000, 1000, 1000, 1000, 0]
+
+
+def test_realised_basis_counts_the_gain_only_when_the_position_closes(db):
+    account, sleeve = _held_then_sold(db)
+    stats = PerformanceStatsService(db)
+
+    market = stats.periods(stats.daily(sleeve_ids=[sleeve.id]), "day")
+    realised = stats.periods(
+        stats.daily(sleeve_ids=[sleeve.id], basis="realized"), "day"
+    )
+
+    # At market the gain builds day by day; realised, it lands on the sale.
+    assert [round(d["twr_pct"], 4) for d in market[1:4]] == [0.2, 0.1667, 0.0714]
+    assert [d["twr_pct"] for d in realised[1:4]] == [0.0, 0.0, 0.0]
+    assert realised[-1]["gain"] == pytest.approx(500.0)
+    assert [d["closing_value"] for d in realised] == [1000, 1000, 1000, 1000, 0]
+    # Both bases agree once nothing is left unrealised.
+    assert realised[-1]["twr_cumulative_pct"] == pytest.approx(
+        market[-1]["twr_cumulative_pct"]
+    )
+
+
+def test_realised_basis_leaves_an_open_gain_out(db):
+    account = _account(db, "StillOpen")
+    sleeve = _sleeve(db, account)
+    start = date(2025, 1, 6)
+    _closes(db, "SPY", start, [1] * 3)
+    _closes(db, "ABC", start, [100, 120, 150])
+    _trade(db, sleeve, start, "BUY", 10, 100)
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 1, 8))
+    stats = PerformanceStatsService(db)
+
+    (market,) = stats.periods(stats.daily(sleeve_ids=[sleeve.id]), "week")
+    (realised,) = stats.periods(
+        stats.daily(sleeve_ids=[sleeve.id], basis="realized"), "week"
+    )
+
+    assert market["twr_pct"] == pytest.approx(0.5)
+    assert realised["twr_pct"] == pytest.approx(0.0)
+    assert realised["closing_value"] == 1000.0
+
+
+def test_an_account_opening_on_existing_cash_does_not_gain_on_its_first_day(db):
+    # The record starts with 5,000 already in the account; 1,000 more arrives.
+    account = _account(db, "Opening")
+    db.add(
+        DailyValuation(
+            account_id=account.id,
+            as_of_date=date(2025, 1, 6),
+            securities_value=D(0),
+            cost_value=D(0),
+            cash_value=D(6000),
+            total_value=D(6000),
+            flow_in=D(1000),
+            flow_out=D(0),
+            return_factor=D(1),
+            basis="reconstructed",
+        )
+    )
+    db.commit()
+    stats = PerformanceStatsService(db)
+
+    (day,) = stats.daily(account_ids=[account.id], basis="realized")
+
+    assert day.factor == D(1)
+
+
+def test_period_endpoints_take_a_basis(db, client):
+    account, sleeve = _held_then_sold(db)
+    base = (
+        f"/api/v1/clients/{account.client_id}/accounts/{account.id}"
+        f"/sleeves/{sleeve.id}/performance"
+    )
+
+    realised = client.get(f"{base}/periods?grain=day&basis=realized").json()
+    monthly = client.get(f"{base}/monthly?basis=realized").json()
+    series = client.get(f"{base}/returns-series?basis=realized").json()
+
+    assert realised["basis"] == "realized"
+    assert realised["periods"][2]["twr_pct"] == 0.0
+    assert monthly["months"][0]["return_pct"] == 50.0
+    assert series["series"][-1]["twr_cumul"] == pytest.approx(0.5)
+    assert client.get(f"{base}/periods?basis=book").status_code == 422

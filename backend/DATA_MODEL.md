@@ -275,6 +275,7 @@ nothing happened. Every return and report figure is read from this table.
 | account_id | String(36) FK→accounts.id | **CASCADE** — set for an account row |
 | as_of_date | Date | |
 | securities_value | Numeric(18,2) | holdings at the day's close; a short is negative |
+| cost_value | Numeric(18,2) | what the positions open at the day's close had cost (FIFO lots; a short is the proceeds received, negative) |
 | cash_value | Numeric(18,2) | account rows only; NULL where cash is not tracked |
 | total_value | Numeric(18,2) | securities + cash |
 | flow_in / flow_out | Numeric(18,2) | money put in / taken out that day |
@@ -298,6 +299,17 @@ Conventions: daily return is Modified Dietz with flows at mid-day
 (`performance_build_service.dietz_factor`); period returns chain the daily factors; periods
 longer than a year are annualised on a 365.25-day year; a roll-up adds values and flows across
 its members and applies the same rules to the sums.
+
+**Two bases for reading the same rows** (`PerformanceStatsService.daily(basis=…)`, and the
+`basis` query parameter on the periods, monthly and returns-series endpoints):
+- `market` (default): holdings at each day's prices; a return includes gains not yet taken.
+- `realized`: holdings at `cost_value`; a gain counts only on the day its position is closed,
+  and unrealised gains are left out of values and returns. The day's return then counts money in
+  from the start of the day and money out at its end (`realized_factor`), since at cost a gain
+  appears at the moment the proceeds leave. The two bases agree once nothing is left open.
+
+The Performance page's headline is at market; its returns chart, monthly grid and period table
+are on the realised basis.
 
 ### `perf.daily_holding`
 What the brokerage reported an account as holding on one day: `account_id` (CASCADE),

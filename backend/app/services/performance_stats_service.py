@@ -26,9 +26,18 @@ from sqlalchemy.orm import Session
 
 from app.models.perf import DailyPrice, DailyValuation
 from app.services.mwr_calculation import MWRCalculationService
-from app.services.performance_build_service import ZERO, dietz_factor
+from app.services.performance_build_service import (
+    ZERO,
+    dietz_factor,
+    realized_factor,
+)
 
 GRAINS = ("day", "week", "month", "quarter", "year")
+
+# How holdings are valued. "market": at each day's prices, so a return includes
+# gains not yet taken. "realized": at what they cost, so a gain counts only on
+# the day its position is closed (income counts when received either way).
+BASES = ("market", "realized")
 _YEAR_DAYS = 365.25
 _TRADING_DAYS = 252
 
@@ -89,14 +98,23 @@ class PerformanceStatsService:
         return query.filter(DailyValuation.sleeve_id.in_(list(sleeve_ids)))
 
     def daily(
-        self, sleeve_ids: Sequence[str] = (), account_ids: Sequence[str] = ()
+        self,
+        sleeve_ids: Sequence[str] = (),
+        account_ids: Sequence[str] = (),
+        basis: str = "market",
     ) -> List[Day]:
         """The day-by-day series for a set of sleeves or a set of accounts.
 
         A single member is read as stored. Several are added together per day
         and the day's return worked out again on the sums: a member that has
         not started yet simply adds nothing.
+
+        On the ``realized`` basis every holding is carried at cost, so values
+        and returns leave unrealised gains out: see ``BASES``.
         """
+        if basis not in BASES:
+            raise ValueError(f"basis must be one of {', '.join(BASES)}")
+        realized = basis == "realized"
         rows = (
             self._query(sleeve_ids, account_ids)
             .order_by(DailyValuation.as_of_date)
@@ -124,11 +142,26 @@ class PerformanceStatsService:
             day.provisional = False
             day.factor = None
             present = set()
+            # What a member arriving today brought with it. An account's first
+            # row can open on a balance it already held (cash from before the
+            # record starts), which is not a gain made on its first day.
+            carried_in = ZERO
             for row in rows_by_date[current]:
                 member = row.sleeve_id or row.account_id
                 present.add(member)
-                last_total[member] = Decimal(str(row.total_value))
-                day.securities += Decimal(str(row.securities_value))
+                securities = Decimal(str(row.securities_value))
+                total = Decimal(str(row.total_value))
+                if realized and row.cost_value is not None:
+                    # Carried at cost: the gain not yet taken drops out.
+                    cost = Decimal(str(row.cost_value))
+                    total += cost - securities
+                    securities = cost
+                if member not in last_total:
+                    carried_in += total - (
+                        Decimal(str(row.flow_in or 0)) - Decimal(str(row.flow_out or 0))
+                    )
+                last_total[member] = total
+                day.securities += securities
                 if row.cash_value is not None:
                     day.cash = (day.cash or ZERO) + Decimal(str(row.cash_value))
                 day.flow_in += Decimal(str(row.flow_in or 0))
@@ -137,7 +170,7 @@ class PerformanceStatsService:
                 day.unpriced += Decimal(str(row.unpriced_value or 0))
                 day.observed = day.observed and row.basis == "observed"
                 day.provisional = day.provisional or bool(row.is_provisional)
-                if single:
+                if single and not realized:
                     day.factor = (
                         Decimal(str(row.return_factor))
                         if row.return_factor is not None
@@ -146,9 +179,10 @@ class PerformanceStatsService:
             # A member with no row today (its history ended earlier, or a gap)
             # is carried at its last known value so the total does not drop.
             day.total = sum(last_total.values(), ZERO)
-            if not single:
-                day.factor = dietz_factor(
-                    previous_total, day.total, day.flow_in, day.flow_out
+            if not single or realized:
+                measure = realized_factor if realized else dietz_factor
+                day.factor = measure(
+                    previous_total + carried_in, day.total, day.flow_in, day.flow_out
                 )
             previous_total = day.total
             by_date[current] = day

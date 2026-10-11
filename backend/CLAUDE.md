@@ -153,7 +153,9 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   value or returns, so splits are applied. Never mutate a stored trade for a split.
 - **Webull closes are adjusted** (splits and dividends). Never multiply a past adjusted close by
   a share count directly; value through the build service's trade-price anchoring.
-- **One daily-return formula:** `performance_build_service.dietz_factor`.
+- **One daily-return formula per basis:** `dietz_factor` at market, `realized_factor` at cost
+  (both in `performance_build_service.py`). The realised basis is a way of *reading* the same
+  rows (`daily_valuation.cost_value` in place of `securities_value`), never a second table.
 - Existing performance endpoints read from the daily record when it exists and fall back to
   `TWRCalculationService.growth_at` / `MWRCalculationService.calculate_mwr` (from trades) when it
   does not. Keep both paths returning the same response shape.

@@ -90,6 +90,8 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `SleeveFilter` | Dropdown in the performance headline that re-scopes the page to one sleeve or back to all; sets `ScopeContext`, holds no state of its own |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
 
+The headline card is at market value. The returns chart, monthly grid and period table are on the **realised basis** (unrealised gains left out): every call for them passes `basis: PERIOD_BASIS` from `src/api/endpoints/performance.ts`. Change the constant, not individual calls.
+
 ### Features (`src/features/`)
 
 Each feature directory contains its page component(s). Implemented:

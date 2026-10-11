@@ -68,6 +68,23 @@ def dietz_factor(
     return None
 
 
+def realized_factor(
+    start_value: Decimal, end_value: Decimal, flow_in: Decimal, flow_out: Decimal
+) -> Optional[Decimal]:
+    """1 + the day's return when holdings are carried at cost.
+
+    Money in counts from the start of the day and money out at its end:
+    ``(end + out) / (start + in)``. At cost, a gain appears at the very moment
+    its position is sold, which is also the moment the proceeds leave a sleeve.
+    Weighting that outflow at mid-day would measure the gain against half the
+    capital that earned it.
+    """
+    invested = start_value + flow_in
+    if invested <= 0:
+        return None
+    return (end_value + flow_out) / invested
+
+
 def last_market_day(today: Optional[date] = None) -> date:
     """The most recent weekday on or before ``today``."""
     day = today or date.today()
@@ -99,12 +116,40 @@ class _Series:
 
 
 class _Holding:
-    __slots__ = ("quantity", "scale", "last_price")
+    __slots__ = ("quantity", "scale", "last_price", "longs", "shorts", "cost")
 
     def __init__(self):
         self.quantity = ZERO
         self.scale: Optional[Decimal] = None
         self.last_price = ZERO
+        # Open lots, oldest first, as [quantity, unit value]: unit cost for a
+        # long lot, unit proceeds for a short one. As in
+        # ``PortfolioCalculationService._fifo_positions``.
+        self.longs: List[list] = []
+        self.shorts: List[list] = []
+        # Cost of what is open: long lots at cost, less short lots' proceeds.
+        self.cost = ZERO
+
+    def trade(self, action: str, quantity: Decimal, price: Decimal, commission) -> None:
+        """Apply a trade to the lots, first in first out, and update ``cost``."""
+        per_share = commission / quantity if quantity else ZERO
+        remaining = quantity
+        if action == "BUY":
+            closing, opening, unit = self.shorts, self.longs, price + per_share
+        else:
+            closing, opening, unit = self.longs, self.shorts, price - per_share
+        while remaining > 0 and closing:
+            lot = closing[0]
+            matched = min(remaining, lot[0])
+            lot[0] -= matched
+            remaining -= matched
+            if lot[0] <= 0:
+                closing.pop(0)
+        if remaining > 0:
+            opening.append([remaining, unit])
+        self.cost = sum((q * u for q, u in self.longs), ZERO) - sum(
+            (q * u for q, u in self.shorts), ZERO
+        )
 
 
 class PerformanceBuildService:
@@ -201,6 +246,9 @@ class PerformanceBuildService:
                 else:
                     holding.quantity -= trade.quantity
                     flows_out[trade.sleeve_id] += gross - trade.commission
+                holding.trade(
+                    trade.action, trade.quantity, trade.price, trade.commission
+                )
                 holding.last_price = trade.price
                 close = series[trade.symbol].on(day) if trade.symbol in series else None
                 at_market = (
@@ -222,6 +270,7 @@ class PerformanceBuildService:
 
             securities = {sid: ZERO for sid in sleeve_ids}
             unpriced = {sid: ZERO for sid in sleeve_ids}
+            cost = {sid: ZERO for sid in sleeve_ids}
             # What our trades say is held today: symbol -> (quantity, price, sleeve).
             derived: Dict[str, Tuple[Decimal, Decimal, str]] = {}
             for (sleeve_id, symbol), holding in holdings.items():
@@ -237,6 +286,7 @@ class PerformanceBuildService:
                     price = holding.last_price
                     unpriced[sleeve_id] += abs(holding.quantity * price)
                 securities[sleeve_id] += holding.quantity * price
+                cost[sleeve_id] += holding.cost
                 derived[symbol] = (holding.quantity, price, sleeve_id)
 
             provisional = provisional_after is not None and day > provisional_after
@@ -249,6 +299,12 @@ class PerformanceBuildService:
                 implied = self._implied_flows(
                     captured[day], captured.get(previous_day) or derived, sleeve_ids
                 )
+                # What the brokerage holds beyond our trades was paid for, though
+                # the purchase has not reached us: carry it at today's value so
+                # the cost of what is open does not fall short by it.
+                unseen = self._implied_flows(captured[day], derived, sleeve_ids)
+                for sleeve_id in sleeve_ids:
+                    cost[sleeve_id] += unseen[sleeve_id]
 
             for sleeve_id in sleeve_ids:
                 # Income leaves a sleeve like sale proceeds; a net fee is paid in.
@@ -271,6 +327,7 @@ class PerformanceBuildService:
                     {"sleeve_id": sleeve_id},
                     day,
                     securities[sleeve_id],
+                    cost[sleeve_id],
                     None,
                     flow_in,
                     flow_out,
@@ -311,6 +368,7 @@ class PerformanceBuildService:
                 {"account_id": account_id},
                 day,
                 sum(securities.values(), ZERO),
+                sum(cost.values(), ZERO),
                 cash,
                 account_in,
                 account_out,
@@ -335,6 +393,7 @@ class PerformanceBuildService:
         owner: dict,
         day: date,
         securities: Decimal,
+        cost: Decimal,
         cash: Optional[Decimal],
         flow_in: Decimal,
         flow_out: Decimal,
@@ -352,6 +411,8 @@ class PerformanceBuildService:
         flow_out = flow_out.quantize(CENT)
         if observed_row is not None:
             total = Decimal(str(observed_row.total_value))
+            # What was open had a cost whatever the brokerage valued it at.
+            observed_row.cost_value = cost.quantize(CENT)
             observed_row.flow_in = flow_in
             observed_row.flow_out = flow_out
             observed_row.return_factor = dietz_factor(
@@ -370,6 +431,7 @@ class PerformanceBuildService:
                 "account_id": owner.get("account_id"),
                 "as_of_date": day,
                 "securities_value": securities,
+                "cost_value": cost.quantize(CENT),
                 "cash_value": cash,
                 "total_value": total,
                 "flow_in": flow_in,

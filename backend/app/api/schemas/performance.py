@@ -130,6 +130,8 @@ class PeriodsResponse(BaseModel):
     name: Optional[str] = None
     grain: str
     benchmark: Optional[str] = None
+    # market | realized — how holdings were valued; see the periods endpoints.
+    basis: str = "market"
     periods: List[PeriodPerformance]
 
 

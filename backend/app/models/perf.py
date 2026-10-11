@@ -106,6 +106,10 @@ class DailyValuation(BaseModel):
     account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"))
     as_of_date = Column(Date, nullable=False)
     securities_value = Column(Numeric(18, 2), nullable=False)
+    # What the positions open at the day's close had cost (first-in-first-out
+    # lots; a short counts as the proceeds received, negative). Valuing at
+    # this instead of at market gives returns on a realised basis.
+    cost_value = Column(Numeric(18, 2))
     # Account rows only; NULL where cash is not tracked.
     cash_value = Column(Numeric(18, 2))
     total_value = Column(Numeric(18, 2), nullable=False)
