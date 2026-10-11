@@ -194,6 +194,12 @@ class PerformanceService:
         valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
         timeseries = self.portfolio.value_series(sleeve_ids, prices)
 
+        # The chart's running cost is an average-cost estimate; the headline
+        # uses exact lots. End the chart on the headline's figure so the gap at
+        # the last point is the unrealised gain shown above it.
+        if timeseries and to_present:
+            timeseries[-1]["cost_basis"] = valued.get("total_cost_basis", 0.0)
+
         # With cash known, every point of the chart is securities plus the
         # cash held that day. Cash is worth what it cost, so it joins both
         # lines and the gap between them stays the unrealised gain.

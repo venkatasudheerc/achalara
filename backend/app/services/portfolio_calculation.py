@@ -490,6 +490,11 @@ class PortfolioCalculationService:
                 total_value += entry["qty"] * Decimal(str(price))
                 if entry["qty"] > 0:
                     total_cost += entry["cost"]
+                else:
+                    # A short's basis is the proceeds received, which this
+                    # running book does not keep; its last traded value stands
+                    # in, so the short adds no gain or loss to the gap.
+                    total_cost += entry["qty"] * entry["last_price"]
 
             series.append(
                 {
