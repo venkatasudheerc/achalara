@@ -4,7 +4,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAccount, useAccountPositions } from '@/hooks/useAccounts'
 import { useSleeves, useCreateSleeve } from '@/hooks/useSleeves'
 import { useStrategies } from '@/hooks/useStrategies'
-import { useScope } from '@/context/ScopeContext'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
+import { useClient } from '@/hooks/useClients'
 import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
@@ -23,6 +24,11 @@ export function AccountDetailPage() {
   const { data: positions } = useAccountPositions(clientId!, accountId!)
   const { data: strategies } = useStrategies()
   const createSleeve = useCreateSleeve()
+  const { data: client } = useClient(clientId!)
+  useScopeFollowsPage(
+    client && { id: client.id, name: client.name },
+    account && { id: account.id, name: account.name },
+  )
 
   const [showSleeveForm, setShowSleeveForm] = useState(false)
   const [strategyId, setStrategyId] = useState('')

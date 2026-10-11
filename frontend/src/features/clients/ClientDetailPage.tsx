@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClient, useClientPositions, useClientTrades } from '@/hooks/useClients'
 import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
-import { useScope } from '@/context/ScopeContext'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
 import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
@@ -29,6 +29,7 @@ export function ClientDetailPage() {
   const [accNum, setAccNum] = useState('')
   const [formError, setFormError] = useState('')
   const createAccount = useCreateAccount()
+  useScopeFollowsPage(client && { id: client.id, name: client.name })
 
   if (isLoading) return <SkeletonCard />
   if (isError || !client) return <ErrorState message="Client not found." onRetry={() => refetch()} />

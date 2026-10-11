@@ -40,6 +40,8 @@ Two React contexts drive all data-fetching:
 - `ScopeContext` — the currently selected `{ clientId?, accountId?, sleeveId? }`. Changing scope invalidates performance queries.
 - `DateRangeContext` — `{ startDate, endDate }` fed as query params to all performance endpoints.
 
+Detail pages (client, account, sleeve) call `useScopeFollowsPage(...)` so the scope, and the top-bar breadcrumb that displays it, always names the entity on screen rather than whatever was last sent to Performance.
+
 Both live in `src/context/`. Every performance screen reads from these; never accept scope or dates as local state.
 
 ### Routing

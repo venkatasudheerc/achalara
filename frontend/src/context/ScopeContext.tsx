@@ -68,6 +68,42 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   )
 }
 
+interface PageEntity { id: string; name: string }
+
+/**
+ * Keep the scope in step with the detail page being viewed.
+ *
+ * The scope drives the breadcrumb in the top bar and the Performance page, so
+ * without this it still names whatever was last sent to Performance while a
+ * different client, account or sleeve is on screen. Pass the entities the page
+ * shows, outermost first; each is applied once its data has loaded.
+ */
+export function useScopeFollowsPage(
+  client: PageEntity | undefined,
+  account?: PageEntity | undefined,
+  sleeve?: PageEntity | undefined,
+  depth: 'client' | 'account' | 'sleeve' = sleeve ? 'sleeve' : account ? 'account' : 'client',
+) {
+  const { scope, setClient, setAccount, setSleeve } = useScope()
+  const ready =
+    !!client && (depth === 'client' || !!account) && (depth !== 'sleeve' || !!sleeve)
+  const matches =
+    ready &&
+    scope.level === depth &&
+    scope.clientId === client.id && scope.clientName === client.name &&
+    (depth === 'client' || (scope.accountId === account!.id && scope.accountName === account!.name)) &&
+    (depth !== 'sleeve' || (scope.sleeveId === sleeve!.id && scope.sleeveName === sleeve!.name))
+
+  useEffect(() => {
+    if (!ready || matches) return
+    setClient(client!.id, client!.name)
+    if (depth !== 'client') setAccount(account!.id, account!.name)
+    if (depth === 'sleeve') setSleeve(sleeve!.id, sleeve!.name)
+    // The setters are recreated each render; the ids and names are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, matches, depth, client?.id, client?.name, account?.id, account?.name, sleeve?.id, sleeve?.name])
+}
+
 export function useScope() {
   const ctx = useContext(ScopeContext)
   if (!ctx) throw new Error('useScope must be used within ScopeProvider')

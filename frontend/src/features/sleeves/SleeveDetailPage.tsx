@@ -2,7 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useSleeve, useSleeves, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useSleeveCashActivities, useFetchMarketPrices } from '@/hooks/useSleeves'
-import { useScope } from '@/context/ScopeContext'
+import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
+import { useClient } from '@/hooks/useClients'
+import { useAccount } from '@/hooks/useAccounts'
 import { useCreateTrade, useReassignTrades } from '@/hooks/useTrades'
 import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -31,6 +33,13 @@ export function SleeveDetailPage() {
   const fetchPrices = useFetchMarketPrices()
   const createTrade = useCreateTrade()
   const reassign = useReassignTrades()
+  const { data: client } = useClient(clientId!)
+  const { data: account } = useAccount(clientId!, accountId!)
+  useScopeFollowsPage(
+    client && { id: client.id, name: client.name },
+    account && { id: account.id, name: account.name },
+    sleeve && { id: sleeve.id, name: sleeve.strategy_name ?? sleeve.strategy_id },
+  )
 
   const [activeTab, setActiveTab] = useState<'positions' | 'closed' | 'trades' | 'income'>('positions')
   const [moveSymbol, setMoveSymbol] = useState('')
