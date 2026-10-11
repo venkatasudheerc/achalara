@@ -38,7 +38,9 @@ class TestSleevePerformance:
         assert data["level"] == "sleeve"
         assert data["id"] == sleeve_id
         assert data["summary"]["trades_count"] == 1
-        assert len(data["timeseries"]) == 1
+        # One point per market day from the first trade.
+        assert data["timeseries"][0]["date"] == "2024-01-15"
+        assert len(data["timeseries"]) > 1
 
     def test_get_performance_with_date_range(self, client):
         client_id, account_id, sleeve_id = create_test_strategy(

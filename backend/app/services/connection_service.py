@@ -853,8 +853,12 @@ class ConnectionService:
             )
             if ba is None or ba.status != "mapped":
                 return "ignored"
-            self.reconcile(ba.id)
-            return "reconciled"
+            # The brokerage's holdings have just been refreshed: the moment
+            # to record the day.
+            from app.services.daily_capture_service import DailyCaptureService
+
+            DailyCaptureService(self.db, self).capture(ba.id)
+            return "captured"
 
         # CONNECTION_ADDED lands here too: a new login has no client yet, so it
         # is picked up when that client runs discovery.

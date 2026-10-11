@@ -29,7 +29,9 @@ from sqlalchemy.orm import Session
 
 from app.models.brokerage_connection import BrokerageAccount, BrokerageActivity
 from app.models.cash_activity import CashActivity
-from app.models.perf import DailyValuation
+from app.connectors.models import is_option_symbol
+from app.models.perf import DailyHolding, DailyValuation
+from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.cash_activity_service import CashActivityService
@@ -48,14 +50,22 @@ def dietz_factor(
 ) -> Optional[Decimal]:
     """1 + the day's return, Modified Dietz with flows at mid-day.
 
-    ``(end - start - net) / (start + net / 2)``. None when that base is not
-    positive: with no capital at work there is no return to speak of.
+    ``(end - start - net) / (start + net / 2)``.
+
+    That base can fall to nothing on a day when more is taken out than was
+    there at the start plus half of what came in — a sleeve that buys and
+    sells heavily within the day. The day is then measured with money in
+    counted from its start and money out at its end, which always has a
+    positive base while anything was invested. None only when nothing was.
     """
     net = flow_in - flow_out
     base = start_value + net / 2
-    if base <= 0:
-        return None
-    return 1 + (end_value - start_value - net) / base
+    if base > 0:
+        return 1 + (end_value - start_value - net) / base
+    invested = start_value + flow_in
+    if invested > 0:
+        return (end_value + flow_out) / invested
+    return None
 
 
 def last_market_day(today: Optional[date] = None) -> date:
@@ -107,7 +117,9 @@ class PerformanceBuildService:
     def rebuild_all(self) -> Dict[str, int]:
         """Rebuild every account that has a sleeve. Returns rows written each."""
         account_ids = [row[0] for row in self.db.query(Sleeve.account_id).distinct()]
-        return {account_id: self.rebuild_account(account_id) for account_id in account_ids}
+        return {
+            account_id: self.rebuild_account(account_id) for account_id in account_ids
+        }
 
     def rebuild_account(self, account_id: str, today: Optional[date] = None) -> int:
         """Rebuild one account and its sleeves. Returns the rows written."""
@@ -150,6 +162,16 @@ class PerformanceBuildService:
             for sleeve_id in sleeve_ids
         }
         provisional_after = self._transactions_through(account_id)
+        deliveries = self._assignment_deliveries(trades)
+        captured = self._captured_holdings(account_id)
+        on_file = {
+            row.symbol: Decimal(str(row.current_price))
+            for row in self.db.query(Position).filter(
+                Position.sleeve_id.in_(sleeve_ids),
+                Position.status == "OPEN",
+                Position.current_price.isnot(None),
+            )
+        }
 
         holdings: Dict[Tuple[str, str], _Holding] = {}
         previous_total: Dict[str, Decimal] = {sid: ZERO for sid in sleeve_ids}
@@ -169,7 +191,9 @@ class PerformanceBuildService:
             while trade_index < len(trades) and trades[trade_index].trade_date <= day:
                 trade = trades[trade_index]
                 trade_index += 1
-                holding = holdings.setdefault((trade.sleeve_id, trade.symbol), _Holding())
+                holding = holdings.setdefault(
+                    (trade.sleeve_id, trade.symbol), _Holding()
+                )
                 gross = trade.quantity * trade.price
                 if trade.action == "BUY":
                     holding.quantity += trade.quantity
@@ -179,8 +203,14 @@ class PerformanceBuildService:
                     flows_out[trade.sleeve_id] += gross - trade.commission
                 holding.last_price = trade.price
                 close = series[trade.symbol].on(day) if trade.symbol in series else None
-                # Tie the adjusted series to the price that really traded.
-                holding.scale = trade.price / close if close and trade.price > 0 else None
+                at_market = (
+                    trade.trade_date,
+                    trade.price,
+                    trade.quantity,
+                ) not in deliveries
+                holding.scale = self._anchor(
+                    holding.scale, trade.price, close, at_market
+                )
 
             for paid_on, sleeve_id, symbol, amount in dividends:
                 if not previous_day < paid_on <= day:
@@ -192,18 +222,33 @@ class PerformanceBuildService:
 
             securities = {sid: ZERO for sid in sleeve_ids}
             unpriced = {sid: ZERO for sid in sleeve_ids}
+            # What our trades say is held today: symbol -> (quantity, price, sleeve).
+            derived: Dict[str, Tuple[Decimal, Decimal, str]] = {}
             for (sleeve_id, symbol), holding in holdings.items():
                 if holding.quantity == 0:
                     continue
                 close = series[symbol].on(day) if symbol in series else None
                 if close is not None and holding.scale is not None:
-                    worth = holding.quantity * close * holding.scale
+                    price = close * holding.scale
+                elif day == days[-1] and symbol in on_file:
+                    # No history for it, but a current price is on file.
+                    price = on_file[symbol]
                 else:
-                    worth = holding.quantity * holding.last_price
-                    unpriced[sleeve_id] += abs(worth)
-                securities[sleeve_id] += worth
+                    price = holding.last_price
+                    unpriced[sleeve_id] += abs(holding.quantity * price)
+                securities[sleeve_id] += holding.quantity * price
+                derived[symbol] = (holding.quantity, price, sleeve_id)
 
             provisional = provisional_after is not None and day > provisional_after
+
+            # A captured day whose trades have not all arrived: a sleeve's
+            # captured value already reflects them, so until they do, the
+            # money that moved is read off the change in what was held.
+            implied = None
+            if provisional and day in captured:
+                implied = self._implied_flows(
+                    captured[day], captured.get(previous_day) or derived, sleeve_ids
+                )
 
             for sleeve_id in sleeve_ids:
                 # Income leaves a sleeve like sale proceeds; a net fee is paid in.
@@ -217,6 +262,9 @@ class PerformanceBuildService:
                 )
                 flow_in = flows_in[sleeve_id] + max(-earned, ZERO)
                 flow_out = flows_out[sleeve_id] + max(earned, ZERO)
+                if implied is not None:
+                    flow_in = max(implied[sleeve_id], ZERO)
+                    flow_out = max(-implied[sleeve_id], ZERO)
                 previous_total[sleeve_id] = self._write(
                     new_rows,
                     observed.get((sleeve_id, day)),
@@ -336,6 +384,85 @@ class PerformanceBuildService:
         )
         return total
 
+    @staticmethod
+    def _anchor(
+        scale: Optional[Decimal],
+        traded_at: Decimal,
+        close: Optional[Decimal],
+        at_market: bool,
+    ) -> Optional[Decimal]:
+        """The scale tying the adjusted price series to a holding's real price.
+
+        Normally the price just traded over that day's adjusted close. That
+        ratio absorbs whatever the series has been adjusted for since — later
+        dividends, and splits that happened after the position was closed and
+        so were never reported to us — which is why it is taken from the trade
+        and not assumed.
+
+        A trade that did not happen at the market says nothing about what the
+        security is worth, so it leaves the scale alone (or at 1 if there is
+        none yet). See ``_assignment_deliveries``.
+        """
+        if not close:
+            return None
+        if at_market and traded_at > 0:
+            return traded_at / close
+        return scale if scale is not None else Decimal(1)
+
+    @staticmethod
+    def _assignment_deliveries(trades) -> set:
+        """Share trades that were deliveries on an assigned option.
+
+        When an option is assigned the shares change hands at its strike, not
+        at the market: 1,000 shares at 109 on a day they traded near 66. The
+        brokerage reports the delivery as an ordinary buy or sell, sometimes
+        under a different ticker from the option's, so it is recognised by what
+        it must match: the day, the strike as its price, and a hundred shares
+        per contract. Returns ``(date, price, quantity)`` keys.
+        """
+        deliveries = set()
+        for trade in trades:
+            if trade.price != 0 or not is_option_symbol(trade.symbol):
+                continue
+            strike = Decimal(trade.symbol[-8:]) / 1000
+            deliveries.add((trade.trade_date, strike, trade.quantity * 100))
+        return deliveries
+
+    @staticmethod
+    def _implied_flows(today, before, sleeve_ids) -> Dict[str, Decimal]:
+        """Money each sleeve put into securities, read from what it holds.
+
+        ``today`` and ``before`` map symbol to (quantity, price, sleeve). More
+        of a security than before is money in at today's price; less is money
+        out. Options and name-only stand-ins are left out: the brokerage's
+        holdings never list them, so their absence says nothing.
+        """
+        flows = {sleeve_id: ZERO for sleeve_id in sleeve_ids}
+        for symbol in set(today) | set(before):
+            if symbol.startswith("~") or is_option_symbol(symbol):
+                continue
+            now_quantity, now_price, now_sleeve = today.get(symbol, (ZERO, None, None))
+            was_quantity, was_price, was_sleeve = before.get(symbol, (ZERO, None, None))
+            price = now_price or was_price
+            sleeve_id = now_sleeve or was_sleeve
+            if price is None or sleeve_id not in flows:
+                continue
+            flows[sleeve_id] += (now_quantity - was_quantity) * price
+        return flows
+
+    def _captured_holdings(self, account_id: str):
+        """Captured holdings by day: symbol -> (quantity, price, sleeve)."""
+        by_day: Dict[date, Dict[str, Tuple[Decimal, Optional[Decimal], str]]] = {}
+        for row in self.db.query(DailyHolding).filter(
+            DailyHolding.account_id == account_id
+        ):
+            by_day.setdefault(row.as_of_date, {})[row.symbol] = (
+                Decimal(str(row.quantity)),
+                Decimal(str(row.price)) if row.price is not None else None,
+                row.sleeve_id,
+            )
+        return by_day
+
     def _observed_rows(self, account_id: str, sleeve_ids: List[str]):
         rows = (
             self.db.query(DailyValuation)
@@ -404,4 +531,6 @@ def rebuild_for_sleeves(db: Session, sleeve_ids) -> None:
             service.rebuild_account(account_id)
         except Exception as exc:  # noqa: BLE001
             db.rollback()
-            logger.error("Performance rebuild failed for account %s: %s", account_id, exc)
+            logger.error(
+                "Performance rebuild failed for account %s: %s", account_id, exc
+            )

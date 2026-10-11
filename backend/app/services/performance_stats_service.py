@@ -37,8 +37,17 @@ class Day:
     """One day of a sleeve, an account, or several of either added together."""
 
     __slots__ = (
-        "date", "total", "securities", "cash", "flow_in", "flow_out", "fees",
-        "factor", "unpriced", "observed", "provisional",
+        "date",
+        "total",
+        "securities",
+        "cash",
+        "flow_in",
+        "flow_out",
+        "fees",
+        "factor",
+        "unpriced",
+        "observed",
+        "provisional",
     )
 
     @property
@@ -46,7 +55,9 @@ class Day:
         return self.flow_in - self.flow_out
 
 
-def _annualise(period_return: Optional[float], start: date, end: date) -> Optional[float]:
+def _annualise(
+    period_return: Optional[float], start: date, end: date
+) -> Optional[float]:
     """Annualise a cumulative return when its period is longer than a year."""
     if period_return is None:
         return None
@@ -86,7 +97,11 @@ class PerformanceStatsService:
         and the day's return worked out again on the sums: a member that has
         not started yet simply adds nothing.
         """
-        rows = self._query(sleeve_ids, account_ids).order_by(DailyValuation.as_of_date).all()
+        rows = (
+            self._query(sleeve_ids, account_ids)
+            .order_by(DailyValuation.as_of_date)
+            .all()
+        )
         members = {row.sleeve_id or row.account_id for row in rows}
         single = len(members) <= 1
 
@@ -242,7 +257,9 @@ class PerformanceStatsService:
             closing = last.total
             net_flow = sum((d.net_flow for d in group), ZERO)
 
-            if (start is None or last.date >= start) and (end is None or first.date <= end):
+            if (start is None or last.date >= start) and (
+                end is None or first.date <= end
+            ):
                 benchmark_return = (
                     self._benchmark_return(closes, first.date, last.date)
                     if closes
@@ -254,7 +271,9 @@ class PerformanceStatsService:
                         "period_end": last.date,
                         "opening_value": float(opening),
                         "closing_value": float(closing),
-                        "cash_value": float(last.cash) if last.cash is not None else None,
+                        "cash_value": float(last.cash)
+                        if last.cash is not None
+                        else None,
                         "net_flow": float(net_flow),
                         "gain": float(closing - opening - net_flow),
                         "twr_pct": twr,
@@ -414,7 +433,9 @@ class PerformanceStatsService:
                     else None
                 ),
                 "sortino": (
-                    annualised / downside if annualised is not None and downside else None
+                    annualised / downside
+                    if annualised is not None and downside
+                    else None
                 ),
                 "max_drawdown": deepest["drawdown"] if deepest else None,
                 "max_drawdown_date": deepest["date"] if deepest else None,
@@ -455,6 +476,7 @@ class PerformanceStatsService:
                     if series[-1].securities
                     else 0.0
                 ),
+                "unpriced_value": float(series[-1].unpriced),
             },
         }
 

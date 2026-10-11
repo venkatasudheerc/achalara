@@ -62,7 +62,9 @@ class PriceHistoryService:
     # What is needed
     # ------------------------------------------------------------------
 
-    def needed_spans(self, today: Optional[date] = None) -> Dict[str, Tuple[date, date]]:
+    def needed_spans(
+        self, today: Optional[date] = None
+    ) -> Dict[str, Tuple[date, date]]:
         """For each security ever held, the span of days a close is needed for.
 
         From shortly before its first trade to shortly after its last, or to

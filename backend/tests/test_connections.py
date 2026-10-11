@@ -23,6 +23,8 @@ from app.models.brokerage_connection import (
     BrokerageConnection,
 )
 from app.models.cash_activity import CashActivity
+from app.models.perf import DailyValuation
+from app.services.performance_build_service import rebuild_for_sleeves
 from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.strategy import Strategy
@@ -1164,6 +1166,10 @@ def _priced(db, sleeve_id, price):
         {"current_price": Decimal(price)}
     )
     db.commit()
+    # Where a daily record exists it is what performance reads, so bring it
+    # up to the new price. (A sleeve with no rows is calculated from trades.)
+    if db.query(DailyValuation).filter(DailyValuation.sleeve_id == sleeve_id).first():
+        rebuild_for_sleeves(db, [sleeve_id])
 
 
 def test_headline_weekly_and_monthly_returns_agree(db, client, monkeypatch):
@@ -1414,10 +1420,20 @@ def test_chart_points_carry_the_money_put_in_so_a_benchmark_can_match_it(
     account = service.performance([sleeve_id], cash_account_ids=[ba.account_id])
     sleeve = service.performance([sleeve_id])
 
+    def moved(result):
+        return [
+            (str(p["date"]), p["net_flow"]) for p in result["timeseries"] if p["net_flow"]
+        ]
+
     # For the account, only deposits and withdrawals are money in.
-    assert [p["net_flow"] for p in account["timeseries"]] == [10000.0, 3000.0]
+    assert moved(account) == [
+        ("2026-01-05", 10000.0),
+        ("2026-02-10", 5000.0),
+        ("2026-03-02", -2000.0),
+    ]
+    assert account["timeseries"][-1]["net_contributions"] == 13000.0
     # For the sleeve alone, buying is.
-    assert [p["net_flow"] for p in sleeve["timeseries"]] == [4000.0, 1000.0]
+    assert moved(sleeve) == [("2026-01-05", 4000.0), ("2026-03-02", 1000.0)]
 
 
 def test_account_views_with_cash_agree_with_each_other(
@@ -1483,6 +1499,7 @@ def test_todays_total_rests_on_the_brokerages_current_holdings(
     }
     report = ConnectionService(db).reconcile(ba.id)
     assert report["holdings_adjustment"] == 3000.0
+    rebuild_for_sleeves(db, [ba.default_sleeve_id])
 
     result = PerformanceService(db).performance(
         [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
@@ -1495,7 +1512,7 @@ def test_todays_total_rests_on_the_brokerages_current_holdings(
     assert summary["holdings_adjustment"] == 3000.0
     assert summary["twr_pct"] == pytest.approx(0.0, abs=1e-9)
     assert summary["mwr_pct"] == pytest.approx(0.0, abs=1e-6)
-    assert [p["value"] for p in result["timeseries"]] == [pytest.approx(10000.0)]
+    assert {round(p["value"], 2) for p in result["timeseries"]} == {10000.0}
 
 
 def test_full_history_sync_reloads_from_the_first_day_and_adds_only_what_is_new(
@@ -1531,18 +1548,19 @@ def test_options_are_repriced_to_what_the_brokerages_total_implies(
         cash_now=12000.0,
     )
     sdk.total = 7000.0
-    report = ConnectionService(db).reconcile(ba.id)
+    from app.services.daily_capture_service import DailyCaptureService
+
+    DailyCaptureService(db).capture(ba.id)
 
     # Implied option value 7,000 - 12,000 = -5,000, against -2,000 on our books.
-    assert report["valuation_adjustment"] == -3000.0
+    db.refresh(ba)
+    assert ba.reconciliation["valuation_adjustment"] == -3000.0
     result = PerformanceService(db).performance(
         [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
     )
     summary = result["summary"]
     # Today's total is the brokerage's, and the 3,000 lost shows as return.
-    assert summary["total_market_value"] + summary["cash_balance"] + summary[
-        "holdings_adjustment"
-    ] == pytest.approx(7000.0)
+    assert summary["total_value"] == pytest.approx(7000.0)
     assert summary["twr_pct"] == pytest.approx(-0.30)
     assert result["timeseries"][-1]["value"] == pytest.approx(7000.0)
 

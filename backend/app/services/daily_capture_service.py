@@ -110,7 +110,9 @@ class DailyCaptureService:
 
         sleeve_ids = [
             row[0]
-            for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == ba.account_id)
+            for row in self.db.query(Sleeve.id).filter(
+                Sleeve.account_id == ba.account_id
+            )
         ]
         placed = self._placements(sleeve_ids)
         routes = ba.sleeve_routes or {}
@@ -175,13 +177,24 @@ class DailyCaptureService:
             unpriced[options_sleeve] = unpriced.get(options_sleeve, ZERO) + abs(beyond)
 
         self._store_valuation(
-            {"account_id": ba.account_id}, day, securities, cash, reported_total, abs(beyond), now
+            {"account_id": ba.account_id},
+            day,
+            securities,
+            cash,
+            reported_total,
+            abs(beyond),
+            now,
         )
         for sleeve_id in sleeve_ids:
             value = by_sleeve.get(sleeve_id, ZERO)
             self._store_valuation(
-                {"sleeve_id": sleeve_id}, day, value, None, value,
-                unpriced.get(sleeve_id, ZERO), now,
+                {"sleeve_id": sleeve_id},
+                day,
+                value,
+                None,
+                value,
+                unpriced.get(sleeve_id, ZERO),
+                now,
             )
         self.db.commit()
 
@@ -215,7 +228,9 @@ class DailyCaptureService:
             placed.setdefault(symbol, sleeve_id)
         return placed
 
-    def _store_price(self, symbol: str, day: date, price: Decimal, now: datetime) -> None:
+    def _store_price(
+        self, symbol: str, day: date, price: Decimal, now: datetime
+    ) -> None:
         row = (
             self.db.query(DailyPrice)
             .filter(

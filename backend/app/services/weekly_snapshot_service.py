@@ -80,6 +80,9 @@ class WeeklySnapshotService:
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
         if not sleeve_ids:
             return []
+        stored = self._from_daily_rows(sleeve_ids, cash_account_ids, start_date, end_date)
+        if stored is not None:
+            return stored
         bounds = (
             self.db.query(func.min(Trade.trade_date), func.max(Trade.trade_date))
             .filter(Trade.sleeve_id.in_(sleeve_ids))
@@ -133,6 +136,51 @@ class WeeklySnapshotService:
                     "twr_cumul": (
                         round(point["twr"], 6) if point["twr"] is not None else None
                     ),
+                    "mwr_cumul": round(float(mwr), 6) if mwr is not None else None,
+                }
+            )
+        return result
+
+    def _from_daily_rows(self, sleeve_ids, cash_account_ids, start_date, end_date):
+        """The same series read from ``perf.daily_valuation``, one point a week.
+
+        None when the daily record has not been built for this set, in which
+        case the series is computed from trades.
+        """
+        from app.services.performance_stats_service import PerformanceStatsService
+
+        stats = PerformanceStatsService(self.db)
+        if cash_account_ids:
+            series = stats.daily(account_ids=cash_account_ids)
+        else:
+            series = stats.daily(sleeve_ids=sleeve_ids)
+        if not series:
+            return None
+
+        result = []
+        growth = 1.0
+        defined = True
+        for index, day in enumerate(series):
+            if day.factor is not None:
+                growth *= float(day.factor)
+            elif day.total != 0 or day.flow_in != 0:
+                defined = False
+            # The last market day of each week, and the latest day.
+            week_ends = (
+                index + 1 == len(series)
+                or series[index + 1].date.isocalendar()[:2] != day.date.isocalendar()[:2]
+            )
+            if not week_ends:
+                continue
+            if start_date and day.date < start_date:
+                continue
+            if end_date and day.date > end_date:
+                continue
+            mwr = stats._mwr(Decimal(0), series[: index + 1])
+            result.append(
+                {
+                    "date": day.date.isoformat(),
+                    "twr_cumul": round(growth - 1, 6) if defined else None,
                     "mwr_cumul": round(float(mwr), 6) if mwr is not None else None,
                 }
             )

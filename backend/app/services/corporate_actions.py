@@ -123,7 +123,9 @@ def record_splits(db: Session, brokerage_account_id: str) -> int:
     ]
     known = {
         (a.symbol, a.effective_date)
-        for a in db.query(CorporateAction).filter(CorporateAction.action_type == "SPLIT")
+        for a in db.query(CorporateAction).filter(
+            CorporateAction.action_type == "SPLIT"
+        )
     }
 
     recorded = 0

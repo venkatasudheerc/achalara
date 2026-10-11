@@ -27,6 +27,7 @@ from app.api.routes import (
     admin,
     benchmarks,
     connections,
+    performance,
 )
 
 # Configure logging
@@ -84,6 +85,7 @@ app.include_router(trades.router, prefix="/api/v1/trades", tags=["trades"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(benchmarks.router, prefix="/api/v1/benchmarks", tags=["benchmarks"])
 app.include_router(connections.router, prefix="/api/v1", tags=["connections"])
+app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 
 
 @app.get("/health")
