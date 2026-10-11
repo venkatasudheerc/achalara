@@ -21,7 +21,12 @@ export function formatPercent(value: number | null | undefined, decimals = 2): s
 
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
-  const d = new Date(dateStr)
+  // A bare date ("2026-06-08") is a calendar day, not an instant. Parsing it
+  // as UTC and printing it locally shows the day before in the Americas.
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  const d = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(dateStr)
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 

@@ -12,6 +12,9 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
 import { GainBadge } from '@/components/StatCard'
 import type { PositionResponse, ClosedPosition, TradeSummary, CashActivity } from '@/api/types'
 
+// The most the API returns in one request.
+const TRADES_PAGE = 1000
+
 export function SleeveDetailPage() {
   const { clientId, accountId, sleeveId } = useParams<{
     clientId: string; accountId: string; sleeveId: string
@@ -22,7 +25,7 @@ export function SleeveDetailPage() {
   const { data: sleeve, isLoading, isError, refetch } = useSleeve(clientId!, accountId!, sleeveId!)
   const { data: portfolioData } = useSleevePositions(clientId!, accountId!, sleeveId!)
   const { data: closedPositions } = useSleeveClosedPositions(clientId!, accountId!, sleeveId!)
-  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, 100)
+  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, TRADES_PAGE)
   const { data: cashActivities } = useSleeveCashActivities(clientId!, accountId!, sleeveId!)
   const { data: accountSleeves } = useSleeves(clientId!, accountId!)
   const fetchPrices = useFetchMarketPrices()
@@ -346,6 +349,11 @@ export function SleeveDetailPage() {
                   </button>
                   {moveMessage && <span className="text-stone">{moveMessage}</span>}
                 </form>
+              )}
+              {tradesData && tradesData.total > tradesData.trades.length && (
+                <p className="text-xs text-stone mb-3">
+                  Showing the {tradesData.trades.length} most recent of {tradesData.total} trades. Sorting applies to these.
+                </p>
               )}
               <DataTable
                 columns={tradeCols}

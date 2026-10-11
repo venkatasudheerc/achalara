@@ -345,6 +345,7 @@ def get_sleeve_trades(
     trades = (
         db.query(Trade)
         .filter(Trade.sleeve_id == sleeve_id)
+        .order_by(Trade.trade_date.desc(), Trade.id)
         .offset(skip)
         .limit(limit)
         .all()
