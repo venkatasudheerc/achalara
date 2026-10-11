@@ -125,13 +125,12 @@
 
 Original plan was a throwaway repo. Dropped after reading SnapTrade's live docs: the auth flow,
 endpoints, `UniversalActivity` shape, daily-batch freshness model, rate limits and webhook events
-are now documented in `app/connectors/SNAPTRADE_PLAN.md`, so the unknowns are narrow and
-Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
+were researched up front (what still holds is in `app/connectors/CONNECTORS.md` and the
+connector's docstrings), so the unknowns were narrow and Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
 addition rather than a bet.
 
 Replaced by: build the connector in this repo, exercise it against a real Vanguard account with a
-throwaway script in the scratchpad, then sanitize those payloads into CI fixtures. Execution order
-lives in `app/connectors/SNAPTRADE_BUILD_PLAN.md`.
+throwaway script in the scratchpad, then sanitize those payloads into CI fixtures.
 
 ### B4 — SnapTrade adapter (production, in main repo)
 

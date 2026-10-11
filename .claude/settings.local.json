@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(backend/venv/bin/pytest backend/tests -v --tb=no -q)"
-    ]
-  }
-}
