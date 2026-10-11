@@ -82,6 +82,11 @@
 - Tech debt: migrate Pydantic `class Config` → `model_config = ConfigDict(...)`.
 - Replace Postgres-only `DISTINCT ON` in `twr_calculation.py` for portability.
 - Exercise live Google Sheets sync end-to-end once a `SheetSyncConfig` is registered.
+- **Trade tables load a capped page and sort it in the browser.** The sleeve Trades tab shows
+  the 1,000 most recent trades and the client page the 100 most recent; sorting and the
+  move-symbol list only see those rows, so a sleeve with more (ETFs has 1,067) is displayed
+  incompletely. Fix with server-side sort and pagination on the trades endpoints
+  (`sort`/`order` params alongside `skip`/`limit`) and paging controls in `DataTable`.
 
 ## Phase — Bridge (universal brokerage connectivity)
 
