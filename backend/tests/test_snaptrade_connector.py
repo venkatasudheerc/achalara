@@ -235,10 +235,29 @@ def test_row_without_trade_date_is_skipped():
 def test_row_without_price_or_symbol_is_skipped():
     rows = [
         _activity(activity_id="a1", price=None),
-        _activity(activity_id="a2", symbol=""),
+        _activity(activity_id="a2", symbol="", description=""),
     ]
     connector = _connector([{"data": rows, "pagination": {"total": len(rows)}}])
     assert connector.fetch_transactions("c", ACCOUNT, credentials=CREDS) == []
+
+
+def test_trade_without_a_ticker_is_matched_by_the_securitys_name():
+    # Vanguard sends delisted and acquired names with no symbol at all.
+    def nameless(activity_id, type_, units):
+        row = _activity(
+            activity_id=activity_id,
+            type_=type_,
+            units=units,
+            description="ACTIVISION   BLIZZARD INC",
+        )
+        row["symbol"] = None
+        return row
+
+    page = {"data": [nameless("a1", "BUY", 53), nameless("a2", "SELL", -53)]}
+    buy, sell = _connector([page]).fetch_transactions("c", ACCOUNT, credentials=CREDS)
+
+    assert buy.symbol == sell.symbol == "~ACTIVISION BLIZZARD INC"
+    assert (buy.action, sell.action) == (TradeAction.BUY, TradeAction.SELL)
 
 
 def test_trades_are_returned_oldest_first():
@@ -455,10 +474,17 @@ def _vanguard_trades():
 
 def test_vanguard_maps_buys_sells_and_share_reinvestments_only():
     trades = _vanguard_trades()
-    # DIVIDEND, SWEEP IN, SPLIT, the Cash Plus REI and the unresolved-symbol
-    # BUY are all skipped; 7 of the 12 rows are trades.
-    assert len(trades) == 7
-    assert {t.symbol for t in trades} == {"USO", "FRDM", "VTI", "INTC", "MU"}
+    # DIVIDEND, SWEEP IN, SPLIT and the Cash Plus REI are not trades; 8 of
+    # the 12 rows are, including the BUY that came with a name but no ticker.
+    assert len(trades) == 8
+    assert {t.symbol for t in trades} == {
+        "USO",
+        "FRDM",
+        "VTI",
+        "INTC",
+        "MU",
+        "~WALGREENS BOOTS ALLIANCEINC",
+    }
 
 
 def test_vanguard_reinvestment_becomes_a_tagged_buy():
@@ -501,7 +527,7 @@ def _vanguard_batch():
 
 def test_activities_separate_cash_from_trades():
     batch = _vanguard_batch()
-    assert len(batch.trades) == 7
+    assert len(batch.trades) == 8
     (dividend,) = batch.cash
     assert dividend.type == "DIVIDEND"
     assert dividend.symbol == "FRDM"
@@ -511,7 +537,7 @@ def test_activities_separate_cash_from_trades():
 
 def test_activities_tally_every_row_left_out():
     batch = _vanguard_batch()
-    assert batch.skipped == {"sweep": 2, "incomplete": 1, "corporate_action": 1}
+    assert batch.skipped == {"sweep": 2, "corporate_action": 1}
     # Every fixture row is accounted for: ingested or counted as skipped.
     total = len(_fixture("vanguard_activities.json")["data"])
     assert len(batch.trades) + len(batch.cash) + sum(batch.skipped.values()) == total
@@ -725,10 +751,9 @@ def test_every_fetched_row_is_kept_verbatim_with_its_outcome():
     for raw in batch.raw:
         outcomes[raw.outcome] = outcomes.get(raw.outcome, 0) + 1
     assert outcomes == {
-        "trade": 7,
+        "trade": 8,
         "cash": 1,
         "skipped:sweep": 2,
-        "skipped:incomplete": 1,
         "skipped:corporate_action": 1,
     }
     split = next(r for r in batch.raw if r.type == "SPLIT")

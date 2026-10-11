@@ -155,6 +155,11 @@ class TWRCalculationService:
 
         growth = 1.0
         measured = False
+        # Set once the value at work has gone to nothing or below (a lone
+        # option expiring, shorts outweighing longs). Linking through such a
+        # period gives -100% for ever after, which says nothing useful, so no
+        # figure is quoted from then on.
+        undefined = False
         points: List[Dict] = []
         pending = list(checkpoints)
 
@@ -162,14 +167,14 @@ class TWRCalculationService:
             """Record every checkpoint that falls before the next flow day."""
             while pending and (until is None or pending[0] < until):
                 checkpoint = pending.pop(0)
-                twr = growth - 1.0 if measured else None
+                twr = growth - 1.0 if measured and not undefined else None
                 worth = previous_value
                 if to_present and not pending and until is None:
                     # Bring holdings from their last traded prices up to market.
                     worth = securities(prices) + previous_cash
                     if ledger is not None:
                         worth += ledger.mark
-                    if previous_value > 0:
+                    if previous_value > 0 and not undefined:
                         twr = growth * float(worth / previous_value) - 1.0
                 points.append({"date": checkpoint, "twr": twr, "value": float(worth)})
 
@@ -188,6 +193,7 @@ class TWRCalculationService:
             if previous_value > 0:
                 growth *= float(before_flows / previous_value)
                 measured = True
+                undefined = undefined or before_flows <= 0
 
             # 2. Across the flows: whatever was gained or lost beyond the
             #    money that moved, on the capital now at work.
@@ -216,6 +222,7 @@ class TWRCalculationService:
                 gained = end_value + money_out - money_in - before_flows
                 growth *= 1.0 + float(gained / base)
                 measured = True
+                undefined = undefined or gained <= -base
             previous_value = end_value
 
         emit(None)

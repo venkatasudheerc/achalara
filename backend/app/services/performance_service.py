@@ -245,6 +245,13 @@ class PerformanceService:
                 "total_market_value": valued.get("total_market_value", 0.0),
                 "total_unrealized_gain": valued.get("total_unrealized_gain", 0.0),
                 "cash_balance": cash_now,
+                # Securities, cash and the brokerage corrections together, on
+                # the same valuation as the chart and the returns.
+                "total_value": (
+                    timeseries[-1]["value"]
+                    if ledger is not None and timeseries and to_present
+                    else None
+                ),
                 "holdings_adjustment": pending,
                 "total_invested": total_invested,
                 "total_proceeds": total_proceeds,

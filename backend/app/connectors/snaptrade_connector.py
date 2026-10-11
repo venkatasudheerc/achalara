@@ -677,15 +677,13 @@ class SnapTradeConnector:
         raw_type = str(_get(row, "type") or "").upper()
         action = _TRADE_TYPES[raw_type]
 
-        symbol = _symbol_ticker(_get(row, "symbol"))
+        symbol = _symbol_ticker(_get(row, "symbol")) or _name_symbol(row)
         units = _decimal(_get(row, "units"))
         price = _decimal(_get(row, "price"))
         traded_at = _parse_datetime(_get(row, "trade_date"))
 
         # Granularity varies by brokerage and trade_date is nullable, so a row
-        # without one cannot be placed on the performance timeline. Vanguard
-        # also emits BUY/SELL rows whose symbol it cannot resolve (mostly
-        # delisted or acquired names; the ticker appears only in description).
+        # without one cannot be placed on the performance timeline.
         if not symbol or not units or price is None or price <= 0 or traded_at is None:
             logger.warning(
                 "Skipping SnapTrade activity %s: incomplete "
@@ -801,6 +799,19 @@ def _security_type(row: Any) -> tuple:
     if _ETF_WORD.search(str(_get(row, "description") or "")):
         return "ETF", "description"
     return None, "none"
+
+
+def _name_symbol(row: Any) -> str:
+    """A stand-in symbol for a trade the source sent without a ticker.
+
+    Vanguard does this for names it can no longer resolve, mostly delisted or
+    acquired ones, giving only the security's name in the description. The
+    name is stable across that security's buys and sells, so it serves to
+    match them; without it the money leaves and returns with nothing held in
+    between. The leading ``~`` keeps it from ever colliding with a ticker.
+    """
+    name = " ".join(str(_get(row, "description") or "").upper().split())
+    return f"~{name}"[:50] if name else ""
 
 
 def _is_option(row: Any) -> bool:

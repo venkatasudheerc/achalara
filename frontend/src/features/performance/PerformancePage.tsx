@@ -72,16 +72,11 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
               {summary.cash_balance != null ? 'Total value' : 'Market value'}
             </p>
             <p className="font-mono text-2xl text-paper tabular-nums">
-              {formatCurrency(
-                summary.total_market_value + (summary.cash_balance ?? 0) + (summary.holdings_adjustment ?? 0)
-              )}
+              {formatCurrency(summary.total_value ?? summary.total_market_value)}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
               {summary.cash_balance != null
-                ? `${formatCurrency(summary.total_market_value)} securities · ${formatCurrency(summary.cash_balance)} cash` +
-                  (summary.holdings_adjustment
-                    ? ` · ${formatCurrency(summary.holdings_adjustment)} brokerage adjustments`
-                    : '')
+                ? `${formatCurrency((summary.total_value ?? 0) - summary.cash_balance)} securities · ${formatCurrency(summary.cash_balance)} cash`
                 : `${formatCurrency(summary.total_cost_basis)} cost basis`}
             </p>
           </div>

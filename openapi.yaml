@@ -1968,6 +1968,10 @@ components:
             reports cash; `mwr_pct` and `twr_pct` are then measured on securities
             plus cash, with deposits and withdrawals as the only money in or out.
             Null for sleeve and strategy views, which are securities only.
+        total_value:
+          type: number
+          nullable: true
+          description: Whole-account value now (securities, cash and brokerage corrections); equals the last point of the value chart. Null when cash is not tracked.
         holdings_adjustment:
           type: number
           nullable: true

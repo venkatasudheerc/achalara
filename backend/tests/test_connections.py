@@ -294,8 +294,8 @@ def test_an_agents_login_can_map_an_account_to_its_real_owner(db, client, client
     # The login itself still belongs to the agent.
     assert db.query(BrokerageConnection).one().client_id == client_id
     # And it syncs like any other mapped account.
-    assert sync_brokerage_account(db, ba_id)["imported"] == 7
-    assert db.query(Trade).filter(Trade.sleeve_id == sleeve.id).count() == 7
+    assert sync_brokerage_account(db, ba_id)["imported"] == 8
+    assert db.query(Trade).filter(Trade.sleeve_id == sleeve.id).count() == 8
 
 
 def test_mapping_rejects_an_account_and_client_that_disagree(db, client, client_id, sdk):
@@ -357,17 +357,16 @@ def test_sync_ingests_trades_and_cash_and_reports_what_it_skipped(db, client, cl
     result = sync_brokerage_account(db, ba.id)
 
     assert result["status"] == "synced"
-    assert result["imported"] == 7
+    assert result["imported"] == 8
     assert result["cash_imported"] == 1
     assert result["skipped_rows"] == {
         "sweep": 2,
-        "incomplete": 1,
         "corporate_action": 1,
     }
     assert result["transactions_synced_through"] == date(2026, 9, 30)
 
     trades = db.query(Trade).filter(Trade.sleeve_id == ba.default_sleeve_id).all()
-    assert len(trades) == 7
+    assert len(trades) == 8
     # The same-day round trip at one price keeps both legs.
     intc = sorted(t.action for t in trades if t.symbol == "INTC")
     assert intc == ["BUY", "SELL"]
@@ -381,7 +380,7 @@ def test_sync_ingests_trades_and_cash_and_reports_what_it_skipped(db, client, cl
         Decimal("8.21"),
     )
     log = db.query(SyncLog).filter(SyncLog.import_type == "BROKERAGE").one()
-    assert log.status == "SUCCESS" and log.rows_success == 7
+    assert log.status == "SUCCESS" and log.rows_success == 8
 
 
 def test_first_sync_pulls_full_history_and_later_ones_overlap_the_watermark(
@@ -422,9 +421,9 @@ def test_resync_imports_nothing_new(db, client, client_id, sdk):
 
     assert result["status"] == "synced"
     assert result["imported"] == 0
-    assert result["duplicates"] == 7
+    assert result["duplicates"] == 8
     assert result["cash_imported"] == 0
-    assert db.query(Trade).count() == 7
+    assert db.query(Trade).count() == 8
     assert db.query(CashActivity).count() == 1
 
 
@@ -464,7 +463,7 @@ def test_sync_route_returns_the_result(db, client, client_id, sdk):
     ba = _mapped_account(db, client_id)
     resp = client.post(f"/api/v1/brokerage-accounts/{ba.id}/sync")
     assert resp.status_code == 200
-    assert resp.json()["imported"] == 7
+    assert resp.json()["imported"] == 8
     assert client.post("/api/v1/brokerage-accounts/nope/sync").status_code == 404
 
 
@@ -520,15 +519,16 @@ def test_sync_routes_trades_to_sleeves_by_security_type(db, client, client_id, s
 
     result = sync_brokerage_account(db, ba_id)
 
-    assert result["imported"] == 7
+    assert result["imported"] == 8
     # USO and VTI carry a type code; FRDM is recognised by its description.
     assert _symbols(db, etf_sleeve) == ["FRDM", "USO", "VTI"]
-    assert _symbols(db, stock_sleeve) == ["INTC", "MU"]
+    # The last is a trade Vanguard sent with a name but no ticker.
+    assert _symbols(db, stock_sleeve) == ["INTC", "MU", "~WALGREENS BOOTS ALLIANCEINC"]
     types = dict(db.query(Trade.symbol, Trade.security_type).distinct())
     assert types["USO"] == "ETF" and types["MU"] is None
     # The dividend follows the security it was paid on.
     assert db.query(CashActivity).one().sleeve_id == etf_sleeve
-    assert result["security_type_sources"] == {"type": 3, "description": 1, "none": 3}
+    assert result["security_type_sources"] == {"type": 3, "description": 1, "none": 4}
 
 
 def test_a_symbol_stays_in_one_sleeve_even_when_rows_disagree_on_type(
@@ -572,8 +572,8 @@ def test_resync_of_a_split_account_imports_nothing(db, client, client_id, sdk):
 
     result = sync_brokerage_account(db, ba_id)
 
-    assert (result["imported"], result["duplicates"], result["cash_imported"]) == (0, 7, 0)
-    assert db.query(Trade).count() == 7
+    assert (result["imported"], result["duplicates"], result["cash_imported"]) == (0, 8, 0)
+    assert db.query(Trade).count() == 8
 
 
 def test_first_sync_starts_at_the_history_start_date(db, client, client_id, sdk):
@@ -697,11 +697,11 @@ def test_rederive_reads_stored_rows_again_without_calling_the_source(
     result = ConnectionService(db).rederive(ba.id)
 
     assert len(sdk.calls) == calls_before
-    assert (result["imported"], result["duplicates"]) == (1, 7)
+    assert (result["imported"], result["duplicates"]) == (1, 8)
     assert result["cash_imported"] == 0
     db.refresh(record)
     assert record.outcome == "trade"
-    assert db.query(Trade).count() == 8
+    assert db.query(Trade).count() == 9
     # Running it again changes nothing.
     assert ConnectionService(db).rederive(ba.id)["imported"] == 0
 
@@ -821,7 +821,7 @@ def test_resync_after_reassign_does_not_bring_moved_trades_back(db, client, clie
 
     assert result["imported"] == 0
     assert result["cash_imported"] == 0
-    assert db.query(Trade).count() == 7
+    assert db.query(Trade).count() == 8
     assert db.query(Trade).filter(Trade.sleeve_id == growth.id).count() == 3
 
 
@@ -1469,7 +1469,7 @@ def test_full_history_sync_reloads_from_the_first_day_and_adds_only_what_is_new(
 
     call = [c for c in sdk.calls if c[0] == "activities"][-1][1]
     assert call["start_date"] is None
-    assert (result["imported"], result["duplicates"]) == (1, 7)
+    assert (result["imported"], result["duplicates"]) == (1, 8)
     ba = db.query(BrokerageAccount).filter(BrokerageAccount.id == ba_id).one()
     assert ba.sync_start_date is None
 
@@ -1533,7 +1533,7 @@ def test_delete_revokes_at_the_source_and_keeps_history(db, client, client_id, s
 
     assert ("delete", {"authorization_id": "auth-1", "user_id": USER_ID}) in sdk.calls
     assert client.get(f"/api/v1/clients/{client_id}/connections").json() == []
-    assert db.query(Trade).count() == 7
+    assert db.query(Trade).count() == 8
     assert client.delete(f"/api/v1/connections/{connection_id}").status_code == 404
 
 
@@ -1581,11 +1581,11 @@ def test_transactions_webhook_syncs_and_a_replay_adds_nothing(db, client, client
 
     first = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
     assert first.json() == {"status": "synced"}
-    assert db.query(Trade).count() == 7
+    assert db.query(Trade).count() == 8
 
     replay = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
     assert replay.status_code == 200
-    assert db.query(Trade).count() == 7
+    assert db.query(Trade).count() == 8
     assert db.query(CashActivity).count() == 1
 
 

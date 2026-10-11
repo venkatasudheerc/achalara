@@ -246,6 +246,15 @@ class MWRCalculationService:
             rate = rate - npv_val / derivative
             rate = max(-0.99, min(rate, 100.0))
 
+        # No rate balances some streams — money taken out before any went in,
+        # or flows that change direction repeatedly. The search then stops at
+        # one of its limits with the equation unsolved; quoting that would be
+        # a number with no meaning.
+        scale = abs(float(opening)) + abs(float(closing))
+        scale += sum(abs(float(amount)) for _, amount in flows)
+        if rate <= -0.99 or rate >= 100.0 or abs(npv(rate)) > 1e-6 * max(scale, 1.0):
+            return None
+
         # Convert annualized IRR → holding-period return for the actual window
         # so MWR and TWR are on the same scale (both = return over the period).
         # If start and end are the same date (e.g. inception week with same-day

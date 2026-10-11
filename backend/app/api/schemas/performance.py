@@ -29,6 +29,9 @@ class PerformanceSummary(BaseModel):
     # Cash held now, for views of whole accounts whose cash is known. When set,
     # mwr_pct and twr_pct are measured on securities plus cash.
     cash_balance: Optional[float] = None
+    # Whole-account value now (securities + cash + corrections); the last
+    # point of the value chart. None when cash is not tracked.
+    total_value: Optional[float] = None
     # Corrections from the brokerage's own current figures, included in today's
     # total and returns: securities it holds that our trades do not show yet,
     # and the repricing of options held at their last traded price.
