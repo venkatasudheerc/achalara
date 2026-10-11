@@ -517,18 +517,91 @@ def test_activities_tally_every_row_left_out():
     assert len(batch.trades) + len(batch.cash) + sum(batch.skipped.values()) == total
 
 
-def test_option_legs_are_skipped_not_ingested_at_share_economics():
-    page = {
-        "data": [
-            _activity(symbol="BULL270115P00020000", units=2, price="1.35"),
-            # A root renumbered by a corporate action carries a digit.
-            _activity(activity_id="act-3", symbol="NFE1270115P00000500", units=10),
-            _activity(activity_id="act-2", symbol="AAPL"),
-        ]
-    }
-    batch = _connector([page]).fetch_activities("c", ACCOUNT, credentials=CREDS)
-    assert [t.symbol for t in batch.trades] == ["AAPL"]
-    assert batch.skipped == {"option": 2}
+def _option(type_, units, price, amount, symbol="BULL270115P00020000", day="2026-04-17"):
+    row = _activity(
+        activity_id=f"{type_}-{symbol}-{units}",
+        type_=type_,
+        symbol=symbol,
+        units=units,
+        price=price,
+        trade_date=f"{day}T05:00:00Z",
+        fee=0,
+        description="PUT WEBULL CORP $20 EXP 01/15/27",
+    )
+    row["amount"] = amount
+    return row
+
+
+def _options(*rows):
+    return _connector([{"data": list(rows)}]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
+
+
+def test_option_trade_is_counted_in_contracts_at_the_per_contract_price():
+    # 25 puts written at a 4.80 quote: 12,000 gross, 11,975 received.
+    (trade,) = _options(_option("SELL", -25, 4.8, 11975.0)).trades
+
+    assert trade.security_type == "OPTION"
+    assert trade.action == TradeAction.SELL
+    assert trade.quantity == Decimal("25")
+    assert trade.price == Decimal("480.0")
+    # Vanguard reports fee as 0 and nets the commission out of the amount.
+    assert trade.commission == Decimal("25.0")
+    assert trade.quantity * trade.price - trade.commission == Decimal("11975.0")
+
+
+def test_option_buy_recovers_commission_added_to_the_amount():
+    (trade,) = _options(_option("BUY", 10, 3.5, -3510.0)).trades
+    assert (trade.action, trade.price, trade.commission) == (
+        TradeAction.BUY,
+        Decimal("350.0"),
+        Decimal("10.0"),
+    )
+
+
+def test_option_symbols_with_a_renumbered_root_are_recognised():
+    batch = _options(
+        _option("SELL", -10, 1.0, 990.0, symbol="NFE1270115P00000500"),
+        _activity(activity_id="act-2", symbol="AAPL"),
+    )
+    assert sorted(t.security_type or "-" for t in batch.trades) == ["-", "OPTION"]
+    assert batch.skipped == {}
+
+
+def test_expiry_and_assignment_close_the_contracts_at_zero():
+    batch = _options(
+        # Written puts expiring or being assigned: contracts come back.
+        _option("EXPIRED", 20, 0.0, 0.0, day="2026-08-07"),
+        _option("ASSIGNMENT", 17, 0.0, 0.0, day="2026-01-02"),
+        # A bought option expiring worthless: contracts go away.
+        _option("EXPIRED", -5, 0.0, 0.0, symbol="COIN260213P00115000"),
+    )
+
+    by_qty = {t.quantity: t for t in batch.trades}
+    assert by_qty[Decimal("20")].action == TradeAction.BUY
+    assert by_qty[Decimal("17")].action == TradeAction.BUY
+    assert by_qty[Decimal("5")].action == TradeAction.SELL
+    assert {t.price for t in batch.trades} == {Decimal("0")}
+    assert by_qty[Decimal("17")].notes.startswith("Assignment: ")
+    assert batch.skipped == {}
+
+
+def test_expiry_of_something_that_is_not_an_option_is_still_skipped():
+    row = _activity(type_="EXPIRED", symbol="XYZ.RT", units=10, price=0)
+    assert _options(row).skipped == {"corporate_action": 1}
+
+
+def test_stored_rows_parse_the_same_as_fetched_ones():
+    payload = _fixture("vanguard_activities.json")
+    fetched = _connector([payload]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+    parsed = _connector().parse_activities(payload["data"], ACCOUNT)
+
+    assert [t.external_id for t in parsed.trades] == [t.external_id for t in fetched.trades]
+    assert [c.external_id for c in parsed.cash] == [c.external_id for c in fetched.cash]
+    assert parsed.skipped == fetched.skipped
+    # One raw entry per input row, in input order.
+    assert [r.source_id for r in parsed.raw] == [r["id"] for r in payload["data"]]
 
 
 def test_cash_types_map_onto_ours_and_keep_the_source_sign():

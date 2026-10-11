@@ -345,13 +345,44 @@ class ConnectionService:
             result["reason"] = "rate_limited"
             return result
 
+        self._store_raw(ba, batch.raw)
+        earliest = self._ingest(ba, batch, result)
+
+        ba.last_synced_at = now
+        if remote is not None and remote.transactions_synced_through:
+            ba.transactions_synced_through = remote.transactions_synced_through
+        elif batch.trades:
+            ba.transactions_synced_through = batch.trades[-1].executed_at.date()
+        self.db.commit()
+
+        self._recompute_snapshots(earliest)
+
+        try:
+            self.reconcile(ba.id, skipped_rows=batch.skipped)
+        except Exception as exc:  # noqa: BLE001
+            self.db.rollback()
+            logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)
+
+        result["status"] = "synced"
+        result["skipped_rows"] = dict(batch.skipped)
+        result["security_type_sources"] = dict(batch.security_type_sources)
+        result["transactions_synced_through"] = ba.transactions_synced_through
+        result["next_sync_allowed_at"] = now + MIN_SYNC_INTERVAL
+        return result
+
+    def _ingest(self, ba: BrokerageAccount, batch, result: Dict) -> Dict[str, date]:
+        """Route a batch into the account's sleeves and persist what is new.
+
+        Adds the counts to ``result`` and returns, per sleeve touched, the
+        earliest date newly written. Does not commit the cash rows; the caller
+        does, along with its own bookkeeping.
+        """
         account_sleeves = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(
                 Sleeve.account_id == ba.account_id
             )
         ]
-        self._store_raw(ba, batch.raw)
         trades_by_sleeve, cash_by_sleeve = self._route(ba, batch, account_sleeves)
 
         # Earliest newly written date per sleeve, to recompute snapshots from.
@@ -386,13 +417,9 @@ class ConnectionService:
             result["cash_imported"] += cash["imported"]
             touched(sleeve_id, cash["earliest_activity_date"])
 
-        ba.last_synced_at = now
-        if remote is not None and remote.transactions_synced_through:
-            ba.transactions_synced_through = remote.transactions_synced_through
-        elif batch.trades:
-            ba.transactions_synced_through = batch.trades[-1].executed_at.date()
-        self.db.commit()
+        return earliest
 
+    def _recompute_snapshots(self, earliest: Dict[str, date]) -> None:
         snapshots = WeeklySnapshotService(self.db)
         for sleeve_id, when in earliest.items():
             try:
@@ -403,17 +430,41 @@ class ConnectionService:
                     "Snapshot recompute failed for sleeve %s: %s", sleeve_id, exc
                 )
 
-        try:
-            self.reconcile(ba.id, skipped_rows=batch.skipped)
-        except Exception as exc:  # noqa: BLE001
-            self.db.rollback()
-            logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)
+    def rederive(self, brokerage_account_id: str) -> Dict:
+        """Re-read the account's stored source rows under the current rules.
 
-        result["status"] = "synced"
-        result["skipped_rows"] = dict(batch.skipped)
-        result["security_type_sources"] = dict(batch.security_type_sources)
-        result["transactions_synced_through"] = ba.transactions_synced_through
-        result["next_sync_allowed_at"] = now + MIN_SYNC_INTERVAL
+        For when the mapping changes — a new kind of activity is understood, a
+        route is added — and the rows already fetched should be read again.
+        Makes no call to the source, so it is not subject to the sync limit.
+        Trades already on file are recognised as duplicates and left alone, so
+        this only ever adds; it does not move or remove existing trades.
+        """
+        ba = self.get_brokerage_account(brokerage_account_id)
+        if ba.status != "mapped" or not ba.default_sleeve_id:
+            raise ValueError("Map the account to a sleeve before re-deriving it")
+
+        records = (
+            self.db.query(BrokerageActivity)
+            .filter(BrokerageActivity.brokerage_account_id == ba.id)
+            .order_by(BrokerageActivity.activity_date, BrokerageActivity.id)
+            .all()
+        )
+        batch = self.connector.parse_activities(
+            [record.payload for record in records], ba.external_account_ref
+        )
+        for record, raw in zip(records, batch.raw):
+            record.outcome = raw.outcome
+
+        result = {
+            "rows": len(records),
+            "imported": 0,
+            "duplicates": 0,
+            "cash_imported": 0,
+            "skipped_rows": dict(batch.skipped),
+        }
+        earliest = self._ingest(ba, batch, result)
+        self.db.commit()
+        self._recompute_snapshots(earliest)
         return result
 
     def _store_raw(self, ba: BrokerageAccount, rows) -> None:

@@ -395,9 +395,16 @@ Rebuild all snapshots: `POST /admin/rebuild-snapshots` (pass `sleeve_id` to scop
 - **Brokerage trades dedup on `external_id` alone.** For sources whose id is a complete
   identity (`snaptrade`), the legacy tuple is not consulted: it has no action, so it would drop
   one leg of a same-day buy and sell at one price, which real brokerage data contains.
-- **Brokerage coverage gaps are counted, not hidden.** Option legs, splits/mergers/assignments,
-  and rows with an unresolvable symbol are skipped by the connector and tallied per sync in
-  `skipped_rows`; the resulting share-count differences appear in the account's reconciliation.
+- **Options are trades counted in contracts.** `symbol` is the OCC symbol, `security_type` is
+  `OPTION`, `quantity` is the contract count and `price` is **per contract** (the per-share
+  quote × 100). An expiry or assignment is a closing trade at price 0, which is why
+  `trades.price` allows zero (`non_negative_price`). Writing an option is a short position.
+- **Brokerage coverage gaps are counted, not hidden.** Splits, mergers and rows with an
+  unresolvable symbol are skipped by the connector and tallied per sync in `skipped_rows`; the
+  resulting share-count differences appear in the account's reconciliation.
+- **Stored source rows can be re-read.** `ConnectionService.rederive` runs an account's
+  `brokerage_activities` through the current mapping and adds whatever is new, with no call to
+  the source.
 - **`google_sheet_row_id` is retained but no longer the dedup path** (sheet trades go through
   `external_id` like every other source); it stays available for a future row-id-keyed source.
 - **Migration `fe521b07fb54` is Postgres-guarded** and preserves each old strategy id as its

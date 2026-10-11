@@ -7,12 +7,23 @@ these types and on ``base.BrokerageConnector`` — never on a vendor shape.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+# OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
+# The root can carry a digit after a corporate action ("NFE1270115P00000500").
+_OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
+
+
+def is_option_symbol(symbol: str) -> bool:
+    """Whether ``symbol`` is an option contract rather than a security."""
+    return bool(_OCC_SYMBOL.match(symbol or ""))
 
 
 class TradeAction(str, Enum):

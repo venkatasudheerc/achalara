@@ -607,6 +607,94 @@ def test_sync_keeps_every_source_row_and_replaces_it_on_resync(db, client, clien
 
 
 # ---------------------------------------------------------------------------
+# Options, and re-reading stored rows
+# ---------------------------------------------------------------------------
+
+
+def _option_row(type_, units, price, amount, day, symbol="BULL270115P00020000"):
+    return {
+        "id": f"opt-{type_}-{day}-{units}",
+        "symbol": {"symbol": symbol, "raw_symbol": symbol, "description": "PUT WEBULL CORP"},
+        "option_symbol": None,
+        "currency": {"code": "USD"},
+        "type": type_,
+        "description": "PUT WEBULL CORP $20 EXP 01/15/27",
+        "amount": amount,
+        "price": price,
+        "units": units,
+        "fee": 0.0,
+        "trade_date": f"{day}T05:00:00Z",
+        "settlement_date": f"{day}T05:00:00Z",
+    }
+
+
+def test_a_written_option_that_expires_keeps_its_whole_premium(db, client, client_id, sdk):
+    sdk.activities = {
+        "data": [
+            _option_row("SELL", -10, 2.0, 1990.0, "2026-03-02"),
+            _option_row("EXPIRED", 10, 0.0, 0.0, "2026-04-17"),
+        ]
+    }
+    ba = _mapped_account(db, client_id)
+
+    result = sync_brokerage_account(db, ba.id)
+
+    assert result["imported"] == 2
+    positions = PortfolioCalculationService(db).calculate_positions(ba.default_sleeve_id)
+    assert positions["open"] == []
+    (closed,) = positions["closed"]
+    # 10 contracts at 200 each, less the 10 commission; bought back for nothing.
+    assert closed["realized_gain"] == Decimal("1990")
+    assert {t.security_type for t in db.query(Trade)} == {"OPTION"}
+
+
+def test_options_route_to_their_own_sleeve(db, client, client_id, sdk):
+    options = client.post("/api/v1/strategies/", json={"name": "Options"}).json()["id"]
+    stocks = client.post("/api/v1/strategies/", json={"name": "Stocks"}).json()["id"]
+    sdk.activities["data"].append(_option_row("SELL", -10, 2.0, 1990.0, "2026-03-02"))
+    (connection,) = client.post(
+        f"/api/v1/clients/{client_id}/connections/discover"
+    ).json()
+    ba_id = connection["brokerage_accounts"][0]["id"]
+    mapped = client.patch(
+        f"/api/v1/brokerage-accounts/{ba_id}",
+        json={"status": "mapped", "strategy_id": stocks, "strategy_routes": {"OPTION": options}},
+    ).json()
+
+    sync_brokerage_account(db, ba_id)
+
+    assert _symbols(db, mapped["sleeve_routes"]["OPTION"]) == ["BULL270115P00020000"]
+
+
+def test_rederive_reads_stored_rows_again_without_calling_the_source(
+    db, client, client_id, sdk
+):
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+    # A row we hold but had not turned into a trade.
+    record = (
+        db.query(BrokerageActivity)
+        .filter(BrokerageActivity.type == "SPLIT")
+        .one()
+    )
+    record.payload = _option_row("SELL", -10, 2.0, 1990.0, "2026-03-02")
+    record.type = "SELL"
+    db.commit()
+    calls_before = len(sdk.calls)
+
+    result = ConnectionService(db).rederive(ba.id)
+
+    assert len(sdk.calls) == calls_before
+    assert (result["imported"], result["duplicates"]) == (1, 7)
+    assert result["cash_imported"] == 0
+    db.refresh(record)
+    assert record.outcome == "trade"
+    assert db.query(Trade).count() == 8
+    # Running it again changes nothing.
+    assert ConnectionService(db).rederive(ba.id)["imported"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Reconciliation
 # ---------------------------------------------------------------------------
 

@@ -42,6 +42,7 @@ from app.connectors.models import (
     RawAccount,
     RawActivity,
     TradeAction,
+    is_option_symbol,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,9 +91,15 @@ _CORPORATE_ACTION_TYPES = {
     "SPLIT",
     "STOCK_DIVIDEND",
     "CORP ACTION (MERGER)",
-    "ASSIGNMENT",
-    "EXPIRED",
 }
+
+# How an option position ends without a closing trade. The contracts leave the
+# account at no price: an expiry is worthless, and an assignment's cash moves
+# on the separate stock trade it triggers.
+_OPTION_CLOSE_TYPES = {"ASSIGNMENT", "EXPIRED"}
+
+# An option contract covers this many shares, and is quoted per share.
+_CONTRACT_MULTIPLIER = Decimal(100)
 
 # SnapTrade security type codes (``symbol.type.code``) and the ``kind`` a live
 # holding's instrument carries, mapped onto our vocabulary.
@@ -115,10 +122,6 @@ _ETF_WORD = re.compile(r"\bETFS?\b", re.IGNORECASE)
 # Cash moving between the settlement balance and its sweep fund. Internal to
 # the account, so neither a trade nor a cash activity.
 _SWEEP_TYPES = {"SWEEP IN", "SWEEP OUT"}
-
-# OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
-# The root can carry a digit after a corporate action ("NFE1270115P00000500").
-_OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
 
 # SnapTrade caps this endpoint at 1000 rows per call.
 _MAX_PAGE = 1000
@@ -444,6 +447,22 @@ class SnapTradeConnector:
             if total is None and len(rows) < _MAX_PAGE:
                 break
 
+        return self._finish(batch)
+
+    def parse_activities(self, rows: List[Any], account_ref: str) -> ActivityBatch:
+        """Read activity rows that were fetched earlier and kept verbatim.
+
+        The same mapping as :meth:`fetch_activities`, minus the network call,
+        so stored rows can be re-read when the mapping rules change. The
+        returned ``raw`` entries line up one-to-one with ``rows``.
+        """
+        batch = ActivityBatch()
+        for row in rows:
+            self._classify(row, account_ref, batch)
+        return self._finish(batch)
+
+    @staticmethod
+    def _finish(batch: ActivityBatch) -> ActivityBatch:
         _disambiguate_repeats(batch.trades)
         _disambiguate_repeats(batch.cash)
         # SnapTrade returns newest first; ingestion reads chronologically.
@@ -481,10 +500,11 @@ class SnapTradeConnector:
             if raw_type == "REI" and not _decimal(_get(row, "units")):
                 return "skipped:sweep"
             if _is_option(row):
-                # Contracts are reported in per-share prices with no x100
-                # multiplier, and assignment/expiry are not modeled, so an
-                # option leg would be ingested with wrong economics.
-                return "skipped:option"
+                trade = self._to_option_trade(row, account_ref)
+                if trade is None:
+                    return "skipped:incomplete"
+                batch.trades.append(trade)
+                return "trade"
             trade = self._to_trade(row, account_ref)
             if trade is None:
                 return "skipped:incomplete"
@@ -500,6 +520,12 @@ class SnapTradeConnector:
                 return "skipped:incomplete"
             batch.cash.append(activity)
             return "cash"
+        if raw_type in _OPTION_CLOSE_TYPES:
+            trade = self._to_option_trade(row, account_ref) if _is_option(row) else None
+            if trade is None:
+                return "skipped:corporate_action"
+            batch.trades.append(trade)
+            return "trade"
         if raw_type in _CORPORATE_ACTION_TYPES:
             return "skipped:corporate_action"
         if raw_type in _SWEEP_TYPES:
@@ -536,6 +562,72 @@ class SnapTradeConnector:
             currency=_currency_code(_get(row, "currency")),
             source=SOURCE,
             notes=str(_get(row, "description") or ""),
+            raw=_dict(row),
+        )
+
+    def _to_option_trade(self, row: Any, account_ref: str) -> Optional[NormalizedTrade]:
+        """Map an option activity to a trade counted in contracts.
+
+        Options are quoted per share but trade in contracts of 100, so the
+        quantity is the contract count and the price is per contract (quote x
+        100). Vanguard folds the commission into ``amount`` and reports ``fee``
+        as zero, so the commission is recovered as the gap between the quoted
+        value and the cash that actually moved.
+
+        An expiry or assignment has no price: it is recorded as a closing trade
+        at zero, bought back if the row adds contracts (a written option going
+        away) and sold if it removes them.
+        """
+        raw_type = str(_get(row, "type") or "").upper()
+        symbol = _symbol_ticker(_get(row, "symbol"))
+        units = _decimal(_get(row, "units"))
+        traded_at = _parse_datetime(_get(row, "trade_date"))
+        if not symbol or not units or traded_at is None:
+            logger.warning(
+                "Skipping SnapTrade option activity %s: incomplete "
+                "(symbol=%r units=%r trade_date=%r)",
+                _get(row, "id"),
+                symbol,
+                units,
+                _get(row, "trade_date"),
+            )
+            return None
+
+        contracts = abs(units)
+        notes = str(_get(row, "description") or "")
+        if raw_type in _OPTION_CLOSE_TYPES:
+            action = TradeAction.BUY if units > 0 else TradeAction.SELL
+            price = Decimal(0)
+            commission = Decimal(0)
+            notes = f"{raw_type.capitalize()}: {notes}".rstrip(": ")
+        else:
+            action = _TRADE_TYPES[raw_type]
+            quote = _decimal(_get(row, "price"))
+            if quote is None or quote <= 0:
+                logger.warning(
+                    "Skipping SnapTrade option activity %s: no price", _get(row, "id")
+                )
+                return None
+            price = quote * _CONTRACT_MULTIPLIER
+            commission = _decimal(_get(row, "fee")) or Decimal(0)
+            amount = _decimal(_get(row, "amount"))
+            if amount is not None and not commission:
+                commission = abs(abs(amount) - contracts * price)
+
+        return NormalizedTrade(
+            external_id=snaptrade_external_id(
+                account_ref, traded_at.date(), symbol, contracts, price, action
+            ),
+            symbol=symbol,
+            action=action,
+            quantity=contracts,
+            price=price,
+            currency=_currency_code(_get(row, "currency")),
+            executed_at=traded_at,
+            commission=commission,
+            source=SOURCE,
+            security_type="OPTION",
+            notes=notes,
             raw=_dict(row),
         )
 
@@ -680,7 +772,7 @@ def _is_option(row: Any) -> bool:
     """Whether an activity is an option leg rather than a share trade."""
     if _get(row, "option_symbol"):
         return True
-    return bool(_OCC_SYMBOL.match(_symbol_ticker(_get(row, "symbol"))))
+    return is_option_symbol(_symbol_ticker(_get(row, "symbol")))
 
 
 def _disambiguate_repeats(trades: List[Any]) -> None:

@@ -23,6 +23,7 @@ from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.cash_activity_service import CashActivityService
 from app.connectors.webull_connector import WebullConnector
+from app.connectors.models import is_option_symbol
 
 import logging
 
@@ -98,6 +99,9 @@ class PerformanceService:
             return prices
 
         for symbol, pos in seen_symbols.items():
+            # The market-data source quotes securities, not option contracts.
+            if is_option_symbol(symbol):
+                continue
             try:
                 live = connector.get_price(symbol)
                 if live is not None:

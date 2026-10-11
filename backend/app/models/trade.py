@@ -49,7 +49,9 @@ class Trade(BaseModel):
     __table_args__ = (
         CheckConstraint("action IN ('BUY', 'SELL')", name="valid_action"),
         CheckConstraint("quantity > 0", name="positive_quantity"),
-        CheckConstraint("price > 0", name="positive_price"),
+        # Zero is a real price: an option that expires or is assigned leaves
+        # the account for nothing.
+        CheckConstraint("price >= 0", name="non_negative_price"),
         UniqueConstraint("sleeve_id", "external_id", name="uq_trade_sleeve_external"),
     )
 
