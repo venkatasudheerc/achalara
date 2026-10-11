@@ -54,100 +54,138 @@ class TWRCalculationService:
         Returns TWR as a decimal (e.g. 0.10 for 10%), or None when there is
         nothing to measure (no trades, or no capital at work in the window).
         """
-        from app.services.cash_activity_service import CashActivityService
-
-        sleeve_ids = _as_sleeve_ids(sleeve_ids)
         try:
-            trades = (
-                self.db.query(Trade)
-                .filter(Trade.sleeve_id.in_(sleeve_ids), Trade.trade_date <= end_date)
-                .order_by(Trade.trade_date, Trade.id)
-                .all()
-            )
-            if not trades:
-                return None
-
-            income: Dict[date, Decimal] = dict(
-                CashActivityService(self.db).income_flows(
-                    sleeve_ids, start_date, end_date
-                )
-            )
-
-            quantity: Dict[str, Decimal] = {}
-            last_price: Dict[str, Decimal] = {}
-
-            def value(market: Optional[Dict[str, Decimal]] = None) -> Decimal:
-                total = Decimal(0)
-                for symbol, qty in quantity.items():
-                    if qty == 0:
-                        continue
-                    price = last_price[symbol]
-                    if market and symbol in market:
-                        price = Decimal(str(market[symbol]))
-                    total += qty * price
-                return total
-
-            def apply(trade: Trade) -> None:
-                qty = Decimal(str(trade.quantity))
-                signed = qty if trade.action == "BUY" else -qty
-                quantity[trade.symbol] = quantity.get(trade.symbol, Decimal(0)) + signed
-                last_price[trade.symbol] = Decimal(str(trade.price))
-
-            # Holdings carried into the window are its opening value.
-            index = 0
-            while index < len(trades) and trades[index].trade_date < start_date:
-                apply(trades[index])
-                index += 1
-            previous_value = value()
-
-            by_date: Dict[date, List[Trade]] = {}
-            for trade in trades[index:]:
-                by_date.setdefault(trade.trade_date, []).append(trade)
-
-            growth = 1.0
-            measured = False
-            for day in sorted(set(by_date) | set(income)):
-                day_trades = by_date.get(day, [])
-
-                # 1. Up to the moment money moves: the holdings carried in are
-                #    repriced at what they traded for today.
-                for trade in day_trades:
-                    last_price[trade.symbol] = Decimal(str(trade.price))
-                before_flows = value()
-                if previous_value > 0:
-                    growth *= float(before_flows / previous_value)
-                    measured = True
-
-                # 2. Across the flows: whatever was gained or lost beyond the
-                #    money that moved, on the capital now at work.
-                net_income = income.get(day, Decimal(0))
-                money_out = max(net_income, Decimal(0))
-                # A net fee day is money paid in, not negative money out.
-                money_in = max(-net_income, Decimal(0))
-                for trade in day_trades:
-                    gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
-                    commission = Decimal(str(trade.commission or 0))
-                    if trade.action == "BUY":
-                        money_in += gross + commission
-                    else:
-                        money_out += gross - commission
-                    apply(trade)
-
-                end_value = value()
-                base = before_flows + money_in
-                if base > 0:
-                    gained = end_value + money_out - money_in - before_flows
-                    growth *= 1.0 + float(gained / base)
-                    measured = True
-                previous_value = end_value
-
-            # Bring holdings from their last traded prices up to market.
-            if prices and previous_value > 0:
-                growth *= float(value(prices) / previous_value)
-                measured = True
-
-            return growth - 1.0 if measured else None
-
+            points = self.growth_at(sleeve_ids, start_date, [end_date], prices)
+            return points[0]["twr"] if points else None
         except Exception as e:
             self.logger.error(f"TWR calculation failed: {e}")
             return None
+
+    def growth_at(
+        self,
+        sleeve_ids,
+        start_date: date,
+        checkpoints: List[date],
+        prices: Optional[Dict[str, Decimal]] = None,
+    ) -> List[Dict]:
+        """Cumulative TWR from ``start_date`` to each checkpoint date.
+
+        The one calculation behind every time-weighted figure — the headline,
+        the weekly series and the monthly returns — so they cannot disagree.
+        Returns ``{"date", "twr", "value"}`` per checkpoint, in date order;
+        ``twr`` is None until there has been capital at work.
+
+        ``prices`` are applied only to the final checkpoint, and only if no
+        trade falls after it: current prices describe the present, not a past
+        date. Every other value uses last traded prices.
+        """
+        from app.services.cash_activity_service import CashActivityService
+
+        sleeve_ids = _as_sleeve_ids(sleeve_ids)
+        checkpoints = sorted(checkpoints)
+        if not checkpoints:
+            return []
+        horizon = checkpoints[-1]
+
+        all_trades = (
+            self.db.query(Trade)
+            .filter(Trade.sleeve_id.in_(sleeve_ids))
+            .order_by(Trade.trade_date, Trade.id)
+            .all()
+        )
+        if not all_trades:
+            return []
+        to_present = bool(prices) and horizon >= all_trades[-1].trade_date
+        trades = [t for t in all_trades if t.trade_date <= horizon]
+
+        income: Dict[date, Decimal] = dict(
+            CashActivityService(self.db).income_flows(sleeve_ids, start_date, horizon)
+        )
+
+        quantity: Dict[str, Decimal] = {}
+        last_price: Dict[str, Decimal] = {}
+
+        def value(market: Optional[Dict[str, Decimal]] = None) -> Decimal:
+            total = Decimal(0)
+            for symbol, qty in quantity.items():
+                if qty == 0:
+                    continue
+                price = last_price[symbol]
+                if market and symbol in market:
+                    price = Decimal(str(market[symbol]))
+                total += qty * price
+            return total
+
+        def apply(trade: Trade) -> None:
+            qty = Decimal(str(trade.quantity))
+            signed = qty if trade.action == "BUY" else -qty
+            quantity[trade.symbol] = quantity.get(trade.symbol, Decimal(0)) + signed
+            last_price[trade.symbol] = Decimal(str(trade.price))
+
+        # Holdings carried into the window are its opening value.
+        index = 0
+        while index < len(trades) and trades[index].trade_date < start_date:
+            apply(trades[index])
+            index += 1
+        previous_value = value()
+
+        by_date: Dict[date, List[Trade]] = {}
+        for trade in trades[index:]:
+            by_date.setdefault(trade.trade_date, []).append(trade)
+
+        growth = 1.0
+        measured = False
+        points: List[Dict] = []
+        pending = list(checkpoints)
+
+        def emit(until: Optional[date]) -> None:
+            """Record every checkpoint that falls before the next flow day."""
+            while pending and (until is None or pending[0] < until):
+                checkpoint = pending.pop(0)
+                twr = growth - 1.0 if measured else None
+                worth = previous_value
+                if to_present and not pending and until is None:
+                    # Bring holdings from their last traded prices up to market.
+                    worth = value(prices)
+                    if previous_value > 0:
+                        twr = growth * float(worth / previous_value) - 1.0
+                points.append({"date": checkpoint, "twr": twr, "value": float(worth)})
+
+        for day in sorted(set(by_date) | set(income)):
+            emit(day)
+            day_trades = by_date.get(day, [])
+
+            # 1. Up to the moment money moves: the holdings carried in are
+            #    repriced at what they traded for today.
+            for trade in day_trades:
+                last_price[trade.symbol] = Decimal(str(trade.price))
+            before_flows = value()
+            if previous_value > 0:
+                growth *= float(before_flows / previous_value)
+                measured = True
+
+            # 2. Across the flows: whatever was gained or lost beyond the
+            #    money that moved, on the capital now at work.
+            net_income = income.get(day, Decimal(0))
+            money_out = max(net_income, Decimal(0))
+            # A net fee day is money paid in, not negative money out.
+            money_in = max(-net_income, Decimal(0))
+            for trade in day_trades:
+                gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
+                commission = Decimal(str(trade.commission or 0))
+                if trade.action == "BUY":
+                    money_in += gross + commission
+                else:
+                    money_out += gross - commission
+                apply(trade)
+
+            end_value = value()
+            base = before_flows + money_in
+            if base > 0:
+                gained = end_value + money_out - money_in - before_flows
+                growth *= 1.0 + float(gained / base)
+                measured = True
+            previous_value = end_value
+
+        emit(None)
+        return points

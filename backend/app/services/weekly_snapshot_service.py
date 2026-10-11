@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 import logging
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.trade import Trade
@@ -143,71 +144,81 @@ class WeeklySnapshotService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> List[Dict]:
-        """Aggregate weekly snapshots across sleeve_ids into a returns series.
+        """Cumulative TWR and MWR since inception, at each Monday and today.
 
-        For each Monday that has at least one snapshot in the set:
-          - twr_cumul: geometric product of per-sleeve TWR cumulative values
-            (market-value weighted when we have it, else simple product)
-          - mwr_cumul: portfolio-level IRR from inception to that Monday
+        Computed from the trades of the whole sleeve set with the same two
+        calculations as the headline figures (``TWRCalculationService`` and
+        ``MWRCalculationService``), so the last point of the chart and the
+        headline agree, at every level. Stored snapshot rows are not read:
+        averaging per-sleeve figures cannot reproduce a return on the merged
+        portfolio.
+
+        The final point is valued at current prices; earlier ones use last
+        traded prices.
 
         Returns list of {"date": str, "twr_cumul": float, "mwr_cumul": float}
         sorted ascending by date, filtered to [start_date, end_date].
         """
+        from app.models.position import Position
+        from app.services.twr_calculation import TWRCalculationService
+
         sleeve_ids = _as_sleeve_ids(sleeve_ids)
-
-        query = self.db.query(WeeklyPortfolioSnapshot).filter(
-            WeeklyPortfolioSnapshot.sleeve_id.in_(sleeve_ids)
+        if not sleeve_ids:
+            return []
+        bounds = (
+            self.db.query(func.min(Trade.trade_date), func.max(Trade.trade_date))
+            .filter(Trade.sleeve_id.in_(sleeve_ids))
+            .one()
         )
-        if start_date:
-            query = query.filter(WeeklyPortfolioSnapshot.week_start_date >= start_date)
-        if end_date:
-            query = query.filter(WeeklyPortfolioSnapshot.week_start_date <= end_date)
-
-        snapshots = query.order_by(WeeklyPortfolioSnapshot.week_start_date).all()
-        if not snapshots:
+        inception, last_trade = bounds
+        if inception is None:
             return []
 
-        # Group by week_start_date
-        by_week: Dict[date, List[WeeklyPortfolioSnapshot]] = {}
-        for snap in snapshots:
-            by_week.setdefault(snap.week_start_date, []).append(snap)
+        # End on today as well as on Mondays, so the series closes at the same
+        # moment, and the same market prices, as the headline figures.
+        as_of = max(last_trade, date.today())
+        mondays = _mondays_between(inception, as_of)
+        if not mondays or mondays[-1] != as_of:
+            mondays.append(as_of)
+        prices = {
+            row.symbol: Decimal(str(row.current_price))
+            for row in self.db.query(Position).filter(
+                Position.sleeve_id.in_(sleeve_ids),
+                Position.status == "OPEN",
+                Position.current_price.isnot(None),
+            )
+        }
+
+        points = TWRCalculationService(self.db).growth_at(
+            sleeve_ids, inception, mondays, prices
+        )
+        final = mondays[-1] if mondays and mondays[-1] >= last_trade else None
+        last_activity = self.cash.last_activity_date(sleeve_ids)
 
         result = []
-        for week_date in sorted(by_week):
-            week_snaps = by_week[week_date]
-
-            # TWR: market-value weighted geometric mean of per-sleeve cumulative TWR
-            # If we have only one sleeve, just use its twr_cumul directly.
-            total_mv = sum(s.market_value for s in week_snaps if s.market_value)
-            if total_mv > 0 and len(week_snaps) > 1:
-                weighted_twr = sum(
-                    s.twr_cumul * (s.market_value / total_mv)
-                    for s in week_snaps
-                    if s.twr_cumul is not None and s.market_value
+        for point in points:
+            monday = point["date"]
+            if start_date and monday < start_date:
+                continue
+            if end_date and monday > end_date:
+                continue
+            if monday == final:
+                # Same window and prices as the headline: up to the last trade
+                # or income payment, holdings at market.
+                mwr = self.mwr_svc.calculate_mwr(
+                    sleeve_ids, inception, last_activity, prices
                 )
             else:
-                valid = [s.twr_cumul for s in week_snaps if s.twr_cumul is not None]
-                weighted_twr = valid[0] if valid else None
-
-            # MWR: re-solve IRR from inception to this Monday for the full sleeve set.
-            # We use the stored per-sleeve mwr_cumul weighted by market value as an
-            # approximation (re-solving full IRR on every read is expensive).
-            if total_mv > 0 and len(week_snaps) > 1:
-                weighted_mwr = sum(
-                    s.mwr_cumul * (s.market_value / total_mv)
-                    for s in week_snaps
-                    if s.mwr_cumul is not None and s.market_value
-                )
-            else:
-                valid_mwr = [s.mwr_cumul for s in week_snaps if s.mwr_cumul is not None]
-                weighted_mwr = valid_mwr[0] if valid_mwr else None
-
-            result.append({
-                "date": week_date.isoformat(),
-                "twr_cumul": round(weighted_twr, 6) if weighted_twr is not None else None,
-                "mwr_cumul": round(weighted_mwr, 6) if weighted_mwr is not None else None,
-            })
-
+                mwr = self.mwr_svc.calculate_mwr(sleeve_ids, inception, monday)
+            result.append(
+                {
+                    "date": monday.isoformat(),
+                    "twr_cumul": (
+                        round(point["twr"], 6) if point["twr"] is not None else None
+                    ),
+                    "mwr_cumul": round(float(mwr), 6) if mwr is not None else None,
+                }
+            )
         return result
 
     # -------------------------------------------------------------------------

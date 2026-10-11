@@ -124,6 +124,21 @@ per account, <=4 background holdings calls per user per day) — never loop them
 
 The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from `daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
 
+## One Return Calculation
+
+Every time-weighted figure — headline `twr_pct`, the weekly returns series, monthly
+`return_pct` — comes from `TWRCalculationService.growth_at`, and every money-weighted figure
+from `MWRCalculationService.calculate_mwr`. Do not add a second formula for a new view; add a
+checkpoint to `growth_at`. Rules they share:
+
+- Returns are linked through **time** on the merged sleeve set, never multiplied across
+  positions or averaged across sleeves.
+- Current prices value only the present (the final point); past dates use last traded prices,
+  because no price history is stored.
+- A window "to the present" ends at `CashActivityService.last_activity_date` (last trade or
+  counted income payment).
+- No return is quoted when no money was ever invested (written options, shorts): `None`, not 0.
+
 ## Brokerage Sync Rules
 
 - `sync_brokerage_account()` in `connection_service.py` is the only brokerage sync path. The

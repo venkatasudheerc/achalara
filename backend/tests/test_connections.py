@@ -1145,6 +1145,73 @@ def test_twr_is_none_without_trades(db, client):
     assert _twr(db, sleeve_id, date(2025, 1, 1), date(2025, 12, 31)) is None
 
 
+def _priced(db, sleeve_id, price):
+    """Persist positions for a sleeve and give them a current price."""
+    PortfolioCalculationService(db).persist_all_positions(sleeve_id)
+    db.query(Position).filter(Position.sleeve_id == sleeve_id).update(
+        {"current_price": Decimal(price)}
+    )
+    db.commit()
+
+
+def test_headline_weekly_and_monthly_returns_agree(db, client, monkeypatch):
+    from app.services import performance_service
+    from app.services.performance_service import PerformanceService
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+
+    monkeypatch.setattr(
+        performance_service.WebullConnector, "is_configured", lambda self: False
+    )
+    sleeve_id = _fifo_sleeve(db, client)
+    _trade(db, sleeve_id, date(2025, 1, 6), "BUY", "100", "100")
+    _trade(db, sleeve_id, date(2025, 2, 10), "BUY", "50", "110")
+    _trade(db, sleeve_id, date(2025, 3, 17), "SELL", "60", "105")
+    _cash(db, sleeve_id, date(2025, 3, 31), "DIVIDEND", "45")
+    _priced(db, sleeve_id, "120")
+    service = PerformanceService(db)
+
+    headline = service.performance([sleeve_id])["summary"]
+    weekly = WeeklySnapshotService(db).returns_series([sleeve_id])
+    monthly = service.monthly_returns([sleeve_id])
+
+    # The series closes on the headline figures...
+    assert weekly[-1]["twr_cumul"] == pytest.approx(headline["twr_pct"], abs=1e-6)
+    assert weekly[-1]["mwr_cumul"] == pytest.approx(headline["mwr_pct"], abs=1e-6)
+    # ...and the months compound to the same time-weighted return.
+    compounded = 1.0
+    for month in monthly:
+        compounded *= 1 + month["return_pct"] / 100
+    assert compounded - 1 == pytest.approx(headline["twr_pct"], abs=1e-3)
+    # The value chart ends on today's market value.
+    series = service.performance([sleeve_id])["timeseries"]
+    assert series[-1]["value"] == pytest.approx(headline["total_market_value"])
+    # Earlier points are valued at what was known then, not at today's price.
+    assert series[0]["value"] == pytest.approx(10000.0)
+
+
+def test_weekly_series_for_several_sleeves_is_one_merged_portfolio(db, client, monkeypatch):
+    from app.services import performance_service
+    from app.services.performance_service import PerformanceService
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+
+    monkeypatch.setattr(
+        performance_service.WebullConnector, "is_configured", lambda self: False
+    )
+    first = _fifo_sleeve(db, client, "merge1@example.com")
+    second = _fifo_sleeve(db, client, "merge2@example.com")
+    _sym_trade(db, first, "AAA", date(2025, 1, 6), "BUY", "100", "10")
+    _sym_trade(db, second, "BBB", date(2025, 1, 6), "BUY", "10", "900")
+    _priced(db, first, "20")
+    _priced(db, second, "900")
+
+    headline = PerformanceService(db).performance([first, second])["summary"]
+    weekly = WeeklySnapshotService(db).returns_series([first, second])
+
+    # 1,000 doubled next to 9,000 unchanged is 10%, whatever the sleeves did alone.
+    assert headline["twr_pct"] == pytest.approx(0.10)
+    assert weekly[-1]["twr_cumul"] == pytest.approx(0.10)
+
+
 def test_returns_are_not_quoted_when_no_money_was_ever_invested(db, client):
     # Options written for a premium and left to expire: a gain, but on no
     # capital, so neither return has a base to be a percentage of.

@@ -425,8 +425,8 @@ class PortfolioCalculationService:
 
         Produces one point per distinct trade date: the total market value and
         cost basis of all open positions as of that date. Each symbol is valued
-        at current_prices[symbol] when available, else its last trade price on
-        or before that date.
+        at its last trade price on or before that date; the final point uses
+        current_prices[symbol] where available.
 
         Returns:
             List of {"date": date, "value": float, "cost_basis": float}
@@ -477,12 +477,19 @@ class PortfolioCalculationService:
 
             total_value = Decimal(0)
             total_cost = Decimal(0)
+            # Current prices describe the present, so they value only the last
+            # point; earlier dates use what each holding last traded for.
+            at_market = as_of == distinct_dates[-1]
             for symbol, entry in book.items():
-                if entry["qty"] <= 0:
+                if entry["qty"] == 0:
                     continue
-                price = current_prices.get(symbol, entry["last_price"])
+                price = entry["last_price"]
+                if at_market and symbol in current_prices:
+                    price = current_prices[symbol]
+                # A short counts as a liability.
                 total_value += entry["qty"] * Decimal(str(price))
-                total_cost += entry["cost"]
+                if entry["qty"] > 0:
+                    total_cost += entry["cost"]
 
             series.append(
                 {

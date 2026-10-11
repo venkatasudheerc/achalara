@@ -158,13 +158,12 @@ class PerformanceService:
             }
 
         s_start = start_date or min(t.trade_date for t in trades)
-        s_end = end_date or max(t.trade_date for t in trades)
+        last_activity = self.cash.last_activity_date(sleeve_ids)
+        s_end = end_date or last_activity
 
         # Current prices belong in the return only when the window runs up to
         # the present; a window ending in the past is valued as of then.
-        to_present = end_date is None or end_date >= max(
-            t.trade_date for t in trades
-        )
+        to_present = end_date is None or end_date >= last_activity
         market = prices if to_present else None
 
         try:
@@ -194,9 +193,7 @@ class PerformanceService:
         total_realized_gain = valued.get("total_realized_gain", 0.0)
 
         twr_note = (
-            "N/A — no capital was at work in this period"
-            if twr is None
-            else None
+            "N/A — no capital was at work in this period" if twr is None else None
         )
 
         return {
@@ -310,8 +307,8 @@ class PerformanceService:
             or at end-of-month if no trade fell in that month
           - cash_in / cash_out: gross BUY / SELL amounts during the month
           - realized_gain: net realized P&L from SELLs closed in the month
-          - return_pct: (end_value + cash_out - cash_in - start_value) / start_value
-            (modified Dietz approximation); None for the inception month
+          - return_pct: the month's time-weighted return, from the same
+            calculation as the headline TWR; None while no capital is at work
 
         Open positions are valued at live prices fetched in _fetch_live_prices.
         """
@@ -328,16 +325,9 @@ class PerformanceService:
             return []
 
         first_date = min(t.trade_date for t in trades)
-        last_date = max(t.trade_date for t in trades)
-
-        # Build a lookup: date → portfolio value from value_series
-        series = self.portfolio.value_series(sleeve_ids, prices)
-        value_by_date: Dict[date, float] = {pt["date"]: pt["value"] for pt in series}
-
-        def value_at_or_before(d: date) -> float:
-            """Latest portfolio value on or before date d."""
-            candidates = [v for dt, v in value_by_date.items() if dt <= d]
-            return candidates[-1] if candidates else 0.0
+        # Run to the last trade or income payment, whichever is later, as the
+        # headline window does.
+        last_date = self.cash.last_activity_date(sleeve_ids)
 
         # Enumerate calendar months from inception to last trade month
         months = []
@@ -362,7 +352,20 @@ class PerformanceService:
             key = (flow_date.year, flow_date.month)
             income_by_month[key] = income_by_month.get(key, 0.0) + float(amount)
 
+        # One pass of the shared time-weighted calculation, read at each month
+        # end (the last one clamped to the last trade and valued at market).
+        month_ends = []
+        y, m = first_date.year, first_date.month
+        while (y, m) <= (last_date.year, last_date.month):
+            month_ends.append(min(date(y, m, calendar.monthrange(y, m)[1]), last_date))
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        growth_by_date = {
+            point["date"]: point
+            for point in self.twr.growth_at(sleeve_ids, first_date, month_ends, prices)
+        }
+
         prev_end_value = 0.0  # value carried from previous month
+        prev_growth = 0.0  # cumulative TWR at the previous month end
 
         while (year, month) <= (end_year, end_month):
             month_last_day = calendar.monthrange(year, month)[1]
@@ -372,7 +375,9 @@ class PerformanceService:
             # Clamp to the actual data range
             effective_end = min(month_end, last_date)
 
-            end_value = value_at_or_before(effective_end)
+            point = growth_by_date[effective_end]
+            end_value = point["value"]
+            growth = point["twr"]
 
             # Cash flows within this month
             month_trades = [
@@ -393,24 +398,13 @@ class PerformanceService:
 
             realized_this_month = realized_by_month.get((year, month), 0.0)
 
-            # Modified Dietz return
-            is_inception = year == first_date.year and month == first_date.month
-            net_invested = cash_in - cash_out
-            if is_inception:
-                # No prior value — can't compute a return
+            # The month's return is the growth of the time-weighted series
+            # across it, so months compound to the headline TWR.
+            if growth is None:
                 return_pct = None
-            elif prev_end_value == 0 and cash_in > 0:
-                # Portfolio was fully liquidated; treat cash_in as the opening base
-                # so fresh deployments show their gain rather than null
-                return_pct = (
-                    ((end_value - net_invested) / cash_in * 100) if cash_in else None
-                )
-            elif prev_end_value > 0:
-                return_pct = (
-                    (end_value - prev_end_value - net_invested) / prev_end_value * 100
-                )
             else:
-                return_pct = None
+                return_pct = ((1 + growth) / (1 + prev_growth) - 1) * 100
+                prev_growth = growth
 
             month_label = date(year, month, 1).strftime("%b %Y")
             months.append(

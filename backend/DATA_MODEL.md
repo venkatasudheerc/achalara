@@ -368,7 +368,12 @@ Each returns `{ level, id, name, summary, timeseries, children }`.
 
 ### Weekly returns series
 
-Persisted snapshots power a separate weekly TWR + MWR chart endpoint:
+A weekly TWR + MWR chart endpoint, computed on request from the trades of the whole sleeve
+set with the same `TWRCalculationService.growth_at` and `MWRCalculationService` as the headline
+figures, so its last point equals the headline at every level. The series has one point per
+Monday plus one for today. `weekly_portfolio_snapshots` rows are still written after trade
+writes but are **no longer read** for this chart (averaging per-sleeve figures cannot reproduce
+a return on the merged portfolio).
 
 | Level | Endpoint |
 |---|---|

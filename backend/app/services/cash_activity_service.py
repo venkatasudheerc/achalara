@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.connectors.models import NormalizedCashActivity
@@ -141,6 +142,22 @@ class CashActivityService:
                 activity.activity_date, Decimal(0)
             ) + Decimal(str(activity.amount))
         return sorted(daily.items())
+
+    def last_activity_date(self, sleeve_ids: List[str]) -> Optional[date]:
+        """The latest date anything counted in returns happened: a trade, or
+        income that feeds returns. Return windows that run "to the present"
+        end here, so a dividend paid after the last trade is not left out."""
+        if not sleeve_ids:
+            return None
+        latest = (
+            self.db.query(func.max(Trade.trade_date))
+            .filter(Trade.sleeve_id.in_(sleeve_ids))
+            .scalar()
+        )
+        flows = self.income_flows(sleeve_ids)
+        if flows and (latest is None or flows[-1][0] > latest):
+            latest = flows[-1][0]
+        return latest
 
     def _traded_symbols(self, sleeve_ids: List[str]) -> set:
         return {
