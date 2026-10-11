@@ -135,7 +135,7 @@ Relationships: `accounts` (1→N, cascade delete).
 |---|---|---|
 | id | String(36) PK | uuid |
 | client_id | String(36) FK→clients.id | not null, **ON DELETE CASCADE** |
-| account_number | String(50) | nullable (e.g. "58168069") |
+| account_number | String(50) | nullable (e.g. "10000001") |
 | name | String(255) | not null |
 | description | String(500) | nullable |
 

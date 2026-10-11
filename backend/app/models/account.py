@@ -14,7 +14,7 @@ class Account(BaseModel):
     client_id = Column(
         String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
     )
-    account_number = Column(String(50), nullable=True)  # e.g., "58168069"
+    account_number = Column(String(50), nullable=True)  # e.g., "10000001"
     name = Column(String(255), nullable=False)
     description = Column(String(500))
 
