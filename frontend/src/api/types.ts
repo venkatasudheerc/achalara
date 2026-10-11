@@ -58,7 +58,12 @@ export interface PerformanceChild {
   account_id?: string | null
   client_id?: string | null
 }
-export interface TimeseriesPoint { date: string; value: number; cost_basis: number }
+export interface TimeseriesPoint {
+  date: string; value: number; cost_basis: number
+  cash?: number | null
+  /** Net money put in since the previous point (negative if taken out) */
+  net_flow?: number
+}
 export interface LevelPerformance {
   level: string; id: string; name: string
   start_date: string | null; end_date: string | null

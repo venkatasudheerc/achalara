@@ -1391,6 +1391,35 @@ def test_a_deposit_is_money_in_but_a_trade_is_not(db, client, client_id, sdk, no
     assert summary["mwr_pct"] == pytest.approx(0.0, abs=1e-6)
 
 
+def test_chart_points_carry_the_money_put_in_so_a_benchmark_can_match_it(
+    db, client, client_id, sdk, no_live_prices
+):
+    from app.services.performance_service import PerformanceService
+
+    ba = _cash_account(
+        db, client, client_id, sdk,
+        [
+            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
+            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
+            # Deposited on a day with no trade: it shows at the next point.
+            _cash_row("CONTRIBUTION", 5000.0, "2026-02-10"),
+            _cash_row("BUY", -1000.0, "2026-03-02", "ABC", 10, 100),
+            _cash_row("WITHDRAWAL", -2000.0, "2026-03-02"),
+        ],
+        cash_now=8000.0,
+    )
+    service = PerformanceService(db)
+    sleeve_id = ba.default_sleeve_id
+
+    account = service.performance([sleeve_id], cash_account_ids=[ba.account_id])
+    sleeve = service.performance([sleeve_id])
+
+    # For the account, only deposits and withdrawals are money in.
+    assert [p["net_flow"] for p in account["timeseries"]] == [10000.0, 3000.0]
+    # For the sleeve alone, buying is.
+    assert [p["net_flow"] for p in sleeve["timeseries"]] == [4000.0, 1000.0]
+
+
 def test_account_views_with_cash_agree_with_each_other(
     db, client, client_id, sdk, no_live_prices
 ):

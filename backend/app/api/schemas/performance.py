@@ -13,6 +13,9 @@ class PerformancePoint(BaseModel):
     # Cash held that day, already included in value and cost_basis. Present
     # only for views of whole accounts whose cash is known.
     cash: Optional[float] = None
+    # Net money put in since the previous point (negative if taken out), so a
+    # benchmark can be given the same money on the same days.
+    net_flow: float = 0.0
 
 
 class PerformanceSummary(BaseModel):

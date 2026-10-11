@@ -194,6 +194,8 @@ class PerformanceService:
         valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
         timeseries = self.portfolio.value_series(sleeve_ids, prices)
 
+        self._attach_net_flows(timeseries, trades, sleeve_ids, ledger)
+
         # The chart's running cost is an average-cost estimate; the headline
         # uses exact lots. End the chart on the headline's figure so the gap at
         # the last point is the unrealised gain shown above it.
@@ -264,6 +266,42 @@ class PerformanceService:
             "end_date": s_end,
             "timeseries": timeseries,
         }
+
+    def _attach_net_flows(self, timeseries, trades, sleeve_ids, ledger) -> None:
+        """Give each chart point the net money put in since the point before.
+
+        A benchmark is only a fair comparison if it receives the same money on
+        the same days; this is what lets the chart buy and sell the benchmark
+        alongside. "Money in" is what it is for the returns: deposits less
+        withdrawals where cash is tracked, and otherwise purchases less sale
+        proceeds and income.
+        """
+        tracked = ledger.sleeve_ids if ledger is not None else set()
+        by_date: Dict[date, Decimal] = {}
+        for trade in trades:
+            if trade.sleeve_id in tracked:
+                continue
+            gross = Decimal(str(trade.quantity)) * Decimal(str(trade.price))
+            commission = Decimal(str(trade.commission or 0))
+            signed = gross + commission if trade.action == "BUY" else commission - gross
+            by_date[trade.trade_date] = (
+                by_date.get(trade.trade_date, Decimal(0)) + signed
+            )
+        untracked = [sid for sid in sleeve_ids if sid not in tracked]
+        for day, income in self.cash.income_flows(untracked):
+            by_date[day] = by_date.get(day, Decimal(0)) - income
+        if ledger is not None:
+            for day, deposited in ledger.external.items():
+                by_date[day] = by_date.get(day, Decimal(0)) + deposited
+
+        days = sorted(by_date)
+        index = 0
+        for point in timeseries:
+            total = Decimal(0)
+            while index < len(days) and days[index] <= point["date"]:
+                total += by_date[days[index]]
+                index += 1
+            point["net_flow"] = float(total)
 
     def positions_payload(self, sleeve_ids: List[str]) -> Dict:
         """Fetch live prices, compute open-position values and totals.

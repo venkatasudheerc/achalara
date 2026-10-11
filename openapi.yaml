@@ -1936,6 +1936,13 @@ components:
           type: number
           nullable: true
           description: Cash held that day, already included in value and cost_basis; null when cash is not tracked
+        net_flow:
+          type: number
+          description: |
+            Net money put in since the previous point (negative if taken out):
+            deposits less withdrawals where cash is tracked, otherwise purchases
+            less sale proceeds and income. Lets a benchmark be given the same
+            money on the same days.
 
     PerformanceSummary:
       type: object
