@@ -211,11 +211,8 @@ class PerformanceService:
                 point["cash"] = held
                 point["value"] += held
                 point["cost_basis"] += held
-            cash_now = float(ledger.balance_on(date.today()))
+            cash_now = float(ledger.reported)
             pending = float(ledger.pending)
-            if timeseries and to_present:
-                timeseries[-1]["value"] += pending
-                timeseries[-1]["cost_basis"] += pending
 
         # Closed-position roll-ups
         closed = valued.get("closed_positions", [])

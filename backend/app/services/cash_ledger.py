@@ -28,12 +28,13 @@ class CashLedger:
     """Cash balances and outside flows for a set of cash-tracked accounts."""
 
     def __init__(self, db: Session, brokerage_accounts: List[BrokerageAccount]):
-        self.anchor = sum(
+        # Cash as the brokerage reports it now.
+        self.reported = sum(
             (Decimal(str(a.cash_balance)) for a in brokerage_accounts), Decimal(0)
         )
         # Securities the brokerage holds that our trades do not yet show (or
-        # the reverse), valued now. Its cash already reflects those trades, so
-        # today's total is only right with this added.
+        # the reverse), valued now. The reported cash has already paid for
+        # them, but no stored activity records that payment.
         self.pending = sum(
             (
                 Decimal(str((a.reconciliation or {}).get("holdings_adjustment", 0)))
@@ -41,6 +42,11 @@ class CashLedger:
             ),
             Decimal(0),
         )
+        # Walking back from the reported cash alone would carry that unrecorded
+        # payment into every earlier date and understate them all. So the
+        # unreported securities are held as if still cash: the balance then
+        # matches the trades we do have, and the total is right throughout.
+        self.anchor = self.reported + self.pending
         account_ids = [a.account_id for a in brokerage_accounts]
         # Trades in these sleeves swap cash for securities inside the account,
         # so they are not money in or out.
@@ -95,7 +101,8 @@ class CashLedger:
         return cls(db, tracked) if tracked else None
 
     def balance_on(self, day: date) -> Decimal:
-        """Cash held at the close of ``day``."""
+        """Cash held at the close of ``day``, on the footing of the trades on
+        file (so it includes ``pending``; see ``__init__``)."""
         return self.anchor - self._after[bisect_right(self._dates, day)]
 
     def change_dates(self, start: date, end: date) -> List[date]:

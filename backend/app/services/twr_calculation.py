@@ -165,9 +165,6 @@ class TWRCalculationService:
                 if to_present and not pending and until is None:
                     # Bring holdings from their last traded prices up to market.
                     worth = securities(prices) + previous_cash
-                    if ledger is not None:
-                        # And onto the brokerage's own current holdings.
-                        worth += ledger.pending
                     if previous_value > 0:
                         twr = growth * float(worth / previous_value) - 1.0
                 points.append({"date": checkpoint, "twr": twr, "value": float(worth)})

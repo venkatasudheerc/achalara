@@ -1439,10 +1439,14 @@ def test_todays_total_rests_on_the_brokerages_current_holdings(
         [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
     )
 
-    # Without the correction the account would look 30% down.
-    assert result["summary"]["holdings_adjustment"] == 3000.0
-    assert result["summary"]["twr_pct"] == pytest.approx(0.0, abs=1e-9)
-    assert result["timeseries"][-1]["value"] == pytest.approx(10000.0)
+    # Without the correction the account would look 30% down today, or, with
+    # it applied only to today, 43% up on an understated past.
+    summary = result["summary"]
+    assert summary["cash_balance"] == 3000.0
+    assert summary["holdings_adjustment"] == 3000.0
+    assert summary["twr_pct"] == pytest.approx(0.0, abs=1e-9)
+    assert summary["mwr_pct"] == pytest.approx(0.0, abs=1e-6)
+    assert [p["value"] for p in result["timeseries"]] == [pytest.approx(10000.0)]
 
 
 def test_full_history_sync_reloads_from_the_first_day_and_adds_only_what_is_new(
