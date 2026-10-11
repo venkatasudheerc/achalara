@@ -311,6 +311,16 @@ its members and applies the same rules to the sums.
 The Performance page reads everything at market. The realised basis is available from the API
 but no screen uses it at present.
 
+**Seams.** Where a member's rows change basis from one day to the next (rebuilt → recorded, or
+back), the two value the same holdings differently, options above all, and the value steps
+without anything having happened that day. `PerformanceStatsService.daily` sets that step aside
+as the day's `adjustment`: the day's return counts only what was realised on it, and the step is
+excluded from `gain` and from every return for good (so
+`opening + net_flow + gain + adjustment = closing`). Be aware of what this hides: the step is
+mostly unrealised gain or loss that built up unseen while the days were being rebuilt (an option
+liability that could not be priced), so returns across a seam leave that amount out even though
+total value includes it.
+
 ### `perf.daily_holding`
 What the brokerage reported an account as holding on one day: `account_id` (CASCADE),
 `sleeve_id` (SET NULL), `as_of_date`, `symbol`, `security_type`, `quantity`, `price`,

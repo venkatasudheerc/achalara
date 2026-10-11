@@ -56,6 +56,14 @@ export function PeriodTable({
       render: (r) => (
         <span className="whitespace-nowrap">
           {periodLabel(r, grain)}
+          {!!r.adjustment && (
+            <span
+              className="ml-2 text-[10px] uppercase tracking-wide text-stone"
+              title={`Includes a valuation adjustment of ${formatCurrency(r.adjustment)}: the step where days rebuilt from trades meet days recorded from the brokerage. It is not counted as a gain or in any return, so opening + deposits + gain differs from closing by this amount.`}
+            >
+              adjusted
+            </span>
+          )}
           {r.is_provisional && (
             <span
               className="ml-2 text-[10px] uppercase tracking-wide text-stone"

@@ -1559,9 +1559,10 @@ def test_options_are_repriced_to_what_the_brokerages_total_implies(
         [ba.default_sleeve_id], cash_account_ids=[ba.account_id]
     )
     summary = result["summary"]
-    # Today's total is the brokerage's, and the 3,000 lost shows as return.
+    # Today's total is the brokerage's. The 3,000 step from our rebuilt value
+    # to its recorded one is a correction to the record, not a day's return.
     assert summary["total_value"] == pytest.approx(7000.0)
-    assert summary["twr_pct"] == pytest.approx(-0.30)
+    assert summary["twr_pct"] == pytest.approx(0.0)
     assert result["timeseries"][-1]["value"] == pytest.approx(7000.0)
 
 

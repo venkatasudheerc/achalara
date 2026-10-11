@@ -156,6 +156,10 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 - **One daily-return formula per basis:** `dietz_factor` at market, `realized_factor` at cost
   (both in `performance_build_service.py`). The realised basis is a way of *reading* the same
   rows (`daily_valuation.cost_value` in place of `securities_value`), never a second table.
+- **Seams are adjustments, not returns.** Where a member's rows change `basis` between days,
+  `PerformanceStatsService.daily` excludes the valuation step from that day's return and reports
+  it as `adjustment`. Read daily series through `daily()`; do not chain stored `return_factor`s
+  yourself, or the step comes back.
 - Existing performance endpoints read from the daily record when it exists and fall back to
   `TWRCalculationService.growth_at` / `MWRCalculationService.calculate_mwr` (from trades) when it
   does not. Keep both paths returning the same response shape.

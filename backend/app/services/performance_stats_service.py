@@ -57,6 +57,7 @@ class Day:
         "unpriced",
         "observed",
         "provisional",
+        "adjustment",
     )
 
     @property
@@ -125,6 +126,10 @@ class PerformanceStatsService:
 
         by_date: Dict[date, Day] = {}
         last_total: Dict[str, Decimal] = {}
+        # Per member, to recognise a seam: its last row's basis, and its value
+        # with holdings at cost.
+        last_basis: Dict[str, str] = {}
+        last_book: Dict[str, Decimal] = {}
         dates = sorted({row.as_of_date for row in rows})
         rows_by_date: Dict[date, list] = {}
         for row in rows:
@@ -146,6 +151,8 @@ class PerformanceStatsService:
             # row can open on a balance it already held (cash from before the
             # record starts), which is not a gain made on its first day.
             carried_in = ZERO
+            seam = False
+            day.adjustment = ZERO
             for row in rows_by_date[current]:
                 member = row.sleeve_id or row.account_id
                 present.add(member)
@@ -156,10 +163,27 @@ class PerformanceStatsService:
                     cost = Decimal(str(row.cost_value))
                     total += cost - securities
                     securities = cost
+                book = total
+                if not realized and row.cost_value is not None:
+                    book = total + Decimal(str(row.cost_value)) - securities
                 if member not in last_total:
                     carried_in += total - (
                         Decimal(str(row.flow_in or 0)) - Decimal(str(row.flow_out or 0))
                     )
+                elif row.basis != last_basis[member]:
+                    # A seam: yesterday was rebuilt from trades and prices and
+                    # today was recorded from the brokerage (or the reverse).
+                    # The two value the same holdings differently — options
+                    # above all — so the value steps without anything having
+                    # happened that day. That step is a correction to the
+                    # record, not a return: it is set aside, leaving the day
+                    # to count only what was realised on it.
+                    seam = True
+                    step = (total - last_total[member]) - (book - last_book[member])
+                    carried_in += step
+                    day.adjustment += step
+                last_basis[member] = row.basis
+                last_book[member] = book
                 last_total[member] = total
                 day.securities += securities
                 if row.cash_value is not None:
@@ -170,7 +194,7 @@ class PerformanceStatsService:
                 day.unpriced += Decimal(str(row.unpriced_value or 0))
                 day.observed = day.observed and row.basis == "observed"
                 day.provisional = day.provisional or bool(row.is_provisional)
-                if single and not realized:
+                if single and not realized and not seam:
                     day.factor = (
                         Decimal(str(row.return_factor))
                         if row.return_factor is not None
@@ -179,7 +203,7 @@ class PerformanceStatsService:
             # A member with no row today (its history ended earlier, or a gap)
             # is carried at its last known value so the total does not drop.
             day.total = sum(last_total.values(), ZERO)
-            if not single or realized:
+            if not single or realized or seam:
                 measure = realized_factor if realized else dietz_factor
                 day.factor = measure(
                     previous_total + carried_in, day.total, day.flow_in, day.flow_out
@@ -219,7 +243,9 @@ class PerformanceStatsService:
         end = days[-1].date
         # From the investor's side a deposit is money paid out.
         flows = [(day.date, -day.net_flow) for day in days if day.net_flow != 0]
-        closing = days[-1].total
+        # A correction to the record is neither earned nor lost: the closing
+        # value is taken as it would stand without it.
+        closing = days[-1].total - sum((day.adjustment for day in days), ZERO)
         if opening <= 0 and not any(amount < 0 for _, amount in flows):
             return None
         return MWRCalculationService(self.db)._solve_irr(
@@ -290,6 +316,8 @@ class PerformanceStatsService:
                 ytd *= 1 + twr
             closing = last.total
             net_flow = sum((d.net_flow for d in group), ZERO)
+            # Corrections to the record (see ``daily``) are not gains.
+            adjustment = sum((d.adjustment for d in group), ZERO)
 
             if (start is None or last.date >= start) and (
                 end is None or first.date <= end
@@ -309,7 +337,8 @@ class PerformanceStatsService:
                         if last.cash is not None
                         else None,
                         "net_flow": float(net_flow),
-                        "gain": float(closing - opening - net_flow),
+                        "gain": float(closing - opening - net_flow - adjustment),
+                        "adjustment": float(adjustment),
                         "twr_pct": twr,
                         "mwr_pct": self._mwr(opening, group),
                         "twr_cumulative_pct": cumulative - 1 if cumulative_ok else None,
@@ -419,11 +448,13 @@ class PerformanceStatsService:
             span_start = (before[-1].date if before else days[0].date) if days else end
             returns[name] = _annualise(twr, span_start, end)
             net_flow = sum((d.net_flow for d in days), ZERO)
+            adjustment = sum((d.adjustment for d in days), ZERO)
             closing = days[-1].total if days else ZERO
             activity[name] = {
                 "beginning_value": float(opening),
                 "net_flow": float(net_flow),
-                "gain": float(closing - opening - net_flow),
+                "adjustment": float(adjustment),
+                "gain": float(closing - opening - net_flow - adjustment),
                 "ending_value": float(closing),
                 "twr_pct": returns[name],
                 "mwr_pct": _annualise(mwr, span_start, end),

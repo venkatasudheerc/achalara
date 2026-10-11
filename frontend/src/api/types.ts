@@ -258,8 +258,10 @@ export interface PeriodPerformance {
   opening_value: number; closing_value: number; cash_value: number | null
   /** Money put in less money taken out during the period */
   net_flow: number
-  /** closing − opening − net_flow */
+  /** closing − opening − net_flow − adjustment */
   gain: number
+  /** A correction to the record inside the period, kept out of gain and returns */
+  adjustment?: number
   /** Decimal fractions (0.05 = 5%); null when no capital was at work */
   twr_pct: number | null; mwr_pct: number | null
   twr_cumulative_pct: number | null; twr_ytd_pct: number | null

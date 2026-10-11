@@ -142,6 +142,7 @@ class ReportService:
                 key: {
                     "beginning_value": _money(row["beginning_value"]),
                     "net_flow": _money(row["net_flow"]),
+                    "adjustment": _money(row["adjustment"]),
                     "gain": _money(row["gain"]),
                     "ending_value": _money(row["ending_value"]),
                     "twr_pct": _pct(row["twr_pct"]),
@@ -153,6 +154,11 @@ class ReportService:
                 ("Beginning value", "beginning_value", ""),
                 ("Net contributions and withdrawals", "net_flow", ""),
                 ("Investment gain / loss", "gain", ""),
+                *(
+                    [("Valuation adjustment", "adjustment", "")]
+                    if any(abs(row["adjustment"]) >= 0.5 for row in activity.values())
+                    else []
+                ),
                 ("Ending value", "ending_value", "strong"),
                 ("Time-weighted return", "twr_pct", ""),
                 ("Money-weighted return", "mwr_pct", ""),
@@ -347,6 +353,21 @@ class ReportService:
                 "volatility with a risk-free rate of 0.00%; the Sortino ratio uses downside "
                 "deviation instead. Maximum drawdown is the largest peak-to-trough decline "
                 "in cumulative return.",
+            ),
+            *(
+                [
+                    (
+                        "Valuation adjustment",
+                        "Where daily values reconstructed from transactions meet values "
+                        "recorded from the custodian, the same holdings are valued "
+                        "differently (options in particular) and the account's value "
+                        "steps without any event on that day. That step is shown as a "
+                        "valuation adjustment and is excluded from investment gain and "
+                        "from every return.",
+                    )
+                ]
+                if abs(figures["activity"]["inception"]["adjustment"]) >= 0.5
+                else []
             ),
             ("Benchmark", "No benchmark comparison is included in this report."),
         ]

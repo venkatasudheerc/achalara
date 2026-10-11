@@ -874,3 +874,86 @@ def test_period_endpoints_take_a_basis(db, client):
     assert monthly["months"][0]["return_pct"] == 50.0
     assert series["series"][-1]["twr_cumul"] == pytest.approx(0.5)
     assert client.get(f"{base}/periods?basis=book").status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Where rebuilt days meet recorded ones
+# ---------------------------------------------------------------------------
+
+
+def _seam_account(db):
+    """Three rebuilt days at 10,000, then a day recorded at 9,000.
+
+    Nothing was bought, sold or paid on the recorded day: the cost of what is
+    open is unchanged, so the whole 1,000 is the two valuations disagreeing.
+    """
+    account = _account(db, "Seam")
+    values = [(10000, "reconstructed")] * 3 + [(9000, "observed"), (9090, "observed")]
+    for index, day in enumerate(_weekdays(date(2025, 1, 6), len(values))):
+        total, basis = values[index]
+        db.add(
+            DailyValuation(
+                account_id=account.id,
+                as_of_date=day,
+                securities_value=D(total) - 2000,
+                cost_value=D(7500),
+                cash_value=D(2000),
+                total_value=D(total),
+                flow_in=D(10000) if index == 0 else D(0),
+                flow_out=D(0),
+                return_factor=D(1) if index == 0 else None,
+                basis=basis,
+            )
+        )
+    db.commit()
+    # Stored factors as the build would write them: plain day-on-day.
+    rows = (
+        db.query(DailyValuation)
+        .filter(DailyValuation.account_id == account.id)
+        .order_by(DailyValuation.as_of_date)
+        .all()
+    )
+    for before, after in zip(rows, rows[1:]):
+        after.return_factor = after.total_value / before.total_value
+    db.commit()
+    return account
+
+
+def test_the_step_onto_recorded_values_is_an_adjustment_not_a_return(db):
+    account = _seam_account(db)
+    stats = PerformanceStatsService(db)
+    series = stats.daily(account_ids=[account.id])
+
+    days = stats.periods(series, "day")
+    (week,) = stats.periods(series, "week")
+
+    # The recorded day itself earned nothing; the day after is a normal +1%.
+    assert days[3]["twr_pct"] == pytest.approx(0.0)
+    assert days[3]["adjustment"] == pytest.approx(-1000.0)
+    assert days[3]["gain"] == pytest.approx(0.0)
+    assert days[4]["twr_pct"] == pytest.approx(0.01)
+    assert days[4]["adjustment"] == 0.0
+    # It stays out for good: a week later the step is still not a loss.
+    assert week["twr_pct"] == pytest.approx(0.01)
+    assert week["gain"] == pytest.approx(90.0)
+    assert week["adjustment"] == pytest.approx(-1000.0)
+    assert week["closing_value"] == 9090.0
+    assert week["mwr_pct"] == pytest.approx(0.009, abs=5e-4)
+
+
+def test_the_report_shows_the_adjustment_so_activity_still_adds_up(db, client):
+    account = _seam_account(db)
+    stats = PerformanceStatsService(db)
+
+    activity = stats.statistics(stats.daily(account_ids=[account.id]))["activity"][
+        "inception"
+    ]
+    html = client.get(
+        f"/api/v1/clients/{account.client_id}/accounts/{account.id}/report?format=html"
+    ).text
+
+    assert activity["beginning_value"] + activity["net_flow"] + activity[
+        "gain"
+    ] + activity["adjustment"] == pytest.approx(activity["ending_value"])
+    assert "Valuation adjustment" in html
+    assert "-$1,000" in html
