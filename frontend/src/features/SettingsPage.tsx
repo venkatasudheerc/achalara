@@ -27,10 +27,11 @@ export function SettingsPage() {
         )}
       </section>
 
-      <section className="border border-stone/20 rounded-card p-6 opacity-60">
-        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Authentication</h2>
+      <section className="border border-stone/20 rounded-card p-6">
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Sign-in</h2>
         <p className="text-sm text-stone">
-          Single-user mode. Auth configuration will appear here when multi-user login is available.
+          Advisors and clients sign in with an email and password. Invite a client, or send a
+          password-reset link, from that client's page.
         </p>
       </section>
     </div>

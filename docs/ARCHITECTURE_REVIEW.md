@@ -42,6 +42,8 @@ frontend ~5,300 lines; 62 API operations; 13 tables across `public` and `perf`.
   ownership check helper used by all `client_id` routes; gate `/admin` separately; make the report
   download an authenticated request. Decide early whether clients ever log in themselves, because
   that changes the authorization model from "advisor sees all" to per-client scoping.
+- **Status.** Done: every data route requires a session; advisors see all, client users read
+  only their own and shared accounts (`backend/DATA_MODEL.md` § "Sign-in and access").
 
 ### 2. The brokerage link is single-tenant by construction
 - **Evidence.** One SnapTrade Personal key and one `SNAPTRADE_USER_ID` in settings.

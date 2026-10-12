@@ -1,5 +1,4 @@
 """Client endpoints"""
-import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date
@@ -10,8 +9,7 @@ from app.models.client import Client
 from app.models.account import Account
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.api.schemas.client import ClientCreate, ClientResponse, ClientLogin
-from app.config import settings
+from app.api.schemas.client import ClientCreate, ClientResponse
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -44,37 +42,6 @@ def list_clients(
 ):
     """List all clients with pagination, ordered by creation date."""
     return db.query(Client).order_by(Client.created_at).offset(skip).limit(limit).all()
-
-
-@router.get("/lookup", response_model=ClientResponse)
-def lookup_client_by_email(
-    email: str = Query(..., description="Client email address"),
-    db: Session = Depends(get_db),
-):
-    """Look up a client by email address"""
-    client = db.query(Client).filter(Client.email == email).first()
-    if not client:
-        raise HTTPException(status_code=404, detail="No client found with that email")
-    return client
-
-
-@router.post("/login", response_model=ClientResponse)
-def login_client(body: ClientLogin, db: Session = Depends(get_db)):
-    """Identify a client by email + dev password. Returns client data on success.
-
-    Disabled when CLIENT_DEV_PASSWORD is not set in the environment.
-    """
-    if not settings.client_dev_password:
-        raise HTTPException(
-            status_code=503, detail="Dev login is disabled on this server"
-        )
-    # Constant-time comparison to prevent timing-oracle attacks
-    if not secrets.compare_digest(body.password, settings.client_dev_password):
-        raise HTTPException(status_code=401, detail="Incorrect password")
-    client = db.query(Client).filter(Client.email == body.email).first()
-    if not client:
-        raise HTTPException(status_code=404, detail="No client found with that email")
-    return client
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

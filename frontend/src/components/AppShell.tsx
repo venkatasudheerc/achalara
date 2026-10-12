@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useLogout, useMe } from '@/hooks/useAuth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useScope } from '@/context/ScopeContext'
 
@@ -18,6 +19,10 @@ const fastFollowers = [
 export function AppShell() {
   const { startDate, endDate, setDateRange } = useDateRange()
   const { scope, clearScope } = useScope()
+  const navigate = useNavigate()
+  const { data: me } = useMe()
+  const logout = useLogout()
+  const signOut = () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })
 
   return (
     <div className="min-h-screen bg-paper flex">
@@ -66,6 +71,12 @@ export function AppShell() {
           >
             Settings
           </NavLink>
+          <div className="px-3 pt-3 mt-2 border-t border-pine/40">
+            <p className="text-xs text-paper/80 truncate">{me?.name}</p>
+            <button onClick={signOut} className="text-xs text-stone hover:text-paper underline underline-offset-2 mt-1">
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 

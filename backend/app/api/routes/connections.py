@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 # Mounted at /api/v1; paths below carry their own resource prefix.
 router = APIRouter()
+# Not behind sign-in: SnapTrade calls it, and it verifies the body's signature.
+public_router = APIRouter()
 
 
 @contextmanager
@@ -155,7 +157,7 @@ def _signature_valid(body: bytes, signature: str) -> bool:
     return any(hmac.compare_digest(signature.strip(), c) for c in candidates)
 
 
-@router.post("/webhooks/snaptrade")
+@public_router.post("/webhooks/snaptrade")
 def snaptrade_webhook(
     body: bytes = Depends(_raw_body),
     signature: str = Header(default="", alias="Signature"),

@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
 import { BrokerageConnections } from '@/features/connections/BrokerageConnections'
+import { ClientLoginSection } from '@/features/auth/ClientLoginSection'
 
 export function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -158,6 +159,8 @@ export function ClientDetailPage() {
           <p className="text-stone text-sm py-4">No accounts yet.</p>
         )}
       </section>
+
+      <ClientLoginSection clientId={clientId!} />
 
       <BrokerageConnections clientId={clientId!} />
 

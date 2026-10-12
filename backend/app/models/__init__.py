@@ -14,6 +14,7 @@ from app.models.brokerage_connection import (
     BrokerageActivity,
 )
 from app.models.cash_activity import CashActivity
+from app.models.user import AccountAccess, AuthToken, User, UserSession
 from app.models.perf import (
     CorporateAction,
     DailyHolding,
@@ -35,6 +36,10 @@ __all__ = [
     "BrokerageAccount",
     "BrokerageActivity",
     "CashActivity",
+    "AccountAccess",
+    "AuthToken",
+    "User",
+    "UserSession",
     "CorporateAction",
     "DailyHolding",
     "DailyPrice",

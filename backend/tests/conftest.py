@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from app.models.base import Base
 
 
+from app.api.deps import get_current_user
 from app.db.database import get_db
+from app.models.user import User
 from app.main import app
 
 
@@ -43,7 +45,29 @@ def db(db_engine):
 
 @pytest.fixture
 def client(db):
-    """Get test client with dependency override"""
+    """Test client signed in as an advisor, who may call every route.
+
+    The sign-in itself is bypassed here; ``anon_client`` goes through it.
+    """
+
+    def override_get_db():
+        yield db
+
+    advisor = User(
+        id="test-advisor", email="advisor@example.com", name="Advisor", role="advisor"
+    )
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: advisor
+    test_client = TestClient(app)
+
+    yield test_client
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client(db):
+    """Test client with no session: every call goes through the real sign-in."""
 
     def override_get_db():
         yield db

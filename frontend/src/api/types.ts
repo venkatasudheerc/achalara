@@ -2,7 +2,43 @@
 
 export type TradeAction = 'BUY' | 'SELL'
 
-export interface ClientLogin { email: string; password: string }
+export type UserRole = 'advisor' | 'client'
+export interface LoginRequest { email: string; password: string }
+/** An account a client user may view; never carries a full account number */
+export interface VisibleAccount {
+  id: string
+  /** The owner, which is not the viewer when `shared` */
+  client_id: string
+  name: string; number_last4: string | null; shared: boolean
+}
+export interface MeResponse {
+  id: string; email: string; name: string; role: UserRole
+  client_id: string | null
+  /** Empty for an advisor, who sees every account */
+  accounts: VisibleAccount[]
+}
+export interface UserResponse {
+  id: string; email: string; name: string; role: UserRole
+  client_id: string | null; is_active: boolean
+  /** False until the person has accepted their invite */
+  has_password: boolean
+  last_login_at: string | null
+}
+export interface LinkResponse {
+  /** Shown once; only a digest is stored */
+  token: string
+  /** Frontend route that accepts the link */
+  path: string
+  purpose: 'invite' | 'reset'; email: string; expires_at: string
+}
+export interface LinkPreview {
+  purpose: 'invite' | 'reset'; email: string; name: string
+  accounts: VisibleAccount[]
+}
+export interface AccountAccessResponse {
+  client_id: string; account_id: string; account_name: string
+  owner_client_id: string; owner_name: string
+}
 export interface ClientCreate { name: string; email: string }
 export interface ClientResponse {
   id: string; name: string; email: string

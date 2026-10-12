@@ -67,7 +67,9 @@
 
 ## Phase 6: Advanced Features (Ongoing)
 
-- [ ] **Auth** — JWT login, role-based access control, API key management
+- [x] **Auth** — email + password sign-in (session cookie), advisor and client roles, invite and
+      reset links, read-only client access to own and shared accounts. Not built: an email
+      service (links are passed on by the advisor), API keys, two-factor sign-in.
 - [ ] **Reporting** — PDF/Excel export, performance attribution, benchmark comparison, tax-lot tracking
 - [ ] **Real-time** — WebSocket for live price updates and position changes
 - [ ] **Data quality** — anomaly detection, account reconciliation, audit logging

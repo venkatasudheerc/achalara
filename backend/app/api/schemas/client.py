@@ -23,10 +23,3 @@ class ClientResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class ClientLogin(BaseModel):
-    """Login request — email + dev password"""
-
-    email: EmailStr
-    password: str

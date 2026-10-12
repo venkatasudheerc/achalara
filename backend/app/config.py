@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed CORS origins. Defaults to localhost dev server.
     # Set to the actual frontend URL(s) in production.
     cors_allow_origins: str = "http://localhost:5173"
-    # Dev-only client login password. Empty string disables the endpoint entirely.
-    client_dev_password: str = ""
+    # How long a sign-in lasts before the person must sign in again.
+    session_ttl_hours: int = 168
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -37,6 +37,8 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = str(_ENV_FILE)
+        # A local .env may still carry settings that have since been retired.
+        extra = "ignore"
 
 
 @lru_cache()

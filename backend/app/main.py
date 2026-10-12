@@ -1,5 +1,5 @@
 """FastAPI application entry point"""
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -17,8 +17,11 @@ from app.models import (  # noqa: F401  — side-effect imports to register mode
     BrokerageConnection,
     BrokerageAccount,
     CashActivity,
+    User,
 )
+from app.api.deps import require_access
 from app.api.routes import (
+    auth,
     clients,
     accounts,
     strategies,
@@ -76,16 +79,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(clients.router, prefix="/api/v1/clients", tags=["clients"])
-app.include_router(accounts.router, prefix="/api/v1/clients", tags=["accounts"])
-app.include_router(strategies.router, prefix="/api/v1/strategies", tags=["strategies"])
-app.include_router(sleeves.router, prefix="/api/v1/clients", tags=["sleeves"])
-app.include_router(trades.router, prefix="/api/v1/trades", tags=["trades"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(benchmarks.router, prefix="/api/v1/benchmarks", tags=["benchmarks"])
-app.include_router(connections.router, prefix="/api/v1", tags=["connections"])
-app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
+# Include routers. Signing in and the SnapTrade webhook (which checks its own
+# signature) are open; every data route goes through require_access.
+_guarded = [Depends(require_access)]
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(connections.public_router, prefix="/api/v1", tags=["connections"])
+app.include_router(
+    auth.access_router, prefix="/api/v1", tags=["auth"], dependencies=_guarded
+)
+app.include_router(
+    clients.router, prefix="/api/v1/clients", tags=["clients"], dependencies=_guarded
+)
+app.include_router(
+    accounts.router, prefix="/api/v1/clients", tags=["accounts"], dependencies=_guarded
+)
+app.include_router(
+    strategies.router,
+    prefix="/api/v1/strategies",
+    tags=["strategies"],
+    dependencies=_guarded,
+)
+app.include_router(
+    sleeves.router, prefix="/api/v1/clients", tags=["sleeves"], dependencies=_guarded
+)
+app.include_router(
+    trades.router, prefix="/api/v1/trades", tags=["trades"], dependencies=_guarded
+)
+app.include_router(
+    admin.router, prefix="/api/v1/admin", tags=["admin"], dependencies=_guarded
+)
+app.include_router(
+    benchmarks.router,
+    prefix="/api/v1/benchmarks",
+    tags=["benchmarks"],
+    dependencies=_guarded,
+)
+app.include_router(
+    connections.router, prefix="/api/v1", tags=["connections"], dependencies=_guarded
+)
+app.include_router(
+    performance.router, prefix="/api/v1", tags=["performance"], dependencies=_guarded
+)
 
 
 @app.get("/health")

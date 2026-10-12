@@ -32,24 +32,6 @@ class TestClientEndpoints:
         data = response.json()
         assert len(data) == 1
 
-    def test_login_disabled_when_no_password(self, client, monkeypatch):
-        """POST /clients/login returns 503 when CLIENT_DEV_PASSWORD is not set"""
-        from app.config import settings
-        monkeypatch.setattr(settings, "client_dev_password", "")
-        response = client.post(
-            "/api/v1/clients/login", json={"email": "any@example.com", "password": "anything"}
-        )
-        assert response.status_code == 503
-
-    def test_login_wrong_password(self, client, monkeypatch):
-        """POST /clients/login returns 401 with wrong password"""
-        from app.config import settings
-        monkeypatch.setattr(settings, "client_dev_password", "correct-password")
-        response = client.post(
-            "/api/v1/clients/login", json={"email": "any@example.com", "password": "wrong"}
-        )
-        assert response.status_code == 401
-
     def test_create_client(self, client):
         """Test creating a new client"""
         response = client.post(

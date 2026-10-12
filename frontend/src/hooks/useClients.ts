@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { clientsApi } from '@/api/endpoints/clients'
-import type { ClientCreate, ClientLogin } from '@/api/types'
+import type { ClientCreate } from '@/api/types'
 
 export const clientKeys = {
   list: (skip?: number, limit?: number) => ['clients', 'list', skip, limit] as const,
@@ -73,12 +73,6 @@ export function useClientTrades(clientId: string, skip = 0, limit = 100) {
     queryKey: clientKeys.trades(clientId, skip, limit),
     queryFn: () => clientsApi.getTrades(clientId, { skip, limit }),
     enabled: !!clientId,
-  })
-}
-
-export function useLoginClient() {
-  return useMutation({
-    mutationFn: (body: ClientLogin) => clientsApi.login(body),
   })
 }
 

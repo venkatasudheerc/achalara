@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 import { PERIOD_BASIS } from './performance'
 import type {
-  ClientCreate, ClientLogin, ClientResponse,
+  ClientCreate, ClientResponse,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse,
   ClientPositionsResponse, ClientTradesResponse,
 } from '../types'
@@ -11,12 +11,6 @@ const base = '/api/v1/clients'
 export const clientsApi = {
   list: (params?: { skip?: number; limit?: number }) =>
     apiClient.get<ClientResponse[]>(`${base}/`, { params }).then((r) => r.data),
-
-  login: (body: ClientLogin) =>
-    apiClient.post<ClientResponse>(`${base}/login`, body).then((r) => r.data),
-
-  lookupByEmail: (email: string) =>
-    apiClient.get<ClientResponse>(`${base}/lookup`, { params: { email } }).then((r) => r.data),
 
   create: (body: ClientCreate) =>
     apiClient.post<ClientResponse>(`${base}/`, body).then((r) => r.data),

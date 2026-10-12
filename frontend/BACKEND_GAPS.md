@@ -5,16 +5,7 @@ Each entry includes: what the UI needs, the suggested endpoint + response shape,
 
 ---
 
-## 1. Authentication / multi-user
-
-**UI need:** Login, session management, user accounts.
-**Current workaround:** Single-user mode. The Axios client has an interceptor seam at `src/api/client.ts` (commented out) where a bearer token can be injected.
-**Suggested:** OAuth2 / JWT via a `/api/v1/auth/` namespace.
-**Blocked screen:** `SettingsPage` — placeholder shown.
-
----
-
-## 2. Sync log filtering by sleeve
+## 1. Sync log filtering by sleeve
 
 **UI need:** The Imports page would benefit from filtering sync logs by sleeve, not just client.
 **Suggested endpoint extension:**

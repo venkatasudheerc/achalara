@@ -450,6 +450,44 @@ in or out is an `is_external_flow` row. Sleeve and strategy views stay **securit
 cash. Accounts with no reported balance (CSV, Sheets) are securities-only at every level, and a
 client mixing both kinds is measured with each account on its own basis.
 
+## Sign-in and access
+
+Four tables, none of them part of the portfolio hierarchy.
+
+### `users`
+One row per login: `email` (unique, stored lower-case), `name`, `role` (`advisor` | `client`),
+`client_id` (unique, CASCADE; set for a client login and NULL for an advisor, enforced by a
+CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
+cannot sign in), `is_active`, `failed_attempts`, `locked_until`, `last_login_at`. One login per
+client. The first advisor is created with `python -m app.cli create-advisor`.
+
+### `user_sessions`
+A signed-in browser: `user_id` (CASCADE), `token_hash`, `expires_at`. The browser holds a random
+token in an http-only cookie (`achalara_session`); only its SHA-256 digest is stored. Setting or
+changing a password deletes the user's other sessions.
+
+### `auth_tokens`
+A one-time link: `user_id` (CASCADE), `purpose` (`invite` | `reset`), `token_hash`, `expires_at`,
+`used_at`. Invites last 7 days, resets 24 hours. Only the digest is stored, so the link is shown
+once, when it is created. A new link replaces an earlier unused one of the same purpose.
+
+### `account_access`
+`client_id`, `account_id` (both CASCADE), `UNIQUE(client_id, account_id)`. Lets a client view an
+account that belongs to **another** client, read-only (for example someone acting as agent on a
+relative's account). The owner (`accounts.client_id`) needs no row.
+
+### Who may call what
+Applied in one place, `app/api/deps.py::require_access`, where each router is mounted:
+
+| Caller | May |
+|---|---|
+| Nobody signed in | `/`, `/health`, `/api/v1/auth/login`, the invite/reset link routes, and the SnapTrade webhook (which verifies its own signature) |
+| Advisor | Everything |
+| Client user | Read only: `/clients/{their client}` roll-ups; any account they own or were granted and everything beneath it (sleeves, positions, trades, performance, the report); benchmarks |
+
+A client user is refused the client list, strategies, admin, brokerage connections, every write,
+and the roll-ups of a client who only shared one account with them.
+
 ## Performance roll-ups
 
 Returns are computed by resolving a level to its set of sleeve ids and running one calc over

@@ -17,9 +17,18 @@ servers:
   - url: http://localhost:8000
     description: Local development server
 
+security:
+  - sessionCookie: []
+
 tags:
   - name: root
     description: Health and service info
+  - name: auth
+    description: >-
+      Sign-in, one-time invite and reset links, and sharing an account with another client.
+      Every route outside this tag (and the health check and the SnapTrade webhook) needs a
+      session. An advisor may call anything. A client user may only read: their own client's
+      roll-ups, any account they own or have been granted and everything beneath it, and benchmarks.
   - name: clients
     description: Client management and roll-up views
   - name: accounts
@@ -46,6 +55,7 @@ paths:
       tags: [root]
       summary: Service info
       operationId: getRoot
+      security: []
       responses:
         "200":
           description: Service name and version
@@ -64,6 +74,7 @@ paths:
       tags: [root]
       summary: Health check
       operationId: healthCheck
+      security: []
       responses:
         "200":
           description: Server is healthy
@@ -78,64 +89,408 @@ paths:
                   environment:
                     type: string
 
-  # ─── Clients ────────────────────────────────────────────────────────────────
+  # ─── Sign-in ────────────────────────────────────────────────────────────────
 
-  /api/v1/clients/lookup:
-    get:
-      tags: [clients]
-      summary: Look up a client by email address
-      operationId: lookupClientByEmail
-      parameters:
-        - name: email
-          in: query
-          required: true
-          schema:
-            type: string
-            format: email
-          description: Client email address
-      responses:
-        "200":
-          description: Client found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ClientResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /api/v1/clients/login:
+  /api/v1/auth/login:
     post:
-      tags: [clients]
-      summary: Identify a client by email + dev password
-      description: Returns the client record on success. Dev-only — not a production auth mechanism.
-      operationId: loginClient
+      tags: [auth]
+      summary: Sign in
+      operationId: login
+      description: >-
+        Sets the session as an http-only cookie. An unknown email and a wrong password get the
+        same answer. After 5 failed attempts sign-in pauses for 15 minutes.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ClientLogin"
+              $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Login successful — client returned
+          description: Signed in; the session cookie is set
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClientResponse"
+                $ref: "#/components/schemas/MeResponse"
         "401":
-          description: Incorrect password
+          description: Email and password don't match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many failed attempts; try again later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Sign out
+      operationId: logout
+      security: []
+      responses:
+        "204":
+          description: Session ended and the cookie cleared
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: The signed-in user
+      operationId: getMe
+      description: >-
+        For a client user, also the accounts they may view: their own, and any shared with them.
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/password:
+    post:
+      tags: [auth]
+      summary: Change your own password
+      operationId: changePassword
+      description: >-
+        Every other session of the user is ended.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed; a fresh session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Not signed in, or the current password is wrong
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The new password does not meet the rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/users:
+    get:
+      tags: [auth]
+      summary: List logins (advisor only)
+      operationId: listUsers
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/invites:
+    post:
+      tags: [auth]
+      summary: Invite a client to set up their login (advisor only)
+      operationId: inviteClient
+      description: >-
+        Creates the client's login if needed and returns a one-time link, valid for 7 days. The token
+        is shown only in this response. A new invite replaces an earlier unused one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteRequest"
+      responses:
+        "201":
+          description: The link to pass on to the client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          description: Dev login disabled (CLIENT_DEV_PASSWORD not configured on server)
+          description: Client not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: The client already has a login
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/users/{user_id}/password-reset:
+    post:
+      tags: [auth]
+      summary: Create a password-reset link for a user (advisor only)
+      operationId: createPasswordReset
+      description: >-
+        A one-time link, valid for 24 hours.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The link to pass on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/links/{token}:
+    get:
+      tags: [auth]
+      summary: Who an invite or reset link is for
+      operationId: previewLink
+      description: >-
+        Shown before a password is chosen. Unknown, used and expired links all answer 404.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The link is valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkPreview"
+        "404":
+          description: The link is not valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/links/{token}/accept:
+    post:
+      tags: [auth]
+      summary: Set the password a link was issued for, and sign in
+      operationId: acceptLink
+      description: >-
+        The link works once. Any earlier sessions of the user are ended.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRequest"
+      responses:
+        "200":
+          description: Password set; the session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "404":
+          description: The link is not valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The password does not meet the rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/clients/{client_id}/account-access:
+    get:
+      tags: [auth]
+      summary: Other clients' accounts this client may view (advisor only)
+      operationId: listAccountAccess
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The grants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountAccessResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [auth]
+      summary: Let this client view an account owned by another client (advisor only)
+      operationId: grantAccountAccess
+      description: >-
+        Read-only access to that one account and everything beneath it.
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountAccessRequest"
+      responses:
+        "201":
+          description: Access granted (or already in place)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountAccessResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Client or account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The client already owns the account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/clients/{client_id}/account-access/{account_id}:
+    delete:
+      tags: [auth]
+      summary: Withdraw a client's access to a shared account (advisor only)
+      operationId: revokeAccountAccess
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Access removed
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ─── Clients ────────────────────────────────────────────────────────────────
 
   /api/v1/clients/:
     get:
@@ -1448,6 +1803,7 @@ paths:
     post:
       tags: [connections]
       summary: SnapTrade webhook receiver
+      security: []
       description: |
         Verifies the `Signature` header (HMAC-SHA256 of the raw body, keyed with
         the consumer key) before the body is parsed. Called by SnapTrade, not by
@@ -1772,6 +2128,11 @@ paths:
 # ─── Components ───────────────────────────────────────────────────────────────
 
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: achalara_session
 
   parameters:
     brokerage_account_id:
@@ -1897,7 +2258,7 @@ components:
 
     # ── Clients ──────────────────────────────────────────────────────────────
 
-    ClientLogin:
+    LoginRequest:
       type: object
       required: [email, password]
       properties:
@@ -1905,6 +2266,154 @@ components:
           type: string
           format: email
         password:
+          type: string
+
+    PasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          description: At least 12 characters, with a letter and a number, and not containing the email's name part.
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+
+    InviteRequest:
+      type: object
+      required: [client_id]
+      properties:
+        client_id:
+          type: string
+
+    AccountAccessRequest:
+      type: object
+      required: [account_id]
+      properties:
+        account_id:
+          type: string
+
+    VisibleAccount:
+      type: object
+      description: An account a client user may view. Never carries a full account number.
+      required: [id, client_id, name, shared]
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+          description: The account's owner; not the viewer when `shared` is true.
+        name:
+          type: string
+        number_last4:
+          type: string
+          nullable: true
+        shared:
+          type: boolean
+
+    MeResponse:
+      type: object
+      required: [id, email, name, role, accounts]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [advisor, client]
+        client_id:
+          type: string
+          nullable: true
+        accounts:
+          type: array
+          description: Empty for an advisor, who may see every account.
+          items:
+            $ref: "#/components/schemas/VisibleAccount"
+
+    UserResponse:
+      type: object
+      required: [id, email, name, role, is_active, has_password]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [advisor, client]
+        client_id:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        has_password:
+          type: boolean
+          description: False until the person has accepted their invite.
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    LinkResponse:
+      type: object
+      required: [token, path, purpose, email, expires_at]
+      properties:
+        token:
+          type: string
+          description: Shown once; only a digest is stored.
+        path:
+          type: string
+          description: Frontend route that accepts the link, e.g. `/invite/{token}`.
+        purpose:
+          type: string
+          enum: [invite, reset]
+        email:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    LinkPreview:
+      type: object
+      required: [purpose, email, name, accounts]
+      properties:
+        purpose:
+          type: string
+          enum: [invite, reset]
+        email:
+          type: string
+        name:
+          type: string
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisibleAccount"
+
+    AccountAccessResponse:
+      type: object
+      required: [client_id, account_id, account_name, owner_client_id, owner_name]
+      properties:
+        client_id:
+          type: string
+          description: The client who may view the account.
+        account_id:
+          type: string
+        account_name:
+          type: string
+        owner_client_id:
+          type: string
+        owner_name:
           type: string
 
     ClientCreate:

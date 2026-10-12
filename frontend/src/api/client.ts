@@ -2,19 +2,18 @@ import axios from 'axios'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
-export const apiClient = axios.create({ baseURL })
-
-// Seam: add bearer token here when auth lands
-// CONTRACT: no auth today — single-user mode per BACKEND_GAPS.md
-apiClient.interceptors.request.use((config) => {
-  // const token = getToken()
-  // if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+// The session is an http-only cookie set by the API, so every call sends credentials.
+export const apiClient = axios.create({ baseURL, withCredentials: true })
 
 apiClient.interceptors.response.use(
   (res) => res,
   (err) => {
+    const url: string = err.config?.url ?? ''
+    // A session that expired mid-use: start again at sign-in. The auth calls
+    // themselves report their own 401s (wrong password, not signed in yet).
+    if (err.response?.status === 401 && !url.startsWith('/api/v1/auth/')) {
+      window.location.assign('/login')
+    }
     const detail = err.response?.data?.detail
     let message: string
     if (Array.isArray(detail)) {

@@ -37,6 +37,9 @@ backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # sing
 export SNAPTRADE_TEST_USER_ID=<the userId you linked>
 backend/venv/bin/pytest backend/tests/integration -m live -v -s
 
+# First advisor login (run from backend/, asks for a password)
+python -m app.cli create-advisor --email you@example.com --name "Your Name"
+
 # Migrations (run from backend/)
 alembic upgrade head
 alembic revision --autogenerate -m "description"
@@ -58,6 +61,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/strategies` | `strategies` (firm-wide definitions)                    |
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
+| `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
 | `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 
@@ -95,6 +99,10 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
 | `app/models/sleeve.py`                  | The account × strategy join that owns trades/positions/sync configs                     |
 | `app/models/sync_log.py`                | Standalone import/sync audit trail (no FK to the hierarchy)                             |
+| `app/models/user.py`                    | Logins, sessions, one-time links, shared-account grants                                 |
+| `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
+| `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
+| `app/cli.py`                            | `python -m app.cli create-advisor` — the first advisor login                            |
 | `tests/conftest.py`                     | Shared fixtures (DB session, `TestClient`)                                              |
 
 ## Coding Conventions
@@ -133,6 +141,23 @@ per account, <=4 background holdings calls per user per day) — never loop them
 ## Sync Logic Must Stay Shared
 
 The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from `daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
+
+## Sign-in and Access Rules
+
+- **Every data router is mounted with `dependencies=[Depends(require_access)]`** in `app/main.py`.
+  A new router must be mounted the same way; only sign-in, the link routes and the SnapTrade
+  webhook (`connections.public_router`) are open. Do not add per-handler role checks for data
+  routes — extend `require_access`, so the rule stays in one place.
+- An advisor may call anything. A client user may only `GET`, and only: `/clients/{their id}`
+  roll-ups, an account they own or were granted (`account_access`) and everything beneath it, and
+  benchmarks. The rule reads `client_id` / `account_id` from the path, so **a route that exposes
+  client data must carry those path parameters** or it is advisor-only.
+- Never return a full account number to a client user; use `auth_service.display_name` and
+  `last_four`.
+- Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
+  log or return a stored hash.
+- Tests: the `client` fixture is signed in as an advisor by overriding `get_current_user`;
+  `anon_client` goes through the real sign-in (see `tests/test_auth.py`).
 
 ## Performance: the `perf` schema
 
