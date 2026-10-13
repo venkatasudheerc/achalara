@@ -27,7 +27,9 @@ Files here:
   brokerage keys. Two schedulers would spend the brokerage's daily limits twice.
 - **`deploy/.env` holds the secrets.** It exists only on the server, readable by its owner
   (`chmod 600`), and is never committed.
-- **The database is not reachable from outside.** It publishes no port; do not add one.
+- **The database is not reachable from outside.** It is offered on the server's own address
+  only (`127.0.0.1:5432`), which is what an SSH tunnel connects to. Never drop the
+  `127.0.0.1:` from that line and never open 5432 in the Lightsail firewall.
 
 ## First deployment
 
@@ -202,6 +204,27 @@ docker compose logs --tail 100 backend
 tail -3 /srv/achalara-backups/backup.log
 df -h /        # disk space
 ```
+
+**Look inside the database from your own machine** (pgAdmin, or any other tool that can
+tunnel over SSH). Register a server with:
+
+| Where | Field | Value |
+|---|---|---|
+| Connection | Host | `127.0.0.1` (the tool connects from the server's end of the tunnel) |
+| Connection | Port | `5432` |
+| Connection | Database, user, password | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` from `deploy/.env` |
+| SSH tunnel | Host, port | the server's address, `22` |
+| SSH tunnel | User, key | `ubuntu`, your Lightsail key file |
+
+That login can change anything. For browsing, make a user that can only read, once, from
+`docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`:
+
+```sql
+CREATE ROLE viewer LOGIN PASSWORD '<a long random password>';
+GRANT pg_read_all_data TO viewer;
+```
+
+and connect as `viewer`.
 
 **Backups** run nightly at 3:15am Eastern into `/srv/achalara-backups`, keeping 14 days. The
 server's automatic snapshots carry those files off the disk. Every few months, prove one
