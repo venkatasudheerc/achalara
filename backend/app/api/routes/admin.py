@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 import logging
 import uuid
 
+from app.api.schemas.status import SystemStatusResponse
 from app.db.database import get_db
+from app.services.status_service import StatusService
 from app.services.performance_build_service import (
     PerformanceBuildService,
     rebuild_for_sleeves,
@@ -18,6 +20,15 @@ from app.models.sync_log import SyncLog
 from app.models.sheet_sync_config import SheetSyncConfig
 
 router = APIRouter()
+
+
+@router.get("/status", response_model=SystemStatusResponse)
+def system_status(db: Session = Depends(get_db)):
+    """Whether everything is running as it should: the daily jobs, brokerage
+    accounts, data freshness, the last backup and recent warnings."""
+    return StatusService(db).status()
+
+
 logger = logging.getLogger(__name__)
 
 

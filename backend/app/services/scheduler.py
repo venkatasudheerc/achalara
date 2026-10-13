@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db.database import SessionLocal
+from app.services import run_log
 from app.services.daily_sync import run_all_enabled_syncs
 from app.services.connection_service import run_all_brokerage_syncs
 from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
 
 
+@run_log.tracked("daily_sheets_sync")
 def _job_wrapper() -> None:
     """Open a DB session, run syncs, close session."""
     db = SessionLocal()
@@ -34,6 +36,7 @@ def _job_wrapper() -> None:
         db.close()
 
 
+@run_log.tracked("daily_brokerage_sync")
 def _brokerage_job_wrapper() -> None:
     """Open a DB session, sync mapped brokerage accounts, close session."""
     db = SessionLocal()
@@ -45,6 +48,7 @@ def _brokerage_job_wrapper() -> None:
         db.close()
 
 
+@run_log.tracked("daily_capture")
 def _capture_job_wrapper() -> None:
     """Record the day: prices first, then each account's holdings and totals."""
     db = SessionLocal()
@@ -61,6 +65,7 @@ def _capture_job_wrapper() -> None:
         db.close()
 
 
+@run_log.tracked("index_history")
 def _index_history_wrapper() -> None:
     """Add the day's bar to each market index kept for research."""
     db = SessionLocal()
@@ -72,6 +77,7 @@ def _index_history_wrapper() -> None:
         db.close()
 
 
+@run_log.tracked("capture_catch_up")
 def _catch_up_wrapper() -> None:
     """Capture now if the latest market day has not been recorded yet."""
     db = SessionLocal()
@@ -135,6 +141,13 @@ def start_scheduler() -> None:
         "APScheduler started — sheets sync 16:00 UTC, brokerage sync 16:30 UTC, "
         "daily capture 23:30 UTC and index history 23:45 UTC on weekdays"
     )
+
+
+def job_times() -> dict:
+    """When each scheduled job next runs, by job id; empty when not running."""
+    if _scheduler is None:
+        return {}
+    return {job.id: job.next_run_time for job in _scheduler.get_jobs()}
 
 
 def stop_scheduler() -> None:

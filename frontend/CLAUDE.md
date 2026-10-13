@@ -132,6 +132,7 @@ Each feature directory contains its page component(s). Implemented:
 - `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
+- `status/StatusPage` (`/app/status`) — system status for the advisor: what needs a look, daily jobs, brokerage accounts, data freshness, backup, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset), `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)

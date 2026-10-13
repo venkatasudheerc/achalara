@@ -1,10 +1,12 @@
 import { apiClient } from '../client'
 import type {
   ImportResponse, SyncDailyResponse,
-  SyncLogsResponse, SheetSyncConfig, SyncConfigCreate, SyncConfigUpdate,
+  SyncLogsResponse, SheetSyncConfig, SyncConfigCreate, SyncConfigUpdate, SystemStatusResponse,
 } from '../types'
 
 export const adminApi = {
+  status: () => apiClient.get<SystemStatusResponse>('/api/v1/admin/status').then((r) => r.data),
+
   importHistorical: (
     params: { client_id: string; sleeve_id?: string; mode: 'VALIDATE' | 'IMPORT' },
     file: File

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.config import settings
+from app.services import run_log
 from app.models import (  # noqa: F401  — side-effect imports to register models with SQLAlchemy metadata
     Client,
     Account,
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifecycle handler"""
     logger.info("Application starting...")
+    run_log.install()
     if settings.scheduler_enabled:
         from app.services.scheduler import start_scheduler
 

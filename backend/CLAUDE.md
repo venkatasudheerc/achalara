@@ -109,6 +109,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
+| `app/services/status_service.py`        | The advisor's system status: jobs, brokerage accounts, data freshness, backup, warnings |
+| `app/services/run_log.py`               | In-memory record of job runs and recent warnings since the app started                  |
 | `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
 | `app/services/market_price.py`          | Position price updates / persistence                                                    |
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
@@ -298,6 +300,15 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 - A synced trade goes to the sleeve already holding its symbol, else the sleeve routed for its
   `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
   one symbol in two sleeves of an account.
+
+## System status
+
+`GET /api/v1/admin/status` (`StatusService`) is what the advisor's System status page shows.
+Its `attention` list is the plain-language summary of what needs a person; add a new check
+there, not on the screen. A scheduled job must be wrapped in `run_log.tracked("<job id>")` and
+listed in `status_service.JOBS`, or the page cannot show it. The record of runs and warnings is
+in memory and starts empty at each restart. The backup's result comes from a file the server's
+`deploy/backup.sh` writes into `STATUS_DIR`.
 
 ## What "Done" Looks Like
 

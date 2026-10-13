@@ -1371,6 +1371,41 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/admin/status:
+    get:
+      tags:
+      - admin
+      summary: System Status
+      description: 'Whether everything is running as it should: the daily jobs, brokerage
+  
+        accounts, data freshness, the last backup and recent warnings.'
+      operationId: system_status_api_v1_admin_status_get
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/admin/rebuild-performance:
     post:
       tags: [admin]
@@ -2596,13 +2631,16 @@ paths:
                 $ref: '#/components/schemas/PortalActivityResponse'
         '401':
           description: Not signed in
-          content: &id001
+          content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
           description: An account that is not in view
-          content: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/portal/trades:
     get:
       tags:
@@ -5710,6 +5748,254 @@ components:
       - limit
       - net_invested
       - rows
+    StatusApp:
+      properties:
+        environment:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        scheduler_enabled:
+          type: boolean
+      type: object
+      required:
+      - environment
+      - started_at
+      - scheduler_enabled
+    StatusBackup:
+      properties:
+        known:
+          type: boolean
+        at:
+          type: string
+          format: date-time
+          nullable: true
+        file:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          nullable: true
+      type: object
+      required:
+      - known
+    StatusBrokerageAccount:
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        number_last4:
+          type: string
+          nullable: true
+        owner:
+          type: string
+          nullable: true
+        status:
+          type: string
+        connection_status:
+          type: string
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_sync_allowed_at:
+          type: string
+          format: date-time
+          nullable: true
+        transactions_synced_through:
+          type: string
+          format: date
+          nullable: true
+        captured_through:
+          type: string
+          format: date
+          nullable: true
+        holdings_differ:
+          type: integer
+          nullable: true
+        skipped_rows:
+          type: integer
+          default: 0
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - connection_status
+    StatusCapture:
+      properties:
+        market_day:
+          type: string
+          format: date
+        accounts:
+          type: integer
+        missing:
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - market_day
+      - accounts
+      - missing
+    StatusData:
+      properties:
+        clients:
+          type: integer
+        accounts:
+          type: integer
+        trades:
+          type: integer
+        latest_trade_date:
+          type: string
+          format: date
+          nullable: true
+        priced_symbols:
+          type: integer
+        latest_price_date:
+          type: string
+          format: date
+          nullable: true
+        indices:
+          items:
+            $ref: '#/components/schemas/StatusIndex'
+          type: array
+      type: object
+      required:
+      - clients
+      - accounts
+      - trades
+      - priced_symbols
+      - indices
+    StatusDatabase:
+      properties:
+        ok:
+          type: boolean
+        size_bytes:
+          type: integer
+          nullable: true
+        migration:
+          type: string
+          nullable: true
+      type: object
+      required:
+      - ok
+    StatusDisk:
+      properties:
+        total_bytes:
+          type: integer
+        free_bytes:
+          type: integer
+      type: object
+      required:
+      - total_bytes
+      - free_bytes
+    StatusIndex:
+      properties:
+        symbol:
+          type: string
+        latest_date:
+          type: string
+          format: date
+          nullable: true
+        days:
+          type: integer
+      type: object
+      required:
+      - symbol
+      - days
+    StatusJob:
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        next_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_started_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_ok:
+          type: boolean
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+      type: object
+      required:
+      - id
+      - label
+    StatusLogEntry:
+      properties:
+        at:
+          type: string
+          format: date-time
+        level:
+          type: string
+        source:
+          type: string
+        message:
+          type: string
+      type: object
+      required:
+      - at
+      - level
+      - source
+      - message
+    SystemStatusResponse:
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        attention:
+          items:
+            type: string
+          type: array
+        app:
+          $ref: '#/components/schemas/StatusApp'
+        database:
+          $ref: '#/components/schemas/StatusDatabase'
+        disk:
+          $ref: '#/components/schemas/StatusDisk'
+        jobs:
+          items:
+            $ref: '#/components/schemas/StatusJob'
+          type: array
+        brokerage_accounts:
+          items:
+            $ref: '#/components/schemas/StatusBrokerageAccount'
+          type: array
+        capture:
+          $ref: '#/components/schemas/StatusCapture'
+        data:
+          $ref: '#/components/schemas/StatusData'
+        backup:
+          $ref: '#/components/schemas/StatusBackup'
+        recent_log:
+          items:
+            $ref: '#/components/schemas/StatusLogEntry'
+          type: array
+      type: object
+      required:
+      - generated_at
+      - attention
+      - app
+      - database
+      - disk
+      - jobs
+      - brokerage_accounts
+      - capture
+      - data
+      - backup
+      - recent_log
     PortalTradesResponse:
       properties:
         total:

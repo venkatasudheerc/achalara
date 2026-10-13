@@ -5,6 +5,8 @@ set -eu
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-/srv/achalara-backups}"
+# The app's status page reads the result from here; it holds no data.
+STATUS_DIR="${STATUS_DIR:-/srv/achalara-status}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 STAMP="$(date -u +%Y-%m-%d)"
 TARGET="$BACKUP_DIR/achalara-$STAMP.dump"
@@ -22,3 +24,9 @@ find "$BACKUP_DIR" -name 'achalara-*.dump' -mtime "+$KEEP_DAYS" -delete
 find "$BACKUP_DIR" -name '*.part' -mtime +1 -delete
 
 echo "$(date -u +%FT%TZ) backup ok: $TARGET ($(du -h "$TARGET" | cut -f1))" >> "$BACKUP_DIR/backup.log"
+
+mkdir -p "$STATUS_DIR"
+printf '{"at": "%s", "file": "%s", "size_bytes": %s}\n' \
+    "$(date -u +%FT%TZ)" "$(basename "$TARGET")" "$(wc -c < "$TARGET" | tr -d ' ')" \
+    > "$STATUS_DIR/backup.json"
+chmod 644 "$STATUS_DIR/backup.json"

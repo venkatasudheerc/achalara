@@ -133,6 +133,9 @@ minute while the containers restart.
 
 **Look at what is happening**
 
+Sign in as an advisor and open **System status**: it shows whether the daily jobs ran, each
+brokerage account's state, the last backup and recent warnings. For the full log, on the server:
+
 ```sh
 docker compose ps
 docker compose logs --tail 100 backend

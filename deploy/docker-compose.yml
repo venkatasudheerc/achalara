@@ -37,6 +37,10 @@ services:
       PYTHON_ENV: production
       SCHEDULER_ENABLED: "true"
       CORS_ALLOW_ORIGINS: https://${DOMAIN:?set DOMAIN in deploy/.env}
+      STATUS_DIR: /status
+    volumes:
+      # Where the server's backup script reports its result, for the status page.
+      - ${STATUS_DIR:-/srv/achalara-status}:/status:ro
     depends_on:
       db:
         condition: service_healthy
