@@ -1371,6 +1371,47 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/admin/status/check-links:
+    post:
+      tags:
+      - admin
+      summary: Check Brokerage Links
+      description: 'Ask the source now whether each brokerage link is still sharing data,
+  
+        then return the status afresh.'
+      operationId: check_brokerage_links_api_v1_admin_status_check_links_post
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: The brokerage source did not answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The brokerage source is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/admin/status:
     get:
       tags:
@@ -5827,6 +5868,40 @@ components:
       - name
       - status
       - connection_status
+    StatusBrokerageLink:
+      properties:
+        id:
+          type: string
+        institution:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
+          nullable: true
+        disabled_at:
+          type: string
+          format: date-time
+          nullable: true
+        client_id:
+          type: string
+        client:
+          type: string
+          nullable: true
+        accounts:
+          type: integer
+      type: object
+      required:
+      - id
+      - institution
+      - source
+      - status
+      - client_id
+      - accounts
+      description: One brokerage login, and whether the source is still sharing it.
     StatusCapture:
       properties:
         market_day:
@@ -5972,6 +6047,10 @@ components:
         jobs:
           items:
             $ref: '#/components/schemas/StatusJob'
+          type: array
+        brokerage_links:
+          items:
+            $ref: '#/components/schemas/StatusBrokerageLink'
           type: array
         brokerage_accounts:
           items:

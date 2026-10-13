@@ -590,6 +590,15 @@ export interface StatusBrokerageAccount {
   captured_through: string | null
   holdings_differ: number | null; skipped_rows: number
 }
+/** One brokerage login, and whether the source is still sharing it */
+export interface StatusBrokerageLink {
+  id: string; institution: string; source: string; status: string
+  /** When the source was last asked; since when it stopped sharing, if it has */
+  checked_at: string | null; disabled_at: string | null
+  /** The client whose page the link is managed from */
+  client_id: string; client: string | null
+  accounts: number
+}
 export interface SystemStatusResponse {
   generated_at: string
   /** What needs a person to look, in plain words; empty when all is well */
@@ -598,6 +607,7 @@ export interface SystemStatusResponse {
   database: { ok: boolean; size_bytes: number | null; migration: string | null }
   disk: { total_bytes: number; free_bytes: number }
   jobs: StatusJob[]
+  brokerage_links: StatusBrokerageLink[]
   brokerage_accounts: StatusBrokerageAccount[]
   capture: { market_day: string; accounts: number; missing: string[] }
   data: {

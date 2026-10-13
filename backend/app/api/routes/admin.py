@@ -6,7 +6,9 @@ import logging
 import uuid
 
 from app.api.schemas.status import SystemStatusResponse
+from app.connectors.models import NotSupported
 from app.db.database import get_db
+from app.services.connection_service import ConnectionService
 from app.services.status_service import StatusService
 from app.services.performance_build_service import (
     PerformanceBuildService,
@@ -26,6 +28,22 @@ router = APIRouter()
 def system_status(db: Session = Depends(get_db)):
     """Whether everything is running as it should: the daily jobs, brokerage
     accounts, data freshness, the last backup and recent warnings."""
+    return StatusService(db).status()
+
+
+@router.post("/status/check-links", response_model=SystemStatusResponse)
+def check_brokerage_links(db: Session = Depends(get_db)):
+    """Ask the source now whether each brokerage link is still sharing data,
+    then return the status afresh."""
+    try:
+        ConnectionService(db).check_links()
+    except NotSupported as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception:
+        logger.exception("Brokerage link check failed")
+        raise HTTPException(
+            status_code=502, detail="The brokerage source did not answer."
+        )
     return StatusService(db).status()
 
 

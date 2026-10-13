@@ -310,6 +310,10 @@ listed in `status_service.JOBS`, or the page cannot show it. The record of runs 
 in memory and starts empty at each restart. The backup's result comes from a file the server's
 `deploy/backup.sh` writes into `STATUS_DIR`.
 
+A brokerage link's state is only as fresh as the last time the source was asked.
+`ConnectionService.check_links` asks (every six hours, and from the page's "Check now") and
+records `status_checked_at` and `disabled_at`; the stored `status` alone can be days out of date.
+
 ## What "Done" Looks Like
 
 - Route returns real data, not a placeholder or empty list

@@ -218,6 +218,35 @@ def test_signing_in_again_reopens_the_same_link(client, client_id, sdk):
     assert client.post(link, json={"connection_id": "nope"}).status_code == 404
 
 
+def test_checking_links_notices_one_the_brokerage_has_stopped_sharing(
+    db, client, client_id, sdk
+):
+    client.post(f"/api/v1/clients/{client_id}/connections/discover")
+    connection = db.query(BrokerageConnection).one()
+    assert connection.status == "active" and connection.status_checked_at is not None
+
+    # The brokerage ends the session; nothing here knows until it is asked.
+    sdk.authorizations[0]["disabled"] = True
+    sdk.authorizations[0]["disabled_date"] = "2026-10-05T14:30:00.000000Z"
+    body = client.post("/api/v1/admin/status/check-links").json()
+
+    db.refresh(connection)
+    assert connection.status == "broken"
+    assert connection.disabled_at.date().isoformat() == "2026-10-05"
+    (link,) = body["brokerage_links"]
+    assert link["status"] == "broken" and link["disabled_at"].startswith("2026-10-05")
+    assert any("stopped sharing data on 2026-10-05" in line for line in body["attention"])
+    # A check adds nothing: still one link and the same two accounts.
+    assert db.query(BrokerageConnection).count() == 1
+    assert db.query(BrokerageAccount).count() == 2
+
+    # Signed in again at the source: the next check clears it.
+    sdk.authorizations[0]["disabled"] = False
+    client.post("/api/v1/admin/status/check-links")
+    db.refresh(connection)
+    assert (connection.status, connection.disabled_at) == ("active", None)
+
+
 def test_discover_records_the_login_and_every_account_under_it(client, client_id, sdk):
     resp = client.post(f"/api/v1/clients/{client_id}/connections/discover")
     assert resp.status_code == 200
