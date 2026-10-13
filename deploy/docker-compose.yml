@@ -18,7 +18,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-achalara}
     volumes:
       - db_data:/var/lib/postgresql/data
-    # No published port: only the backend, on the private network, reaches it.
+    # Offered on the server's own address only, for a database tool that comes
+    # in over an SSH tunnel. Keep the "127.0.0.1:": a port published without it
+    # is open on every address, and Docker's rules are applied ahead of ufw's.
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
