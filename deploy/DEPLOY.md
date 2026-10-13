@@ -69,7 +69,7 @@ cp .env.example .env && chmod 600 .env
 nano .env
 ```
 
-Fill in `DOMAIN`, a long random `POSTGRES_PASSWORD` (`openssl rand -base64 32`), and the
+Fill in `DOMAIN`, a long random `POSTGRES_PASSWORD` (`openssl rand -hex 32`; letters and digits only, since it becomes part of an address), and the
 market-data and brokerage keys. Use keys issued for production, not ones that have been in a
 development file.
 
