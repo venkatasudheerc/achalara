@@ -7,14 +7,9 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { accountLabel, signedCurrency, tone } from '@/features/portal/ui'
 import { HomeChart } from '@/features/portal/HomeChart'
-import type { PortalExpiringOption, PortalHomeHolding, PortalHomeResponse } from '@/api/types'
+import { AllocationDonut } from '@/features/portal/AllocationDonut'
+import type { PortalExpiringOption, PortalHomeHolding } from '@/api/types'
 
-const KIND_LABEL: Record<PortalHomeResponse['allocation'][number]['kind'], string> = {
-  stock: 'Stocks', etf: 'ETFs', option: 'Options', other: 'Other', cash: 'Cash',
-}
-const KIND_FILL: Record<PortalHomeResponse['allocation'][number]['kind'], string> = {
-  stock: 'bg-pine-deep', etf: 'bg-pine', option: 'bg-gold', other: 'bg-loss', cash: 'bg-stone',
-}
 // At most this many accounts get a button each; beyond it they go in a list.
 const ACCOUNT_BUTTONS = 3
 
@@ -98,8 +93,6 @@ export function PortalHomePage() {
   }
 
   const firstName = (portal?.viewer.name ?? '').split(/\s+/)[0]
-  const shown = data.allocation.filter((a) => a.value > 0)
-  const shownTotal = shown.reduce((sum, a) => sum + a.value, 0)
   const pick = 'h-[48px] px-[18px] rounded-btn border text-[16px] transition-colors'
   const notes = data.expiring_options.length > 0 || data.carried_losses > 0
     || data.turning_long_term.length > 0 || data.concentrated.length > 0
@@ -167,23 +160,7 @@ export function PortalHomePage() {
 
         <Panel className="flex flex-col gap-[14px]">
           <div className="text-[16px] text-summit-ink/70">Asset allocation</div>
-          <div role="img" className="flex h-[18px] rounded-full overflow-hidden bg-mist"
-            aria-label={shown.map((a) => `${KIND_LABEL[a.kind]} ${((a.value / shownTotal) * 100).toFixed(0)} percent`).join(', ')}>
-            {shown.map((a) => (
-              <div key={a.kind} className={KIND_FILL[a.kind]} style={{ width: `${(a.value / shownTotal) * 100}%` }} />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-x-[18px] gap-y-[6px] text-[16px]">
-            {data.allocation.map((a) => (
-              <div key={a.kind} className="flex justify-between gap-[8px]">
-                <span className="flex items-center gap-[8px]">
-                  <span aria-hidden className={`inline-block w-[10px] h-[10px] rounded-full ${KIND_FILL[a.kind]}`} />
-                  {KIND_LABEL[a.kind]}
-                </span>
-                <span className="font-mono">{a.share == null ? '—' : `${(a.share * 100).toFixed(0)}%`}</span>
-              </div>
-            ))}
-          </div>
+          <AllocationDonut allocation={data.allocation} />
         </Panel>
       </div>
 

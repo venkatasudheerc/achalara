@@ -31,7 +31,7 @@ export function AppShell() {
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-56 bg-chrome text-on-dark shrink-0 fixed top-0 left-0 h-full z-10">
         <div className="px-6 py-6 border-b border-on-dark/15">
-          <span className="font-display text-lg text-on-dark tracking-tight">Achalara</span>
+          <NavLink to="/app" className="font-display text-lg text-on-dark tracking-tight no-underline hover:text-on-dark/80">Achalara</NavLink>
           <p className="text-xs text-stone mt-0.5">Performance Platform</p>
         </div>
 

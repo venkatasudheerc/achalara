@@ -57,7 +57,10 @@ The portal lives at `/portal`, `/portal/holdings`, `/portal/activity`, `/portal/
 page at full window width, with a 17px base size (the portal is being redesigned page by page to
 the "wide workspace" mockups; Home is done and reads `/api/v1/portal/home` through
 `usePortalHome`; its chart, `portal/HomeChart.tsx`, reads the performance series, whose points
-carry each day's `value` as well as the cumulative returns). `/portal/holdings` (`PortalHoldingsPage`) replaced the old positions page: every
+carry each day's `value` as well as the cumulative returns). Home's asset allocation is a ring (`portal/AllocationDonut.tsx`): arcs
+for what is held, colours from `useChartColours().allocation`, and a kind that is owed on
+balance (written options) listed with its negative share and no arc. The wordmark in the bar
+links to Home. `/portal/holdings` (`PortalHoldingsPage`) replaced the old positions page: every
 account as an expandable tile, its strategies inside it, each strategy's holdings inside that,
 grouped on the client from the `/api/v1/portal/positions` endpoint, with a summary rail fed by `/portal/home`. In portal code written for the redesign, give sizes as explicit pixels
 (`p-[24px]`, `text-[16px]`) so the spacing override below cannot change them. It reads only `/api/v1/portal/*` (`src/hooks/usePortal.ts`), where every

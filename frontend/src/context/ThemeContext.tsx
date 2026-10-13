@@ -64,6 +64,15 @@ export function useChartColours() {
     loss: dark ? '#F0AA7A' : '#C2703D',
     /** The benchmark: neither gain, loss nor gold */
     benchmark: dark ? '#A9C4EA' : '#4A6FA5',
+    /** Kinds of holding. None is the gain or loss colour: a kind is not a result. */
+    allocation: {
+      stock: dark ? '#9DD8BD' : '#1E3A2F',
+      etf: dark ? '#4FA583' : '#5E9C82',
+      option: '#C9A24B',
+      other: dark ? '#A9C4EA' : '#4A6FA5',
+      cash: dark ? '#7F9389' : '#B9C4BD',
+      track: dark ? '#305646' : '#EAF0EC',
+    },
     tooltip: {
       backgroundColor: dark ? '#11211B' : '#FFFFFF',
       border: `1px solid ${dark ? '#35594B' : '#EAF0EC'}`,
