@@ -1719,6 +1719,22 @@ def test_webhook_for_an_unknown_account_is_acknowledged_and_ignored(
     assert resp.json() == {"status": "ignored"}
 
 
+def test_one_link_can_be_checked_on_its_own(db, client, client_id, sdk):
+    client.post(f"/api/v1/clients/{client_id}/connections/discover")
+    connection = db.query(BrokerageConnection).one()
+    sdk.authorizations[0]["disabled"] = True
+
+    body = client.post(
+        "/api/v1/admin/status/check-links", params={"connection_id": connection.id}
+    ).json()
+
+    assert body["brokerage_links"][0]["status"] == "broken"
+    unknown = client.post(
+        "/api/v1/admin/status/check-links", params={"connection_id": "nope"}
+    )
+    assert unknown.status_code == 404
+
+
 def test_the_daily_job_runs_whenever_it_is_due_even_after_a_sync_by_hand(
     db, client, client_id, sdk
 ):
