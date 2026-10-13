@@ -9,6 +9,7 @@ const navItems = [
   { to: '/app/clients', label: 'Clients' },
   { to: '/app/strategies', label: 'Strategies' },
   { to: '/app/imports', label: 'Imports' },
+  { to: '/app/status', label: 'System status' },
 ]
 
 const fastFollowers = [

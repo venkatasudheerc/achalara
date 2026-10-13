@@ -573,3 +573,38 @@ export interface PortalOverviewResponse {
   timeseries: { date: string; value: number }[]
   recent: ActivityItem[]
 }
+
+/** The advisor's system status page */
+export interface StatusJob {
+  id: string; label: string; next_run_at: string | null
+  /** The last run since the app started; null until the job has run once */
+  last_started_at: string | null; last_finished_at: string | null
+  last_ok: boolean | null; last_error: string | null
+}
+export interface StatusBrokerageAccount {
+  id: string; name: string; number_last4: string | null; owner: string | null
+  status: string; connection_status: string
+  last_synced_at: string | null; next_sync_allowed_at: string | null
+  transactions_synced_through: string | null
+  /** The latest day with the brokerage's own holdings and total on record */
+  captured_through: string | null
+  holdings_differ: number | null; skipped_rows: number
+}
+export interface SystemStatusResponse {
+  generated_at: string
+  /** What needs a person to look, in plain words; empty when all is well */
+  attention: string[]
+  app: { environment: string; started_at: string; scheduler_enabled: boolean }
+  database: { ok: boolean; size_bytes: number | null; migration: string | null }
+  disk: { total_bytes: number; free_bytes: number }
+  jobs: StatusJob[]
+  brokerage_accounts: StatusBrokerageAccount[]
+  capture: { market_day: string; accounts: number; missing: string[] }
+  data: {
+    clients: number; accounts: number; trades: number; latest_trade_date: string | null
+    priced_symbols: number; latest_price_date: string | null
+    indices: { symbol: string; latest_date: string | null; days: number }[]
+  }
+  backup: { known: boolean; at: string | null; file: string | null; size_bytes: number | null }
+  recent_log: { at: string; level: string; source: string; message: string }[]
+}

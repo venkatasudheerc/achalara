@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "http://localhost:5173"
     # How long a sign-in lasts before the person must sign in again.
     session_ttl_hours: int = 168
+    # A folder the server's own scripts write status files into (the nightly
+    # backup's result), mounted read-only. Empty when there is none.
+    status_dir: str = ""
 
     @field_validator("database_url")
     @classmethod

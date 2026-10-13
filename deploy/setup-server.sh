@@ -55,8 +55,9 @@ systemctl enable docker
 systemctl restart docker
 
 # Nightly at 3:15am Eastern: after any restart, and long before the market opens.
-mkdir -p /srv/achalara-backups
+mkdir -p /srv/achalara-backups /srv/achalara-status
 chmod 700 /srv/achalara-backups
+chmod 755 /srv/achalara-status
 chmod +x "$DEPLOY_DIR/backup.sh" "$DEPLOY_DIR/restore.sh"
 echo "15 3 * * * root $DEPLOY_DIR/backup.sh >> /srv/achalara-backups/cron.log 2>&1" > /etc/cron.d/achalara-backup
 chmod 644 /etc/cron.d/achalara-backup

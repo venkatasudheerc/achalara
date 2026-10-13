@@ -7,6 +7,15 @@ export const adminKeys = {
   syncConfigs: (clientId?: string) => ['admin', 'sync-configs', clientId] as const,
 }
 
+/** The system status, read again every half minute while the page is open. */
+export function useSystemStatus() {
+  return useQuery({
+    queryKey: ['admin', 'status'] as const,
+    queryFn: () => adminApi.status(),
+    refetchInterval: 30_000,
+  })
+}
+
 export function useSyncLogs(clientId: string, skip = 0, limit = 50) {
   return useQuery({
     queryKey: adminKeys.syncLogs(clientId, skip),
