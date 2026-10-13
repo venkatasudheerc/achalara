@@ -99,6 +99,14 @@ class StatusLogEntry(BaseModel):
     message: str
 
 
+class StatusWebhook(BaseModel):
+    """An event the brokerage source sent, and what was done about it."""
+
+    at: datetime
+    event: str  # the source's event type; "unverified" when the signature failed
+    outcome: str  # synced | captured | discovered | status_updated | ignored | ...
+
+
 class StatusAlerts(BaseModel):
     telegram: bool  # whether a Telegram bot is configured to receive alerts
 
@@ -121,5 +129,7 @@ class SystemStatusResponse(BaseModel):
     capture: StatusCapture
     data: StatusData
     backup: StatusBackup
+    # Events from the brokerage source since the app started, newest first.
+    webhooks: List[StatusWebhook] = []
     # Warnings and errors since the app started, newest first.
     recent_log: List[StatusLogEntry]

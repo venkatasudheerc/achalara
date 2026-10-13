@@ -628,5 +628,7 @@ export interface SystemStatusResponse {
     indices: { symbol: string; latest_date: string | null; days: number }[]
   }
   backup: { known: boolean; at: string | null; file: string | null; size_bytes: number | null }
+  /** Events the brokerage source has sent since the app started, newest first */
+  webhooks: { at: string; event: string; outcome: string }[]
   recent_log: { at: string; level: string; source: string; message: string }[]
 }

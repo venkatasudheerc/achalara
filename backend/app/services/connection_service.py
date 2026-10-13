@@ -35,6 +35,7 @@ from app.models.strategy import Strategy
 from app.models.trade import Trade
 from app.services.auth_service import display_name
 from app.services.cash_activity_service import CashActivityService
+from app.services import run_log
 from app.services.ingestion_service import IngestionService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.corporate_actions import carry_exchange_costs, record_splits
@@ -53,6 +54,10 @@ MIN_SYNC_INTERVAL = timedelta(hours=24)
 # Each sync re-reads this far behind the previous watermark. Brokerages post
 # and correct rows late; dedup makes the overlap free.
 SYNC_OVERLAP = timedelta(days=7)
+
+# The daily job leaves alone an account pulled this recently, which is one the
+# source has just told us about: its history is already up to date.
+SCHEDULED_SKIP_WINDOW = timedelta(hours=6)
 
 # The portal URL the source hands back is only valid this long.
 LINK_EXPIRES_SECONDS = 300
@@ -448,8 +453,9 @@ class ConnectionService:
         ``scheduled`` is the daily job's own run. It is once a day by its
         schedule, so it is not held to the 24 hours since the last pull: a
         sync done by hand the afternoon before must not cost the next
-        morning's run. If the source itself refuses, that is reported as
-        ``rate_limited`` and the next day's run tries again.
+        morning's run. It does leave alone an account pulled in the last few
+        hours (``SCHEDULED_SKIP_WINDOW``). If the source itself refuses, that
+        is reported as ``rate_limited`` and the next day's run tries again.
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
@@ -480,6 +486,9 @@ class ConnectionService:
         ):
             result["reason"] = "synced_recently"
             result["next_sync_allowed_at"] = last + MIN_SYNC_INTERVAL
+            return result
+        if scheduled and last is not None and now - last < SCHEDULED_SKIP_WINDOW:
+            result["reason"] = "synced_recently"
             return result
 
         user_id = ba.connection.external_user_id
@@ -985,6 +994,11 @@ class ConnectionService:
         and ignored, so the source does not keep retrying them.
         """
         event_type = str(event.get("eventType") or "")
+        # The source sends an event again when our answer was slow or lost.
+        # Acting twice would spend a second pull, so a repeat is only noted.
+        webhook_id = event.get("webhookId")
+        if webhook_id and not run_log.first_delivery(str(webhook_id)):
+            return "duplicate"
         connection_ref = event.get("brokerageAuthorizationId") or event.get(
             "brokerageId"
         )
@@ -1051,8 +1065,16 @@ class ConnectionService:
             DailyCaptureService(self.db, self).capture(ba.id)
             return "captured"
 
-        # CONNECTION_ADDED lands here too: a new login has no client yet, so it
-        # is picked up when that client runs discovery.
+        if event_type == "CONNECTION_ADDED":
+            # The source does not say whose link this is. The client whose page
+            # started one is waiting for it; with nobody waiting it is left for
+            # the next refresh of a client's page.
+            starter = self._link_starter()
+            if starter is None:
+                return "ignored"
+            self.discover(starter.id)
+            return "discovered"
+
         return "ignored"
 
     # ------------------------------------------------------------------

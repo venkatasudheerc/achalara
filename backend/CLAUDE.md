@@ -47,6 +47,9 @@ python -m app.cli create-advisor --email you@example.com --name "Your Name"
 # Year-end price of an index option (per share, as quoted), for its year-end mark
 python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
 
+# Post a signed test event to our own webhook address (reachability + signature)
+python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
+
 # Market indices' daily bars, for research: load a downloaded file, then top up
 python -m app.cli load-index-file --symbol SPX --file SP500_daily.csv --source some-name --replace
 python -m app.cli load-index-history
@@ -281,6 +284,12 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   The daily job runs at 8am US Eastern and is not held to that guard: it is once a day by its
   schedule, and a sync by hand the afternoon before must not cost the next morning's run. If the
   source refuses, the account is reported as `rate_limited` and tried again the next day.
+- **Webhooks** (`connections.public_router`, `ConnectionService.handle_webhook`): the
+  signature is checked over the event written with sorted keys and no spaces, as the source
+  documents, or over the bytes as sent. An event id seen before (`run_log.first_delivery`) is
+  answered `duplicate`, so a redelivery never spends a second pull. The daily job skips an
+  account pulled in the last `SCHEDULED_SKIP_WINDOW`, which is one a webhook has just had
+  pulled. Every event received is noted with `run_log.note_webhook` for System status.
 - Brokerage sleeves use `accounting_method = "FIFO"`. Do not ingest brokerage trades into a
   `ROUND_TRIP` sleeve, and keep one trade source per sleeve.
 - Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
