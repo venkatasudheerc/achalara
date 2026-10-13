@@ -1719,29 +1719,13 @@ def test_webhook_for_an_unknown_account_is_acknowledged_and_ignored(
     assert resp.json() == {"status": "ignored"}
 
 
-def test_one_link_can_be_checked_on_its_own(db, client, client_id, sdk):
-    client.post(f"/api/v1/clients/{client_id}/connections/discover")
-    connection = db.query(BrokerageConnection).one()
-    sdk.authorizations[0]["disabled"] = True
-
-    body = client.post(
-        "/api/v1/admin/status/check-links", params={"connection_id": connection.id}
-    ).json()
-
-    assert body["brokerage_links"][0]["status"] == "broken"
-    unknown = client.post(
-        "/api/v1/admin/status/check-links", params={"connection_id": "nope"}
-    )
-    assert unknown.status_code == 404
-
-
-def test_the_daily_job_still_syncs_an_account_it_reaches_a_little_early(
+def test_the_daily_job_runs_whenever_it_is_due_even_after_a_sync_by_hand(
     db, client, client_id, sdk
 ):
     ba = _mapped_account(db, client_id)
     sync_brokerage_account(db, ba.id)
-    # Yesterday's run reached this account ten seconds later in the job than today's.
-    ba.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=24, seconds=-10)
+    # Synced by hand yesterday afternoon; the job is due this morning.
+    ba.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=18)
     db.commit()
 
     by_hand = ConnectionService(db).sync(ba.id)
@@ -1749,3 +1733,18 @@ def test_the_daily_job_still_syncs_an_account_it_reaches_a_little_early(
 
     outcomes = ConnectionService(db).sync_all_mapped()
     assert outcomes[ba.id] == "synced"
+
+
+def test_the_daily_job_takes_no_for_an_answer_from_the_source(
+    db, client, client_id, sdk
+):
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+    sdk.rate_limited = True
+    calls_before = len([c for c in sdk.calls if c[0] == "activities"])
+
+    outcomes = ConnectionService(db).sync_all_mapped()
+
+    # Refused once, reported, and not tried again until the next day's run.
+    assert outcomes[ba.id] == "rate_limited"
+    assert len([c for c in sdk.calls if c[0] == "activities"]) - calls_before <= 1

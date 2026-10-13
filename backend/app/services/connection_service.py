@@ -46,10 +46,6 @@ DEFAULT_STRATEGY_NAME = "Unallocated"
 
 # The source asks for at least this long between transaction pulls per account.
 MIN_SYNC_INTERVAL = timedelta(hours=24)
-# The daily job runs at the same clock time each day, and reaches an account a
-# little sooner or later than it did the day before. Without this allowance an
-# account reached a second early would be skipped, and synced every other day.
-SCHEDULED_SYNC_GRACE = timedelta(minutes=30)
 
 # Each sync re-reads this far behind the previous watermark. Brokerages post
 # and correct rows late; dedup makes the overlap free.
@@ -322,8 +318,11 @@ class ConnectionService:
     ) -> Dict:
         """Pull new activity for one mapped account. See ``sync_brokerage_account``.
 
-        ``scheduled`` is the daily job's own run, which is allowed the small
-        ``SCHEDULED_SYNC_GRACE`` inside the 24 hours.
+        ``scheduled`` is the daily job's own run. It is once a day by its
+        schedule, so it is not held to the 24 hours since the last pull: a
+        sync done by hand the afternoon before must not cost the next
+        morning's run. If the source itself refuses, that is reported as
+        ``rate_limited`` and the next day's run tries again.
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
@@ -346,8 +345,12 @@ class ConnectionService:
         }
 
         last = _aware(ba.last_synced_at)
-        wait = MIN_SYNC_INTERVAL - (SCHEDULED_SYNC_GRACE if scheduled else timedelta(0))
-        if not force and last is not None and now - last < wait:
+        if (
+            not force
+            and not scheduled
+            and last is not None
+            and now - last < MIN_SYNC_INTERVAL
+        ):
             result["reason"] = "synced_recently"
             result["next_sync_allowed_at"] = last + MIN_SYNC_INTERVAL
             return result
