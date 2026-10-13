@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 import logging
 import uuid
 
-from app.api.schemas.status import SystemStatusResponse
+from app.api.schemas.status import AlertTestResponse, SystemStatusResponse
 from app.connectors.models import NotSupported
 from app.db.database import get_db
+from app.services import alerts
 from app.services.connection_service import ConnectionService
 from app.services.status_service import StatusService
 from app.services.performance_build_service import (
@@ -31,6 +32,16 @@ def system_status(db: Session = Depends(get_db)):
     return StatusService(db).status()
 
 
+@router.post("/status/test-alert", response_model=AlertTestResponse)
+def send_test_alert():
+    """Send a test message through the configured alert channel."""
+    if not alerts.configured():
+        raise HTTPException(
+            status_code=503, detail="No alert channel is configured on the server."
+        )
+    return {"sent": alerts.send("Achalara: this is a test alert. Alerts are working.")}
+
+
 @router.post("/status/check-links", response_model=SystemStatusResponse)
 def check_brokerage_links(db: Session = Depends(get_db)):
     """Ask the source now whether each brokerage link is still sharing data,
@@ -44,6 +55,7 @@ def check_brokerage_links(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=502, detail="The brokerage source did not answer."
         )
+    alerts.run_status_watch(db)
     return StatusService(db).status()
 
 

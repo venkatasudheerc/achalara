@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db.database import SessionLocal
-from app.services import run_log
+from app.services import alerts, run_log
 from app.services.daily_sync import run_all_enabled_syncs
 from app.services.connection_service import run_all_brokerage_syncs, run_link_check
 from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
@@ -56,6 +56,17 @@ def _link_check_wrapper() -> None:
         run_link_check(db)
     except Exception as exc:
         logger.error(f"Unhandled error in brokerage link check: {exc}")
+    finally:
+        db.close()
+
+
+def _status_watch_wrapper() -> None:
+    """Message the advisor about anything that has started or stopped needing a look."""
+    db = SessionLocal()
+    try:
+        alerts.run_status_watch(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in the status watch: {exc}")
     finally:
         db.close()
 
@@ -132,6 +143,15 @@ def start_scheduler() -> None:
         _link_check_wrapper,
         CronTrigger(hour="*/6", minute=10),
         id="brokerage_link_check",
+        replace_existing=True,
+    )
+    # Alerts: look every ten minutes, and once shortly after start-up.
+    _scheduler.add_job(
+        _status_watch_wrapper,
+        "interval",
+        minutes=10,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=90),
+        id="status_watch",
         replace_existing=True,
     )
     # After the US close (21:00 UTC) and the brokerage's own daily refresh.

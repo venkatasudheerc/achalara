@@ -115,6 +115,31 @@ Logins come across with the data. Delete the dump from both machines afterwards.
   `https://<your domain>/api/v1/webhooks/snaptrade`.
 - Add a free uptime monitor on `https://<your domain>/health` that emails you.
 
+## Alerts on your phone (optional)
+
+The app can message you on Telegram when something starts needing a look (a brokerage link
+stops sharing data, a daily job fails, a backup is missed) and again when it clears. The
+messages never name a client or an account.
+
+1. In Telegram, open a chat with **@BotFather**, send `/newbot`, and follow the two questions.
+   It replies with a **token**. Treat it as a password.
+2. Open a chat with your new bot and send it any message, so it is allowed to write to you.
+3. Find your chat id: open `https://api.telegram.org/bot<token>/getUpdates` in a browser and
+   read the number at `"chat":{"id": ...}`.
+4. On the server, add both to `deploy/.env`:
+
+   ```
+   TELEGRAM_BOT_TOKEN=<token>
+   TELEGRAM_CHAT_ID=<chat id>
+   ```
+
+   then `docker compose up -d` in `deploy/`.
+5. In the app, open **System status** and press **Send a test**.
+
+The app looks every ten minutes, and at once when the brokerage source reports a link breaking
+or mending. It cannot tell you that the server itself is down; use an outside uptime monitor
+for that.
+
 ## Routine
 
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one

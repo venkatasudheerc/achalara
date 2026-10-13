@@ -22,6 +22,7 @@ from app.api.schemas.connection import (
 from app.config import settings
 from app.connectors.models import NotSupported
 from app.db.database import get_db
+from app.services import alerts
 from app.services.connection_service import (
     ConnectionService,
     sync_brokerage_account,
@@ -184,4 +185,10 @@ def snaptrade_webhook(
         db.rollback()
         logger.error("SnapTrade webhook %s failed: %s", event.get("eventType"), exc)
         outcome = "failed"
+    # A link breaking or mending arrives this way: say so without waiting.
+    try:
+        alerts.run_status_watch(db)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.warning("Status watch after a webhook failed: %s", exc)
     return {"status": outcome}

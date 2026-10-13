@@ -3,12 +3,14 @@ import json
 import logging
 from datetime import date, datetime, timezone
 
+import pytest
+
 from app.config import settings
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.client import Client
 from app.models.perf import DailyValuation
-from app.services import run_log
+from app.services import alerts, run_log
 from app.services.status_service import StatusService
 
 # A Wednesday; the last finished market day before it is Tuesday the 6th.
@@ -188,3 +190,75 @@ def test_an_account_not_yet_added_shows_no_full_number(db):
 
 def test_a_client_user_cannot_read_the_status(anon_client):
     assert anon_client.get("/api/v1/admin/status").status_code == 401
+
+
+# -- alerts ------------------------------------------------------------------
+
+
+@pytest.fixture
+def telegram(monkeypatch):
+    """A configured bot whose messages are collected here, never sent."""
+    sent = []
+    monkeypatch.setattr(settings, "telegram_bot_token", "test-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "12345")
+    monkeypatch.setattr(alerts, "_post", lambda token, chat, text: sent.append(text))
+    return sent
+
+
+def test_an_alert_says_what_appeared_and_later_what_cleared(db, telegram):
+    watch = alerts.StatusWatch()
+    account = _linked_account(db, connection_status="broken")
+
+    first = watch.evaluate(db)
+
+    assert len(first) == 1 and first[0].startswith("Achalara: needs a look")
+    assert "The A Brokerage link stopped sharing data." in first[0]
+    # Nothing has changed, so nothing more is said.
+    assert watch.evaluate(db) == []
+
+    connection = db.query(BrokerageConnection).one()
+    connection.status = "active"
+    _observed(db, account, date.today())
+    db.commit()
+    cleared = watch.evaluate(db)
+    assert any(text.startswith("Achalara: resolved") for text in cleared)
+    assert len(telegram) == len(first) + len(cleared)
+
+
+def test_an_alert_never_names_a_client_or_an_account(db, telegram):
+    _linked_account(db, synced_through=date(2020, 1, 2))
+
+    (message,) = alerts.StatusWatch().evaluate(db)[:1]
+
+    assert "Transactions are more than a few days behind for an account." in message
+    assert "Brokerage" not in message and "Maya" not in message
+    # The page itself, for the signed-in advisor, still names the account.
+    assert any(
+        line.startswith("Transactions for Brokerage stop at")
+        for line in StatusService(db).status()["attention"]
+    )
+
+
+def test_without_a_bot_nothing_is_sent_and_nothing_fails(db, client, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    assert alerts.send("anything") is False
+    alerts.run_status_watch(db)
+    assert client.get("/api/v1/admin/status").json()["alerts"] == {"telegram": False}
+    assert client.post("/api/v1/admin/status/test-alert").status_code == 503
+
+
+def test_a_test_alert_goes_through_the_bot(client, telegram):
+    assert client.post("/api/v1/admin/status/test-alert").json() == {"sent": True}
+    assert telegram == ["Achalara: this is a test alert. Alerts are working."]
+
+
+def test_a_failed_delivery_is_not_an_error_and_keeps_the_token_out_of_the_log(
+    monkeypatch, telegram, caplog
+):
+    def refuse(token, chat, text):
+        raise OSError(f"could not reach https://example.invalid/bot{token}/send")
+
+    monkeypatch.setattr(alerts, "_post", refuse)
+    with caplog.at_level("WARNING"):
+        assert alerts.send("anything") is False
+    assert "test-token" not in caplog.text

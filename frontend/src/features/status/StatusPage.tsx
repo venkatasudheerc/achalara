@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { useCheckBrokerageLinks, useSystemStatus } from '@/hooks/useAdmin'
+import { useCheckBrokerageLinks, useSendTestAlert, useSystemStatus } from '@/hooks/useAdmin'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatDate, formatNumber } from '@/lib/formatters'
@@ -95,6 +95,32 @@ function Jobs({ status, now }: { status: SystemStatusResponse; now: number }) {
         </tbody>
       </table>
     </Section>
+  )
+}
+
+/** Whether alerts reach the advisor's phone, with a way to prove it. */
+function Alerts({ on }: { on: boolean }) {
+  const test = useSendTestAlert()
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-summit-ink">
+      <span className="flex items-center gap-2"><Dot tone={on ? 'ok' : 'quiet'} />Telegram alerts {on ? 'on' : 'off'}</span>
+      {on ? (
+        <>
+          <button type="button" onClick={() => test.mutate()} disabled={test.isPending}
+            className="text-xs border border-stone/30 rounded-btn px-3 py-1.5 hover:border-pine disabled:opacity-50">
+            {test.isPending ? 'Sending…' : 'Send a test'}
+          </button>
+          {test.isSuccess && (
+            <span className={`text-xs ${test.data.sent ? 'text-gain' : 'text-loss'}`}>
+              {test.data.sent ? 'Sent. Check Telegram.' : 'Telegram did not accept it. Check the bot token and chat id on the server.'}
+            </span>
+          )}
+          {test.isError && <span className="text-xs text-loss">Could not send: {test.error.message}</span>}
+        </>
+      ) : (
+        <span className="text-xs text-stone">You are told about problems only on this page. To get them on your phone, set up the bot on the server.</span>
+      )}
+    </div>
   )
 }
 
@@ -251,6 +277,8 @@ export function StatusPage() {
           </ul>
         )}
       </div>
+
+      <Alerts on={status.alerts.telegram} />
 
       <div className="grid gap-16 grid-cols-2 lg:grid-cols-4">
         <Tile label="App" tone="ok" value={status.app.environment}
