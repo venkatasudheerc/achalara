@@ -310,6 +310,10 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   (brokerage + last four). A second client sees the account through `account_access`, never
   through a second mapping. The hint names another client's account, so it is sent to
   advisors only.
+- **A new link belongs to the client whose page started it.** Every link sits under one identity
+  at the source, so `discover` sees them all whichever client it is run for; `start_link`
+  stamps `clients.brokerage_link_started_at` and `discover` files a link seen for the first
+  time under that client, falling back to the client asked about only when none started one.
 
 ## System status
 

@@ -57,6 +57,9 @@ SYNC_OVERLAP = timedelta(days=7)
 # The portal URL the source hands back is only valid this long.
 LINK_EXPIRES_SECONDS = 300
 
+# A link started this long ago and never seen at the source was abandoned.
+LINK_CLAIM_WINDOW = timedelta(hours=24)
+
 # Share-count differences below this are rounding, not drift.
 _QUANTITY_TOLERANCE = Decimal("0.000001")
 
@@ -109,9 +112,10 @@ class ConnectionService:
 
         With ``connection_id`` the portal signs in again to that existing link
         (one the brokerage has stopped sharing), keeping its accounts and their
-        mappings. Without it, the portal adds a new link.
+        mappings. Without it, the portal adds a new link, and the client is
+        remembered as the one it is for until ``discover`` sees it.
         """
-        self._client_or_raise(client_id)
+        client = self._client_or_raise(client_id)
         reconnect = None
         if connection_id:
             connection = (
@@ -129,6 +133,9 @@ class ConnectionService:
         session = self.connector.initiate_link(
             self._user_id(), redirect_uri, reconnect=reconnect
         )
+        if reconnect is None:
+            client.brokerage_link_started_at = datetime.now(timezone.utc)
+            self.db.commit()
         return {
             "redirect_url": session.redirect_url,
             "expires_in_seconds": LINK_EXPIRES_SECONDS,
@@ -143,9 +150,15 @@ class ConnectionService:
         link becomes known. Safe to repeat: existing rows are updated, mappings
         are never touched, and a login the source no longer lists is marked
         deleted.
+
+        Every link sits under one identity at the source, which lists them all
+        whichever client is asked about. A link seen for the first time is
+        filed under the client whose page started it, and under ``client_id``
+        only when none did.
         """
         self._client_or_raise(client_id)
         user_id = self._user_id()
+        starter = self._link_starter()
 
         seen: Dict[str, BrokerageConnection] = {}
         for remote in self.connector.list_connections(user_id):
@@ -161,12 +174,14 @@ class ConnectionService:
             )
             if row is None:
                 row = BrokerageConnection(
-                    client_id=client_id,
+                    client_id=starter.id if starter is not None else client_id,
                     source=SOURCE,
                     external_user_id=user_id,
                     external_connection_id=remote.connection_id,
                 )
                 self.db.add(row)
+                if starter is not None:
+                    starter.brokerage_link_started_at = None
             row.institution = remote.institution or row.institution or ""
             self._record_link_state(row, remote)
             seen[remote.connection_id] = row
@@ -1102,6 +1117,21 @@ class ConnectionService:
         if not settings.snaptrade_user_id:
             raise NotSupported("SnapTrade is not configured; set SNAPTRADE_USER_ID")
         return settings.snaptrade_user_id
+
+    def _link_starter(self) -> Optional[Client]:
+        """The client whose page most recently started a link not yet seen."""
+        client = (
+            self.db.query(Client)
+            .filter(Client.brokerage_link_started_at.isnot(None))
+            .order_by(Client.brokerage_link_started_at.desc())
+            .first()
+        )
+        if client is None:
+            return None
+        started = _aware(client.brokerage_link_started_at)
+        if datetime.now(timezone.utc) - started > LINK_CLAIM_WINDOW:
+            return None
+        return client
 
     def _client_or_raise(self, client_id: str) -> Client:
         client = self.db.query(Client).filter(Client.id == client_id).first()

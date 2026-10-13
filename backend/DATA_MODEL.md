@@ -128,6 +128,7 @@ erDiagram
 | id | String(36) PK | uuid |
 | name | String(255) | not null |
 | email | String(255) | not null, **unique** |
+| brokerage_link_started_at | DateTime(tz) | nullable — set when a brokerage link is started from this client's page, cleared when the new link is first seen; files the link under the right client |
 
 Relationships: `accounts` (1→N, cascade delete).
 

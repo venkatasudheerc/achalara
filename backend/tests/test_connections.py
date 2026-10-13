@@ -24,6 +24,7 @@ from app.models.brokerage_connection import (
     BrokerageConnection,
 )
 from app.models.cash_activity import CashActivity
+from app.models.client import Client
 from app.models.perf import DailyValuation
 from app.services.performance_build_service import rebuild_for_sleeves
 from app.models.position import Position
@@ -1865,3 +1866,40 @@ def test_the_same_number_at_another_brokerage_is_a_different_account(
         sdk, client, "Individual", "11112222", institution="Fidelity"
     )
     assert other["duplicate_of"] is None
+
+
+def test_a_new_link_is_filed_under_the_client_who_started_it(db, client, client_id, sdk):
+    client.post(f"/api/v1/clients/{client_id}/connections/discover")
+    resp = client.post(
+        "/api/v1/clients/", json={"name": "Second", "email": "second@example.com"}
+    )
+    second = resp.json()["id"]
+    link = client.post(f"/api/v1/clients/{second}/connections/snaptrade/link")
+    assert link.status_code == 200
+    sdk.authorizations.append(
+        {"id": "auth-2", "brokerage": {"name": "Vanguard"}, "disabled": False}
+    )
+
+    # The first client's page asks before the second's does.
+    seen = client.post(f"/api/v1/clients/{client_id}/connections/discover").json()
+    assert len(seen) == 1
+    mine = client.get(f"/api/v1/clients/{second}/connections").json()
+    assert [c["client_id"] for c in mine] == [second]
+
+    # The claim is spent: a later link nobody started goes to the page asking.
+    sdk.authorizations.append(
+        {"id": "auth-3", "brokerage": {"name": "Vanguard"}, "disabled": False}
+    )
+    seen = client.post(f"/api/v1/clients/{client_id}/connections/discover").json()
+    assert len(seen) == 2
+
+
+def test_signing_in_again_does_not_claim_the_next_new_link(db, client, client_id, sdk):
+    (connection,) = client.post(
+        f"/api/v1/clients/{client_id}/connections/discover"
+    ).json()
+    client.post(
+        f"/api/v1/clients/{client_id}/connections/snaptrade/link",
+        json={"connection_id": connection["id"]},
+    )
+    assert db.query(Client).one().brokerage_link_started_at is None
