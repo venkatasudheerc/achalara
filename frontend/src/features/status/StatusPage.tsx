@@ -7,6 +7,17 @@ import { formatDate, formatNumber } from '@/lib/formatters'
 import type { StatusJob, SystemStatusResponse } from '@/api/types'
 
 /** "Oct 13, 2:30 PM EDT": every time on this page is US Eastern. */
+const WEBHOOK_OUTCOME: Record<string, string> = {
+  synced: 'Pulled the account’s new transactions',
+  captured: 'Recorded the account’s holdings for the day',
+  discovered: 'Read the link’s accounts again',
+  status_updated: 'Updated the link’s state',
+  ignored: 'Nothing to do',
+  duplicate: 'Already handled; a repeat delivery',
+  rejected: 'Refused: the signature did not match',
+  failed: 'Could not be handled; see warnings below',
+}
+
 function when(instant: string | null): string {
   if (!instant) return '—'
   return new Date(instant).toLocaleString('en-US', {
@@ -319,6 +330,26 @@ export function StatusPage() {
             ))}
           </tbody>
         </table>
+      </Section>
+
+      <Section title="Notices from the brokerage source"
+        sub="What SnapTrade has told the app since it last started, newest first, and what the app did. Empty until its webhook is set up.">
+        {status.webhooks.length === 0 ? <p className="px-6 py-6 text-sm text-stone">None received.</p> : (
+          <table className="w-full min-w-[520px] border-collapse">
+            <thead><tr><th className={th}>When</th><th className={th}>Notice</th><th className={th}>What the app did</th></tr></thead>
+            <tbody>
+              {status.webhooks.map((notice, i) => (
+                <tr key={`${notice.at}:${i}`} className="border-t border-stone/10">
+                  <td className={mono}>{when(notice.at)}</td>
+                  <td className={mono}>{notice.event}</td>
+                  <td className={`${td} ${notice.outcome === 'rejected' || notice.outcome === 'failed' ? 'text-loss' : ''}`}>
+                    {WEBHOOK_OUTCOME[notice.outcome] ?? notice.outcome}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Section>
 
       <Section title="Recent warnings and errors" sub="Since the app last started, newest first. The server's own log holds the full record.">

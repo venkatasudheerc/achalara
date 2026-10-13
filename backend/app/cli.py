@@ -4,13 +4,22 @@
     python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
+    python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
 """
 import argparse
+import base64
 import getpass
+import hashlib
+import hmac
+import json
 import sys
-from datetime import date
+import urllib.error
+import urllib.request
+import uuid
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+from app.config import settings
 from app.db.database import SessionLocal
 from app.services.auth_service import (
     MIN_PASSWORD_LENGTH,
@@ -115,6 +124,43 @@ def load_index_file(symbol: str, path: str, source: str, replace: bool) -> int:
     return 0
 
 
+def send_test_webhook(url: str) -> int:
+    """Post a harmless, properly signed event to our own webhook address.
+
+    Proves the address is reachable from outside and that the signature check
+    passes with the configured key. The event type is one the app ignores.
+    """
+    if not settings.snaptrade_consumer_key:
+        print("SNAPTRADE_CONSUMER_KEY is not set.", file=sys.stderr)
+        return 1
+    event = {
+        "eventType": "ACHALARA_TEST",
+        "webhookId": str(uuid.uuid4()),
+        "eventTimestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    content = json.dumps(event, separators=(",", ":"), sort_keys=True).encode()
+    digest = hmac.new(
+        settings.snaptrade_consumer_key.encode(), content, hashlib.sha256
+    ).digest()
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(event).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Signature": base64.b64encode(digest).decode(),
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            print(f"{response.status} {response.read().decode()[:200]}")
+            return 0
+    except urllib.error.HTTPError as error:
+        print(f"Refused: {error.code} {error.read().decode()[:200]}", file=sys.stderr)
+    except OSError as error:
+        print(f"Could not reach {url}: {error}", file=sys.stderr)
+    return 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -147,7 +193,15 @@ def main(argv=None) -> int:
     from_file.add_argument(
         "--replace", action="store_true", help="remove the index's stored days first"
     )
+    webhook = commands.add_parser(
+        "send-test-webhook", help="post a signed test event to our webhook address"
+    )
+    webhook.add_argument(
+        "--url", required=True, help="https://<domain>/api/v1/webhooks/snaptrade"
+    )
     args = parser.parse_args(argv)
+    if args.command == "send-test-webhook":
+        return send_test_webhook(args.url)
     if args.command == "create-advisor":
         return create_advisor(args.email, args.name)
     if args.command == "set-price":

@@ -2018,9 +2018,11 @@ paths:
       summary: SnapTrade webhook receiver
       security: []
       description: |
-        Verifies the `Signature` header (HMAC-SHA256 of the raw body, keyed with
-        the consumer key) before the body is parsed. Called by SnapTrade, not by
-        the frontend.
+        Verifies the `Signature` header (HMAC-SHA256 keyed with the consumer key,
+        over the event written with sorted keys and no spaces as SnapTrade
+        documents, or over the body as sent) before anything is acted on. An
+        event delivered twice (same `webhookId`) is answered `duplicate` and not
+        acted on again. Called by SnapTrade, not by the frontend.
       operationId: snaptradeWebhook
       parameters:
         - name: Signature
@@ -6104,6 +6106,23 @@ components:
       - level
       - source
       - message
+    StatusWebhook:
+      description: An event the brokerage source sent, and what was done about it.
+      properties:
+        at:
+          type: string
+          format: date-time
+        event:
+          type: string
+          description: The source's event type; `unverified` when the signature did not match.
+        outcome:
+          type: string
+          description: synced, captured, discovered, status_updated, ignored, duplicate, rejected or failed.
+      type: object
+      required:
+      - at
+      - event
+      - outcome
     SystemStatusResponse:
       properties:
         generated_at:
@@ -6144,6 +6163,11 @@ components:
           $ref: '#/components/schemas/StatusData'
         backup:
           $ref: '#/components/schemas/StatusBackup'
+        webhooks:
+          description: Events the brokerage source has sent since the app started, newest first.
+          items:
+            $ref: '#/components/schemas/StatusWebhook'
+          type: array
         recent_log:
           items:
             $ref: '#/components/schemas/StatusLogEntry'

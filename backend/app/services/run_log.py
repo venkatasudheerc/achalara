@@ -16,6 +16,9 @@ _KEEP = 100
 _started_at = datetime.now(timezone.utc)
 _runs: Dict[str, Dict] = {}
 _recent: Deque[Dict] = deque(maxlen=_KEEP)
+# Events the brokerage source has sent, and the ids of those already acted on.
+_webhooks: Deque[Dict] = deque(maxlen=50)
+_webhook_ids: Deque[str] = deque(maxlen=500)
 _current = threading.local()
 _lock = threading.Lock()
 
@@ -101,3 +104,26 @@ def recent(limit: int = 30) -> List[Dict]:
     """The latest warnings and errors, newest first."""
     with _lock:
         return list(_recent)[::-1][:limit]
+
+
+def note_webhook(event: str, outcome: str) -> None:
+    """Record that the brokerage source sent an event, and what was done."""
+    with _lock:
+        _webhooks.append(
+            {"at": datetime.now(timezone.utc), "event": event, "outcome": outcome}
+        )
+
+
+def webhooks(limit: int = 20) -> List[Dict]:
+    """The latest events from the brokerage source, newest first."""
+    with _lock:
+        return list(_webhooks)[::-1][:limit]
+
+
+def first_delivery(webhook_id: str) -> bool:
+    """Whether this event id is new; later deliveries of it are repeats."""
+    with _lock:
+        if webhook_id in _webhook_ids:
+            return False
+        _webhook_ids.append(webhook_id)
+        return True

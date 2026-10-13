@@ -99,6 +99,7 @@ class StatusService:
             "capture": capture,
             "data": self._data(),
             "backup": backup,
+            "webhooks": run_log.webhooks(),
             "recent_log": run_log.recent(),
         }
 

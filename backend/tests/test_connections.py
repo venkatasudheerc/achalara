@@ -1761,6 +1761,9 @@ def test_the_daily_job_takes_no_for_an_answer_from_the_source(
 ):
     ba = _mapped_account(db, client_id)
     sync_brokerage_account(db, ba.id)
+    # Synced by hand yesterday afternoon; the job is due this morning.
+    ba.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=18)
+    db.commit()
     sdk.rate_limited = True
     calls_before = len([c for c in sdk.calls if c[0] == "activities"])
 
@@ -1903,3 +1906,100 @@ def test_signing_in_again_does_not_claim_the_next_new_link(db, client, client_id
         json={"connection_id": connection["id"]},
     )
     assert db.query(Client).one().brokerage_link_started_at is None
+
+
+def _signed_as_documented(event: dict, sent: bytes = None):
+    """Signed the way the source documents: over sorted keys with no spaces."""
+    content = json.dumps(event, separators=(",", ":"), sort_keys=True).encode()
+    digest = hmac.new(CONSUMER_KEY.encode(), content, hashlib.sha256).digest()
+    body = sent if sent is not None else json.dumps(event, indent=1).encode()
+    return body, {"Signature": base64.b64encode(digest).decode()}
+
+
+def test_webhook_signed_over_the_sorted_compact_form_is_accepted(
+    db, client, client_id, sdk
+):
+    client.post(f"/api/v1/clients/{client_id}/connections/discover")
+    # Sent with spacing and key order of its own, as a source is free to do.
+    body, headers = _signed_as_documented(
+        {"eventType": "CONNECTION_BROKEN", "brokerageAuthorizationId": "auth-1"}
+    )
+    resp = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    assert resp.json() == {"status": "status_updated"}
+
+    # The same signature does not carry a different event.
+    _, headers = _signed_as_documented({"eventType": "CONNECTION_BROKEN"})
+    resp = client.post(
+        "/api/v1/webhooks/snaptrade",
+        content=b'{"eventType": "CONNECTION_DELETED"}',
+        headers=headers,
+    )
+    assert resp.status_code == 401
+
+
+def test_a_webhook_delivered_twice_is_acted_on_once(db, client, client_id, sdk):
+    _mapped_account(db, client_id)
+    body, headers = _signed(
+        {
+            "eventType": "ACCOUNT_TRANSACTIONS_UPDATED",
+            "accountId": "acct-1",
+            "webhookId": "delivery-one",
+        }
+    )
+    first = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    assert first.json() == {"status": "synced"}
+    pulls = len([c for c in sdk.calls if c[0] == "activities"])
+
+    again = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    assert again.json() == {"status": "duplicate"}
+    assert len([c for c in sdk.calls if c[0] == "activities"]) == pulls
+
+
+def test_the_daily_job_leaves_an_account_the_source_just_had_pulled(
+    db, client, client_id, sdk
+):
+    ba = _mapped_account(db, client_id)
+    body, headers = _signed(
+        {"eventType": "ACCOUNT_TRANSACTIONS_UPDATED", "accountId": "acct-1"}
+    )
+    client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    pulls = len([c for c in sdk.calls if c[0] == "activities"])
+
+    result = ConnectionService(db).sync(ba.id, scheduled=True)
+    assert (result["status"], result["reason"]) == ("skipped", "synced_recently")
+    assert len([c for c in sdk.calls if c[0] == "activities"]) == pulls
+
+    # By the next morning it is pulled as usual.
+    ba.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=16)
+    db.commit()
+    assert ConnectionService(db).sync(ba.id, scheduled=True)["status"] == "synced"
+
+
+def test_a_new_link_webhook_files_it_under_the_client_waiting_for_it(
+    db, client, client_id, sdk
+):
+    client.post(f"/api/v1/clients/{client_id}/connections/snaptrade/link")
+    body, headers = _signed(
+        {"eventType": "CONNECTION_ADDED", "brokerageAuthorizationId": "auth-1"}
+    )
+    resp = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    assert resp.json() == {"status": "discovered"}
+    (connection,) = client.get(f"/api/v1/clients/{client_id}/connections").json()
+    assert connection["institution"] == "Vanguard"
+
+    # With nobody waiting, a new link is left for a client's page to pick up.
+    body, headers = _signed({"eventType": "CONNECTION_ADDED"})
+    resp = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    assert resp.json() == {"status": "ignored"}
+
+
+def test_received_webhooks_are_listed_on_the_status_page(db, client, client_id, sdk):
+    body, headers = _signed({"eventType": "ACHALARA_TEST", "webhookId": "listed"})
+    client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
+    client.post("/api/v1/webhooks/snaptrade", content=body, headers={"Signature": "x"})
+
+    latest = client.get("/api/v1/admin/status").json()["webhooks"][:2]
+    assert [(w["event"], w["outcome"]) for w in latest] == [
+        ("unverified", "rejected"),
+        ("ACHALARA_TEST", "ignored"),
+    ]

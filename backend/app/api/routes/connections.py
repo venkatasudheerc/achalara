@@ -24,7 +24,7 @@ from app.config import settings
 from app.connectors.models import NotSupported
 from app.db.database import get_db
 from app.models.user import ROLE_ADVISOR, User
-from app.services import alerts
+from app.services import alerts, run_log
 from app.services.connection_service import (
     ConnectionService,
     sync_brokerage_account,
@@ -163,14 +163,34 @@ async def _raw_body(request: Request) -> bytes:
     return await request.body()
 
 
+def _signed_forms(body: bytes) -> List[bytes]:
+    """The byte strings a genuine signature may cover.
+
+    The source signs the event written out with sorted keys and no spaces,
+    which need not be the bytes it then sends. The bytes as sent are accepted
+    too. Either way the result is an HMAC under our key, so only the source
+    can have produced it.
+    """
+    forms = [body]
+    try:
+        event = json.loads(body)
+    except ValueError:
+        return forms
+    forms.append(json.dumps(event, separators=(",", ":"), sort_keys=True).encode())
+    return forms
+
+
 def _signature_valid(body: bytes, signature: str) -> bool:
-    """Whether ``signature`` is the HMAC-SHA256 of ``body`` under our consumer key."""
+    """Whether ``signature`` is the HMAC-SHA256 of the event under our consumer key."""
     key = settings.snaptrade_consumer_key
     if not key or not signature:
         return False
-    digest = hmac.new(key.encode(), body, hashlib.sha256).digest()
-    candidates = (base64.b64encode(digest).decode(), digest.hex())
-    return any(hmac.compare_digest(signature.strip(), c) for c in candidates)
+    for form in _signed_forms(body):
+        digest = hmac.new(key.encode(), form, hashlib.sha256).digest()
+        for candidate in (base64.b64encode(digest).decode(), digest.hex()):
+            if hmac.compare_digest(signature.strip(), candidate):
+                return True
+    return False
 
 
 @public_router.post("/webhooks/snaptrade")
@@ -180,8 +200,9 @@ def snaptrade_webhook(
     db: Session = Depends(get_db),
 ):
     """Receive a SnapTrade event. Unsigned or mis-signed bodies are rejected."""
-    # Nothing in the body is trusted, or even parsed, until the signature holds.
+    # Nothing in the body is acted on until the signature holds.
     if not _signature_valid(body, signature):
+        run_log.note_webhook("unverified", "rejected")
         raise HTTPException(status_code=401, detail="Invalid signature")
     try:
         event = json.loads(body)
@@ -198,6 +219,7 @@ def snaptrade_webhook(
         db.rollback()
         logger.error("SnapTrade webhook %s failed: %s", event.get("eventType"), exc)
         outcome = "failed"
+    run_log.note_webhook(str(event.get("eventType") or "unknown"), outcome)
     # A link breaking or mending arrives this way: say so without waiting.
     try:
         alerts.run_status_watch(db)

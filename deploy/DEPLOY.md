@@ -111,8 +111,7 @@ Logins come across with the data. Delete the dump from both machines afterwards.
 ### 7. After it is live
 
 - Set `SCHEDULER_ENABLED=false` on the development machine (see the rules above).
-- In the brokerage provider's dashboard, set the webhook address to
-  `https://<your domain>/api/v1/webhooks/snaptrade`.
+- Set up the brokerage source's webhook (see "Notices from the brokerage source" below).
 - Add a free uptime monitor on `https://<your domain>/health` that emails you.
 
 ## Alerts on your phone (optional)
@@ -139,6 +138,42 @@ messages never name a client or an account.
 The app looks every ten minutes, and at once when the brokerage source reports a link breaking
 or mending. It cannot tell you that the server itself is down; use an outside uptime monitor
 for that.
+
+## Notices from the brokerage source (webhook)
+
+Without this the app learns of changes only when it asks: the 8am sync, the evening capture
+and the six-hourly link check. With it, SnapTrade tells the app when a link breaks or mends,
+when an account's transactions or holdings have been refreshed, and when a new link appears,
+and the app acts at once. Each notice is signed with the consumer key; the app refuses any
+that is not.
+
+1. **Check the address answers.** From any machine:
+
+   ```sh
+   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://<your domain>/api/v1/webhooks/snaptrade -d '{}'
+   ```
+
+   `401` is right: it is reachable and refuses an unsigned notice.
+2. **Check a signed notice is accepted.** On the server, in `deploy/`:
+
+   ```sh
+   docker compose exec backend python -m app.cli send-test-webhook --url https://<your domain>/api/v1/webhooks/snaptrade
+   ```
+
+   It prints `200 {"status":"ignored"}`. Open **System status**: the section "Notices from the
+   brokerage source" lists `ACHALARA_TEST`, and the refused one from step 1 above it.
+3. **Tell SnapTrade the address.** In the SnapTrade dashboard, open the webhook tab and enter
+   `https://<your domain>/api/v1/webhooks/snaptrade`.
+4. **Wait for a real one.** SnapTrade refreshes each account's holdings daily, so
+   `ACCOUNT_HOLDINGS_UPDATED` notices appear within a day. If they show as "Refused: the
+   signature did not match", the consumer key in `deploy/.env` is not the one for that
+   SnapTrade key pair.
+
+What each notice does: a broken or deleted link updates the link's state (and alerts you); a
+mended link or a new account re-reads the link's accounts; new transactions pull that account
+at once, and the 8am job then leaves it alone that morning; refreshed holdings record the
+account's day. A notice delivered twice is acted on once. The list is kept in memory and
+starts empty at each restart.
 
 ## Routine
 
