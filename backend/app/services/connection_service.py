@@ -314,8 +314,16 @@ class ConnectionService:
         brokerage_account_id: str,
         force: bool = False,
         full_history: bool = False,
+        scheduled: bool = False,
     ) -> Dict:
-        """Pull new activity for one mapped account. See ``sync_brokerage_account``."""
+        """Pull new activity for one mapped account. See ``sync_brokerage_account``.
+
+        ``scheduled`` is the daily job's own run. It is once a day by its
+        schedule, so it is not held to the 24 hours since the last pull: a
+        sync done by hand the afternoon before must not cost the next
+        morning's run. If the source itself refuses, that is reported as
+        ``rate_limited`` and the next day's run tries again.
+        """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
             raise ValueError("Map the account to a sleeve before syncing it")
@@ -337,7 +345,12 @@ class ConnectionService:
         }
 
         last = _aware(ba.last_synced_at)
-        if not force and last is not None and now - last < MIN_SYNC_INTERVAL:
+        if (
+            not force
+            and not scheduled
+            and last is not None
+            and now - last < MIN_SYNC_INTERVAL
+        ):
             result["reason"] = "synced_recently"
             result["next_sync_allowed_at"] = last + MIN_SYNC_INTERVAL
             return result
@@ -652,7 +665,7 @@ class ConnectionService:
         outcomes: Dict[str, str] = {}
         for account_id in [a.id for a in accounts]:
             try:
-                result = self.sync(account_id)
+                result = self.sync(account_id, scheduled=True)
                 outcomes[account_id] = result["reason"] or result["status"]
             except Exception as exc:  # noqa: BLE001
                 self.db.rollback()
