@@ -41,7 +41,7 @@ export function LoginPage() {
             <span className="block text-gold italic">Then dream bigger.</span>
           </h1>
           <p className="max-w-md text-[17px] leading-relaxed text-on-dark/80">
-            Every position, trade and return across your accounts, so your next move starts from facts.
+            Every position, trade, and return across your portfolio, so your next move starts from facts.
           </p>
         </>
       }

@@ -1,0 +1,15 @@
+# For the web image, whose build context is the repository root. Nothing
+# secret or local may travel into a build.
+.git
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/dist
+**/venv
+**/__pycache__
+backend/tests
+backend/bruno
+*.sql
+*.dump
+OPEN_ITEMS.md

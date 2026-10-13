@@ -1,0 +1,17 @@
+# Never in the image: secrets, local data, and what only development needs.
+.env
+.env.*
+!.env.example
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+bruno/
+*.sql
+*.md
+docker-compose.yml
+infra.sh
+credentials.json

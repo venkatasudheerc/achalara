@@ -1,5 +1,6 @@
 """Application Configuration"""
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -30,6 +31,14 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "http://localhost:5173"
     # How long a sign-in lasts before the person must sign in again.
     session_ttl_hours: int = 168
+
+    @field_validator("database_url")
+    @classmethod
+    def _postgresql_scheme(cls, url: str) -> str:
+        """Some hosts hand out ``postgres://``; SQLAlchemy only knows ``postgresql://``."""
+        if url.startswith("postgres://"):
+            return "postgresql://" + url[len("postgres://") :]
+        return url
 
     @property
     def cors_origins_list(self) -> list[str]:
