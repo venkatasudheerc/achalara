@@ -79,7 +79,10 @@ export function PortalShell() {
               </nav>
             )}
           </div>
-          <span className="font-display text-[26px] font-medium">Achalara</span>
+          <NavLink to={{ pathname: '/portal', search }} aria-label="Achalara, home"
+            className="font-display text-[26px] font-medium text-on-dark no-underline hover:text-on-dark/80">
+            Achalara
+          </NavLink>
           <div className="ml-auto flex items-center gap-[12px]">
             <ThemeToggle />
             <div className="text-right text-[16px] leading-tight">
