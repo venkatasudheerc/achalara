@@ -4,7 +4,7 @@ import {
   useConnections, useStartLink, useDiscoverConnections, useRemoveConnection,
   useUpdateBrokerageAccount, useSyncBrokerageAccount,
 } from '@/hooks/useConnections'
-import { useStrategies } from '@/hooks/useStrategies'
+import { useCreateStrategy, useStrategies } from '@/hooks/useStrategies'
 import { useClientsList } from '@/hooks/useClients'
 import { ErrorState } from '@/components/ErrorState'
 import { Skeleton } from '@/components/Skeleton'
@@ -169,12 +169,21 @@ function ConnectionCard({ clientId, connection }: { clientId: string; connection
   )
 }
 
+// Chosen in place of one strategy: the account's trades are split by what is traded.
+const BY_TYPE = 'by-type'
+// Which strategy takes each security type; anything else goes to the last one.
+const TYPE_STRATEGIES = [
+  { type: 'STOCK', name: 'Stocks' }, { type: 'ETF', name: 'ETFs' }, { type: 'OPTION', name: 'Options' },
+] as const
+const REST_STRATEGY = 'Other'
+
 function BrokerageAccountRow({
   clientId, account, connectionActive,
 }: { clientId: string; account: BrokerageAccount; connectionActive: boolean }) {
   const { data: strategies } = useStrategies()
   const { data: clients } = useClientsList()
   const update = useUpdateBrokerageAccount()
+  const createStrategy = useCreateStrategy()
   const sync = useSyncBrokerageAccount()
   const [strategyId, setStrategyId] = useState('')
   // The login's holder may only be an agent on this account, so its owner is a choice.
@@ -182,9 +191,27 @@ function BrokerageAccountRow({
   const [message, setMessage] = useState('')
   const [showDrift, setShowDrift] = useState(false)
 
+  /** The id of the strategy with this name, made first if the firm does not have it yet. */
+  const strategyNamed = async (name: string): Promise<string> => {
+    const found = strategies?.find((s) => s.name.toLowerCase() === name.toLowerCase())
+    return found ? found.id : (await createStrategy.mutateAsync({ name })).id
+  }
+
   const handleMap = async () => {
     setMessage('')
     try {
+      if (strategyId === BY_TYPE) {
+        const routes: Record<string, string> = {}
+        for (const { type, name } of TYPE_STRATEGIES) routes[type] = await strategyNamed(name)
+        await update.mutateAsync({
+          id: account.id,
+          body: {
+            status: 'mapped', client_id: ownerId,
+            strategy_id: await strategyNamed(REST_STRATEGY), strategy_routes: routes,
+          },
+        })
+        return
+      }
       await update.mutateAsync({
         id: account.id,
         body: { status: 'mapped', strategy_id: strategyId || null, client_id: ownerId },
@@ -278,13 +305,14 @@ function BrokerageAccountRow({
               className="border border-stone/30 rounded-btn px-2 py-1.5 text-xs focus:outline-none focus:border-pine"
             >
               <option value="">Unallocated</option>
+              <option value={BY_TYPE}>Split by type: Stocks, ETFs, Options, Other</option>
               {strategies?.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
             <button
               onClick={handleMap}
-              disabled={update.isPending}
+              disabled={update.isPending || createStrategy.isPending}
               className="text-xs bg-pine text-on-dark px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50"
             >
               Add account
