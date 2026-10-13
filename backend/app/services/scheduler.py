@@ -21,6 +21,8 @@ from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
 
+MARKET_TIMEZONE = "America/New_York"
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -130,10 +132,11 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     # Brokerage transactions are a day-delayed daily batch, so once a day is
-    # as fresh as the source gets. Runs after the sheets job.
+    # as fresh as the source gets. 8am US Eastern all year: the previous day's
+    # trades are in before the market opens.
     _scheduler.add_job(
         _brokerage_job_wrapper,
-        CronTrigger(hour=16, minute=30),
+        CronTrigger(hour=8, minute=0, timezone=MARKET_TIMEZONE),
         id="daily_brokerage_sync",
         replace_existing=True,
     )
@@ -178,7 +181,7 @@ def start_scheduler() -> None:
     )
     _scheduler.start()
     logger.info(
-        "APScheduler started — sheets sync 16:00 UTC, brokerage sync 16:30 UTC, "
+        "APScheduler started — sheets sync 16:00 UTC, brokerage sync 08:00 US Eastern, "
         "daily capture 23:30 UTC and index history 23:45 UTC on weekdays"
     )
 

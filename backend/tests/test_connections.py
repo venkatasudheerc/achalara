@@ -1733,3 +1733,19 @@ def test_one_link_can_be_checked_on_its_own(db, client, client_id, sdk):
         "/api/v1/admin/status/check-links", params={"connection_id": "nope"}
     )
     assert unknown.status_code == 404
+
+
+def test_the_daily_job_still_syncs_an_account_it_reaches_a_little_early(
+    db, client, client_id, sdk
+):
+    ba = _mapped_account(db, client_id)
+    sync_brokerage_account(db, ba.id)
+    # Yesterday's run reached this account ten seconds later in the job than today's.
+    ba.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=24, seconds=-10)
+    db.commit()
+
+    by_hand = ConnectionService(db).sync(ba.id)
+    assert (by_hand["status"], by_hand["reason"]) == ("skipped", "synced_recently")
+
+    outcomes = ConnectionService(db).sync_all_mapped()
+    assert outcomes[ba.id] == "synced"

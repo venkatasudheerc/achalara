@@ -46,6 +46,10 @@ DEFAULT_STRATEGY_NAME = "Unallocated"
 
 # The source asks for at least this long between transaction pulls per account.
 MIN_SYNC_INTERVAL = timedelta(hours=24)
+# The daily job runs at the same clock time each day, and reaches an account a
+# little sooner or later than it did the day before. Without this allowance an
+# account reached a second early would be skipped, and synced every other day.
+SCHEDULED_SYNC_GRACE = timedelta(minutes=30)
 
 # Each sync re-reads this far behind the previous watermark. Brokerages post
 # and correct rows late; dedup makes the overlap free.
@@ -314,8 +318,13 @@ class ConnectionService:
         brokerage_account_id: str,
         force: bool = False,
         full_history: bool = False,
+        scheduled: bool = False,
     ) -> Dict:
-        """Pull new activity for one mapped account. See ``sync_brokerage_account``."""
+        """Pull new activity for one mapped account. See ``sync_brokerage_account``.
+
+        ``scheduled`` is the daily job's own run, which is allowed the small
+        ``SCHEDULED_SYNC_GRACE`` inside the 24 hours.
+        """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
             raise ValueError("Map the account to a sleeve before syncing it")
@@ -337,7 +346,8 @@ class ConnectionService:
         }
 
         last = _aware(ba.last_synced_at)
-        if not force and last is not None and now - last < MIN_SYNC_INTERVAL:
+        wait = MIN_SYNC_INTERVAL - (SCHEDULED_SYNC_GRACE if scheduled else timedelta(0))
+        if not force and last is not None and now - last < wait:
             result["reason"] = "synced_recently"
             result["next_sync_allowed_at"] = last + MIN_SYNC_INTERVAL
             return result
@@ -652,7 +662,7 @@ class ConnectionService:
         outcomes: Dict[str, str] = {}
         for account_id in [a.id for a in accounts]:
             try:
-                result = self.sync(account_id)
+                result = self.sync(account_id, scheduled=True)
                 outcomes[account_id] = result["reason"] or result["status"]
             except Exception as exc:  # noqa: BLE001
                 self.db.rollback()

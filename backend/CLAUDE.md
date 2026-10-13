@@ -278,6 +278,9 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   `/brokerage-accounts/{id}/sync` route, the scheduler job and the webhook handler all call it.
 - At most one transactions pull per account per 24h. The guard lives in the service; only a
   source-initiated webhook passes `force=True`. Never loop or retry on a 429.
+  The daily job runs at 8am US Eastern and is allowed `SCHEDULED_SYNC_GRACE` (30 minutes) inside
+  the 24 hours, because it reaches each account at a slightly different second each day; without
+  it an account would be skipped every other day. A sync asked for by hand gets no such allowance.
 - Brokerage sleeves use `accounting_method = "FIFO"`. Do not ingest brokerage trades into a
   `ROUND_TRIP` sleeve, and keep one trade source per sleeve.
 - Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
