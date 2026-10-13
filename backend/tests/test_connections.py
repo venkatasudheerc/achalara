@@ -200,6 +200,24 @@ def test_link_for_unknown_client_is_404(client, sdk):
     assert resp.status_code == 404
 
 
+def test_signing_in_again_reopens_the_same_link(client, client_id, sdk):
+    (connection,) = client.post(
+        f"/api/v1/clients/{client_id}/connections/discover"
+    ).json()
+    link = f"/api/v1/clients/{client_id}/connections/snaptrade/link"
+
+    resp = client.post(link, json={"connection_id": connection["id"]})
+
+    assert resp.status_code == 200
+    # The source's own id for that link, so its accounts keep their identity.
+    stored = sdk.authorizations[0]["id"]
+    assert sdk.calls[-1][1]["reconnect"] == stored
+    # A new link asks for none; an unknown one is refused.
+    client.post(link)
+    assert "reconnect" not in sdk.calls[-1][1]
+    assert client.post(link, json={"connection_id": "nope"}).status_code == 404
+
+
 def test_discover_records_the_login_and_every_account_under_it(client, client_id, sdk):
     resp = client.post(f"/api/v1/clients/{client_id}/connections/discover")
     assert resp.status_code == 200

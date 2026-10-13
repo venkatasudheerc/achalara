@@ -160,5 +160,19 @@ def test_the_backup_result_is_read_from_the_servers_status_folder(
     )
 
 
+def test_an_account_not_yet_added_shows_no_full_number(db):
+    account = _linked_account(db, connection_status="broken")
+    linked = db.query(BrokerageAccount).one()
+    linked.account_id, linked.status = None, "unmapped"
+    linked.name = "Brokerage Account — 12345678"
+    db.delete(account)
+    db.commit()
+
+    status = StatusService(db).status(now=NOW)
+
+    assert status["brokerage_accounts"][0]["name"] == "Brokerage Account"
+    assert not [line for line in status["attention"] if "12345678" in line]
+
+
 def test_a_client_user_cannot_read_the_status(anon_client):
     assert anon_client.get("/api/v1/admin/status").status_code == 401

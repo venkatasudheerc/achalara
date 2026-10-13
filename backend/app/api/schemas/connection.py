@@ -9,6 +9,9 @@ class LinkRequest(BaseModel):
     """Start linking a brokerage login."""
 
     redirect_uri: str = ""
+    # An existing link to sign in to again, when the brokerage has stopped
+    # sharing it. Omit to add a new link.
+    connection_id: Optional[str] = None
 
 
 class LinkResponse(BaseModel):

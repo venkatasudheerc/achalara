@@ -69,10 +69,36 @@ class ConnectionService:
     # Linking and discovery
     # ------------------------------------------------------------------
 
-    def start_link(self, client_id: str, redirect_uri: str = "") -> Dict:
-        """A hosted portal URL where the client authorizes a brokerage."""
+    def start_link(
+        self,
+        client_id: str,
+        redirect_uri: str = "",
+        connection_id: Optional[str] = None,
+    ) -> Dict:
+        """A hosted portal URL where the client authorizes a brokerage.
+
+        With ``connection_id`` the portal signs in again to that existing link
+        (one the brokerage has stopped sharing), keeping its accounts and their
+        mappings. Without it, the portal adds a new link.
+        """
         self._client_or_raise(client_id)
-        session = self.connector.initiate_link(self._user_id(), redirect_uri)
+        reconnect = None
+        if connection_id:
+            connection = (
+                self.db.query(BrokerageConnection)
+                .filter(
+                    BrokerageConnection.id == connection_id,
+                    BrokerageConnection.source == SOURCE,
+                    BrokerageConnection.status != "deleted",
+                )
+                .first()
+            )
+            if connection is None:
+                raise LookupError("Brokerage link not found")
+            reconnect = connection.external_connection_id
+        session = self.connector.initiate_link(
+            self._user_id(), redirect_uri, reconnect=reconnect
+        )
         return {
             "redirect_url": session.redirect_url,
             "expires_in_seconds": LINK_EXPIRES_SECONDS,

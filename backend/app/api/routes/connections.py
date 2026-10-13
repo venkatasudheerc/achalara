@@ -61,7 +61,9 @@ def start_link(
 ):
     """Get a hosted portal URL for linking a brokerage login."""
     with _http_errors():
-        return ConnectionService(db).start_link(client_id, body.redirect_uri)
+        return ConnectionService(db).start_link(
+            client_id, body.redirect_uri, body.connection_id
+        )
 
 
 @router.post(

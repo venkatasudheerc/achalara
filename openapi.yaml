@@ -4169,6 +4169,10 @@ components:
         redirect_uri:
           type: string
           description: Where the portal sends the browser when finished (cosmetic)
+        connection_id:
+          type: string
+          nullable: true
+          description: An existing link to sign in to again, when the brokerage has stopped sharing it. Omit to add a new link.
 
     LinkResponse:
       type: object

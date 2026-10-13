@@ -44,10 +44,11 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState('')
 
-  const handleLink = async () => {
+  // With a connection id this signs in again to that link; without, it adds a new one.
+  const handleLink = async (connectionId?: string) => {
     setError('')
     try {
-      const session = await startLink.mutateAsync({ clientId, redirectUri: window.location.href })
+      const session = await startLink.mutateAsync({ clientId, redirectUri: window.location.href, connectionId })
       // The portal URL is only valid for a few minutes, so open it right away.
       window.open(session.redirect_url, '_blank', 'noopener')
       setLinking(true)
@@ -79,7 +80,7 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
             {discover.isPending ? 'Checking…' : 'Refresh accounts'}
           </button>
           <button
-            onClick={handleLink}
+            onClick={() => handleLink()}
             disabled={startLink.isPending}
             className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors disabled:opacity-50"
           >
@@ -115,7 +116,8 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
       ) : (
         <div className="space-y-6">
           {connections.map((connection) => (
-            <ConnectionCard key={connection.id} clientId={clientId} connection={connection} />
+            <ConnectionCard key={connection.id} clientId={clientId} connection={connection}
+              onSignInAgain={() => handleLink(connection.id)} signingIn={startLink.isPending} />
           ))}
         </div>
       )}
@@ -123,7 +125,9 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
   )
 }
 
-function ConnectionCard({ clientId, connection }: { clientId: string; connection: Connection }) {
+function ConnectionCard({ clientId, connection, onSignInAgain, signingIn }: {
+  clientId: string; connection: Connection; onSignInAgain: () => void; signingIn: boolean
+}) {
   const remove = useRemoveConnection()
   const broken = connection.status === 'broken'
 
@@ -151,9 +155,16 @@ function ConnectionCard({ clientId, connection }: { clientId: string; connection
         </button>
       </div>
       {broken && (
-        <p className="text-xs text-loss mb-2">
-          The brokerage stopped sharing data. Use “Link brokerage” to sign in again; syncing is paused until then.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3 p-3 rounded-btn border border-loss/40 bg-loss/10">
+          <p className="text-xs text-summit-ink">
+            The brokerage stopped sharing data, so syncing is paused. Sign in to it again to carry on;
+            the accounts and how they are set up stay as they are.
+          </p>
+          <button onClick={onSignInAgain} disabled={signingIn}
+            className="text-xs bg-pine text-on-dark px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50 shrink-0">
+            {signingIn ? 'Opening…' : 'Sign in again'}
+          </button>
+        </div>
       )}
       <div className="divide-y divide-stone/10 border-t border-stone/10">
         {connection.brokerage_accounts.map((account) => (
