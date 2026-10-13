@@ -603,6 +603,8 @@ export interface SystemStatusResponse {
   generated_at: string
   /** What needs a person to look, in plain words; empty when all is well */
   attention: string[]
+  /** Whether a Telegram bot is configured to receive alerts */
+  alerts: { telegram: boolean }
   app: { environment: string; started_at: string; scheduler_enabled: boolean }
   database: { ok: boolean; size_bytes: number | null; migration: string | null }
   disk: { total_bytes: number; free_bytes: number }

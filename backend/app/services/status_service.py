@@ -20,7 +20,7 @@ from app.models.client import Client
 from app.models.index_bar import IndexBar
 from app.models.perf import DailyPrice, DailyValuation
 from app.models.trade import Trade
-from app.services import run_log, scheduler
+from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.performance_build_service import last_market_day
@@ -39,6 +39,24 @@ TRANSACTIONS_MAX_LAG = timedelta(days=5)
 DISK_MIN_FREE_SHARE = 0.15
 
 
+class _Notes(list):
+    """The "needs a look" lines, each with the wording an alert may carry.
+
+    An alert leaves the app for a messaging service, so it must not name a
+    client or an account. A line that does is given a plainer twin here.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.for_alerts: List[str] = []
+
+    def append(self, message: str, alert: Optional[str] = None) -> None:
+        super().append(message)
+        line = alert or message
+        if line not in self.for_alerts:
+            self.for_alerts.append(line)
+
+
 def _aware(moment: Optional[datetime]) -> Optional[datetime]:
     """SQLite hands timestamps back without a zone; they were stored in UTC."""
     if moment is not None and moment.tzinfo is None:
@@ -52,7 +70,7 @@ class StatusService:
 
     def status(self, now: Optional[datetime] = None) -> Dict:
         now = now or datetime.now(timezone.utc)
-        attention: List[str] = []
+        attention = _Notes()
         database = self._database(attention)
         jobs = self._jobs(attention)
         links = self._brokerage_links(attention)
@@ -64,7 +82,10 @@ class StatusService:
             attention.append("The daily jobs are switched off on this server.")
         return {
             "generated_at": now,
-            "attention": attention,
+            "attention": list(attention),
+            # Not part of the response: what an alert may say (see _Notes).
+            "alert_lines": attention.for_alerts,
+            "alerts": {"telegram": alerts.configured()},
             "app": {
                 "environment": settings.python_env,
                 "started_at": run_log.started_at(),
@@ -193,7 +214,8 @@ class StatusService:
                 and now.date() - through > TRANSACTIONS_MAX_LAG
             ):
                 attention.append(
-                    f"Transactions for {name} stop at {through.isoformat()}."
+                    f"Transactions for {name} stop at {through.isoformat()}.",
+                    alert="Transactions are more than a few days behind for an account.",
                 )
             accounts.append(
                 {

@@ -310,6 +310,11 @@ listed in `status_service.JOBS`, or the page cannot show it. The record of runs 
 in memory and starts empty at each restart. The backup's result comes from a file the server's
 `deploy/backup.sh` writes into `STATUS_DIR`.
 
+**Alerts leave the app** (`services/alerts.py`, a Telegram bot when configured), so they carry
+only the wording `StatusService` marks as safe: a "needs a look" line that names a client or an
+account must be added with an `alert=` twin that does not. Never log the bot token; it is part
+of the address the message is posted to.
+
 A brokerage link's state is only as fresh as the last time the source was asked.
 `ConnectionService.check_links` asks (every six hours, and from the page's "Check now") and
 records `status_checked_at` and `disabled_at`; the stored `status` alone can be days out of date.

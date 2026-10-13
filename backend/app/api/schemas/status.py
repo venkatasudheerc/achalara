@@ -99,10 +99,19 @@ class StatusLogEntry(BaseModel):
     message: str
 
 
+class StatusAlerts(BaseModel):
+    telegram: bool  # whether a Telegram bot is configured to receive alerts
+
+
+class AlertTestResponse(BaseModel):
+    sent: bool
+
+
 class SystemStatusResponse(BaseModel):
     generated_at: datetime
     # What needs a person to look, in plain words; empty when all is well.
     attention: List[str]
+    alerts: StatusAlerts
     app: StatusApp
     database: StatusDatabase
     disk: StatusDisk

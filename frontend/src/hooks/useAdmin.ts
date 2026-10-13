@@ -16,6 +16,10 @@ export function useSystemStatus() {
   })
 }
 
+export function useSendTestAlert() {
+  return useMutation({ mutationFn: () => adminApi.testAlert() })
+}
+
 export function useCheckBrokerageLinks() {
   const qc = useQueryClient()
   return useMutation({

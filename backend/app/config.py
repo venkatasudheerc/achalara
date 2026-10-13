@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # A folder the server's own scripts write status files into (the nightly
     # backup's result), mounted read-only. Empty when there is none.
     status_dir: str = ""
+    # A Telegram bot that messages the advisor when something needs a look.
+    # Both empty: no alerts are sent.
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     @field_validator("database_url")
     @classmethod

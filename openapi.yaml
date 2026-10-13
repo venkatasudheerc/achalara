@@ -1371,6 +1371,36 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/admin/status/test-alert:
+    post:
+      tags:
+      - admin
+      summary: Send Test Alert
+      description: Send a test message through the configured alert channel.
+      operationId: send_test_alert_api_v1_admin_status_test_alert_post
+      responses:
+        '200':
+          description: Whether the message was accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent:
+                    type: boolean
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No alert channel is configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/admin/status/check-links:
     post:
       tags:
@@ -6038,6 +6068,13 @@ components:
           items:
             type: string
           type: array
+        alerts:
+          type: object
+          required: [telegram]
+          properties:
+            telegram:
+              type: boolean
+              description: Whether a Telegram bot is configured to receive alerts.
         app:
           $ref: '#/components/schemas/StatusApp'
         database:
