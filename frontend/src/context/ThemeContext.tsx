@@ -68,10 +68,9 @@ export function useChartColours() {
     allocation: {
       stock: dark ? '#9DD8BD' : '#1E3A2F',
       etf: dark ? '#4FA583' : '#5E9C82',
-      // In dark, cash takes the gold and options the neutral; in light the other way round.
-      option: dark ? '#B4C2BA' : '#C9A24B',
+      option: dark ? '#B4C2BA' : '#B9C4BD',
       other: dark ? '#A9C4EA' : '#4A6FA5',
-      cash: dark ? '#C9A24B' : '#B9C4BD',
+      cash: '#C9A24B',
       track: dark ? '#305646' : '#EAF0EC',
     },
     tooltip: {
