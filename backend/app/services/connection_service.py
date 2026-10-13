@@ -932,8 +932,12 @@ class ConnectionService:
             except ValueError:
                 row.disabled_at = None
 
-    def check_links(self) -> List[BrokerageConnection]:
+    def check_links(
+        self, connection_id: Optional[str] = None
+    ) -> List[BrokerageConnection]:
         """Ask the source whether each link on file is still sharing data.
+
+        With ``connection_id`` only that link's state is brought up to date.
 
         Lighter than ``discover``: it touches only the links already known,
         adds none, and reads no accounts. A brokerage ends a session without
@@ -954,6 +958,10 @@ class ConnectionService:
             )
             .all()
         )
+        if connection_id:
+            rows = [row for row in rows if row.id == connection_id]
+            if not rows:
+                raise LookupError("Brokerage link not found")
         for row in rows:
             remote = reported.get(row.external_connection_id)
             if remote is None:

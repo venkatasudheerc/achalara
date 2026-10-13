@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   useConnections, useStartLink, useDiscoverConnections, useRemoveConnection,
@@ -57,15 +57,27 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
     }
   }
 
-  const handleDiscover = async () => {
+  // `onReturn`: read on coming back from the sign-in window, where a link still
+  // broken means the sign-in is not finished, so the prompt stays.
+  const handleDiscover = async (onReturn = false) => {
     setError('')
     try {
-      await discover.mutateAsync(clientId)
-      setLinking(false)
+      const found = await discover.mutateAsync(clientId)
+      if (!onReturn || found.every((c) => c.status === 'active')) setLinking(false)
     } catch {
       setError('Could not read accounts from the brokerage source.')
     }
   }
+
+  // Signing in happens in another window. Coming back to this one is the sign
+  // that it is done, so the link's state is read again without being asked.
+  useEffect(() => {
+    if (!linking) return
+    const onReturn = () => { void handleDiscover(true) }
+    window.addEventListener('focus', onReturn)
+    return () => window.removeEventListener('focus', onReturn)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linking])
 
   return (
     <section className="border border-stone/20 rounded-card p-6">
@@ -73,7 +85,7 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Linked brokerages</h2>
         <div className="flex gap-2">
           <button
-            onClick={handleDiscover}
+            onClick={() => handleDiscover()}
             disabled={discover.isPending}
             className="text-xs border border-stone/30 text-stone px-3 py-1.5 rounded-btn hover:border-pine hover:text-pine disabled:opacity-50"
           >
@@ -95,7 +107,7 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
             Sign in to the brokerage in the tab that just opened. The link expires in five minutes.
           </p>
           <button
-            onClick={handleDiscover}
+            onClick={() => handleDiscover()}
             disabled={discover.isPending}
             className="shrink-0 px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50"
           >
