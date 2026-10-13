@@ -128,17 +128,11 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
   const check = useCheckBrokerageLinks()
   return (
     <section className="bg-surface border border-stone/20 rounded-card">
-      <div className="px-6 py-4 border-b border-stone/15 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-medium text-summit-ink">Brokerage links</h2>
-          <p className="text-xs text-stone mt-0.5">
-            Whether each brokerage is still sharing data. Checked every six hours, and when you ask.
-          </p>
-        </div>
-        <button type="button" onClick={() => check.mutate()} disabled={check.isPending || status.brokerage_links.length === 0}
-          className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine">
-          {check.isPending ? 'Checking…' : 'Check now'}
-        </button>
+      <div className="px-6 py-4 border-b border-stone/15">
+        <h2 className="text-sm font-medium text-summit-ink">Brokerage links</h2>
+        <p className="text-xs text-stone mt-0.5">
+          Whether each brokerage is still sharing data. Checked every six hours, and when you ask.
+        </p>
       </div>
       {check.isError && <p className="px-6 pt-3 text-xs text-loss">Could not check: {check.error.message}</p>}
       <div className="overflow-x-auto">
@@ -147,7 +141,7 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
             <thead>
               <tr>
                 <th className={th}>Brokerage</th><th className={th}>State</th><th className={th}>Last checked</th>
-                <th className={th}>Accounts</th><th className={th}>Managed from</th>
+                <th className={th}>Accounts</th><th className={th}>Managed from</th><th className={th} />
               </tr>
             </thead>
             <tbody>
@@ -176,6 +170,12 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
                       <Link to={`/app/clients/${link.client_id}`} className="text-pine underline underline-offset-2">
                         {link.client ?? 'Client'}
                       </Link>
+                    </td>
+                    <td className={`${td} text-right`}>
+                      <button type="button" onClick={() => check.mutate(link.id)} disabled={check.isPending}
+                        className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine whitespace-nowrap">
+                        {check.isPending && check.variables === link.id ? 'Checking…' : 'Check now'}
+                      </button>
                     </td>
                   </tr>
                 )

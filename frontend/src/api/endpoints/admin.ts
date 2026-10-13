@@ -9,9 +9,13 @@ export const adminApi = {
   /** Sends a test message through the alert channel. */
   testAlert: () =>
     apiClient.post<{ sent: boolean }>('/api/v1/admin/status/test-alert').then((r) => r.data),
-  /** Asks the source now whether each brokerage link still shares data; returns the status afresh. */
-  checkLinks: () =>
-    apiClient.post<SystemStatusResponse>('/api/v1/admin/status/check-links').then((r) => r.data),
+  /** Asks the source now whether one brokerage link (or every link) still shares data; returns the status afresh. */
+  checkLinks: (connectionId?: string) =>
+    apiClient
+      .post<SystemStatusResponse>('/api/v1/admin/status/check-links', null, {
+        params: connectionId ? { connection_id: connectionId } : undefined,
+      })
+      .then((r) => r.data),
 
   importHistorical: (
     params: { client_id: string; sleeve_id?: string; mode: 'VALIDATE' | 'IMPORT' },

@@ -23,7 +23,7 @@ export function useSendTestAlert() {
 export function useCheckBrokerageLinks() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => adminApi.checkLinks(),
+    mutationFn: (connectionId?: string) => adminApi.checkLinks(connectionId),
     onSuccess: (status) => qc.setQueryData(['admin', 'status'], status),
   })
 }

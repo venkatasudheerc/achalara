@@ -1717,3 +1717,19 @@ def test_webhook_for_an_unknown_account_is_acknowledged_and_ignored(
     resp = client.post("/api/v1/webhooks/snaptrade", content=body, headers=headers)
     assert resp.status_code == 200
     assert resp.json() == {"status": "ignored"}
+
+
+def test_one_link_can_be_checked_on_its_own(db, client, client_id, sdk):
+    client.post(f"/api/v1/clients/{client_id}/connections/discover")
+    connection = db.query(BrokerageConnection).one()
+    sdk.authorizations[0]["disabled"] = True
+
+    body = client.post(
+        "/api/v1/admin/status/check-links", params={"connection_id": connection.id}
+    ).json()
+
+    assert body["brokerage_links"][0]["status"] == "broken"
+    unknown = client.post(
+        "/api/v1/admin/status/check-links", params={"connection_id": "nope"}
+    )
+    assert unknown.status_code == 404

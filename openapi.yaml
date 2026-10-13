@@ -1411,6 +1411,14 @@ paths:
         then return the status afresh.'
       operationId: check_brokerage_links_api_v1_admin_status_check_links_post
       parameters:
+      - name: connection_id
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Check only this link; every link when left out. 404 when it is not on file.
+      parameters:
       - name: achalara_session
         in: cookie
         required: false
