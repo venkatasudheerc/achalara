@@ -139,7 +139,8 @@ class StatusService:
         )
         accounts = []
         for ba, connection, account, owner in rows:
-            name = display_name(account) if account else ba.name
+            # Never the full account number, which the brokerage puts in the name.
+            name = display_name(account or ba)
             last = _aware(ba.last_synced_at)
             reconciliation = ba.reconciliation or {}
             if connection.status != "active":

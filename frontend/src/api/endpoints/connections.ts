@@ -4,10 +4,11 @@ import type {
 } from '../types'
 
 export const connectionsApi = {
-  startLink: (clientId: string, redirectUri: string) =>
+  /** With `connectionId`, signs in again to that existing link; without, adds a new one. */
+  startLink: (clientId: string, redirectUri: string, connectionId?: string) =>
     apiClient
       .post<LinkResponse>(`/api/v1/clients/${clientId}/connections/snaptrade/link`, {
-        redirect_uri: redirectUri,
+        redirect_uri: redirectUri, connection_id: connectionId ?? null,
       })
       .then((r) => r.data),
 

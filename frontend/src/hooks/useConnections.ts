@@ -16,8 +16,9 @@ export function useConnections(clientId: string) {
 
 export function useStartLink() {
   return useMutation({
-    mutationFn: ({ clientId, redirectUri }: { clientId: string; redirectUri: string }) =>
-      connectionsApi.startLink(clientId, redirectUri),
+    mutationFn: ({ clientId, redirectUri, connectionId }: {
+      clientId: string; redirectUri: string; connectionId?: string
+    }) => connectionsApi.startLink(clientId, redirectUri, connectionId),
   })
 }
 

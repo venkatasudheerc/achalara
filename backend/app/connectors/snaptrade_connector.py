@@ -240,8 +240,13 @@ class SnapTradeConnector:
         client_id: str,
         redirect_uri: str,
         credentials: Optional[SnapTradeCredentials] = None,
+        reconnect: Optional[str] = None,
     ) -> LinkSession:
         """Create a hosted Connection Portal session for a client.
+
+        ``reconnect`` names an existing connection whose login has lapsed: the
+        portal then signs in to that same connection again, so its accounts
+        keep their identity and nothing has to be mapped a second time.
 
         The returned URL expires in about five minutes, so hand it straight to
         the browser rather than storing it. ``connection_type="read"`` keeps
@@ -251,6 +256,7 @@ class SnapTradeConnector:
         response = self.client.authentication.login_snap_trade_user(
             connection_type="read",
             custom_redirect=redirect_uri or None,
+            **({"reconnect": reconnect} if reconnect else {}),
             **creds.as_kwargs(),
         )
         body = _body(response)
