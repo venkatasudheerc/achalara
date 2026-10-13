@@ -35,6 +35,10 @@ class BrokerageConnection(BaseModel):
     external_connection_id = Column(String(255), nullable=False)
     institution = Column(String(255), nullable=False, default="")
     status = Column(String(20), nullable=False, default="active")
+    # When the source was last asked about this link, and since when it has
+    # reported it as no longer sharing data (empty while it is active).
+    status_checked_at = Column(DateTime(timezone=True))
+    disabled_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint(

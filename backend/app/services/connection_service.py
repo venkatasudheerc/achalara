@@ -136,7 +136,7 @@ class ConnectionService:
                 )
                 self.db.add(row)
             row.institution = remote.institution or row.institution or ""
-            row.status = "active" if remote.status == "active" else "broken"
+            self._record_link_state(row, remote)
             seen[remote.connection_id] = row
         self.db.flush()
 
@@ -919,6 +919,52 @@ class ConnectionService:
     # Helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _record_link_state(row: BrokerageConnection, remote) -> None:
+        """Take the source's word on whether a link is still sharing data."""
+        row.status = "active" if remote.status == "active" else "broken"
+        row.status_checked_at = datetime.now(timezone.utc)
+        row.disabled_at = None
+        if row.status != "active":
+            stamp = str((remote.raw or {}).get("disabled_date") or "")
+            try:
+                row.disabled_at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                row.disabled_at = None
+
+    def check_links(self) -> List[BrokerageConnection]:
+        """Ask the source whether each link on file is still sharing data.
+
+        Lighter than ``discover``: it touches only the links already known,
+        adds none, and reads no accounts. A brokerage ends a session without
+        notice, and until someone asks, the stored state still says "active".
+        """
+        user_id = self._user_id()
+        reported = {
+            remote.connection_id: remote
+            for remote in self.connector.list_connections(user_id)
+            if remote.connection_id
+        }
+        rows = (
+            self.db.query(BrokerageConnection)
+            .filter(
+                BrokerageConnection.source == SOURCE,
+                BrokerageConnection.external_user_id == user_id,
+                BrokerageConnection.status != "deleted",
+            )
+            .all()
+        )
+        for row in rows:
+            remote = reported.get(row.external_connection_id)
+            if remote is None:
+                # The source no longer lists it at all.
+                row.status = "broken"
+                row.status_checked_at = datetime.now(timezone.utc)
+            else:
+                self._record_link_state(row, remote)
+        self.db.commit()
+        return rows
+
     def _user_id(self) -> str:
         if not settings.snaptrade_user_id:
             raise NotSupported("SnapTrade is not configured; set SNAPTRADE_USER_ID")
@@ -1006,6 +1052,13 @@ def sync_brokerage_account(
     return ConnectionService(db).sync(
         brokerage_account_id, force=force, full_history=full_history
     )
+
+
+def run_link_check(db: Session) -> int:
+    """Called by the scheduler: refresh the state of every link; how many were checked."""
+    if not settings.snaptrade_user_id:
+        return 0
+    return len(ConnectionService(db).check_links())
 
 
 def run_all_brokerage_syncs(db: Session) -> Dict[str, str]:

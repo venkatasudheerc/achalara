@@ -68,8 +68,9 @@ def test_status_reports_accounts_capture_and_data(db, client):
     body = client.get("/api/v1/admin/status").json()
 
     assert body["database"]["ok"] is True
-    assert [j["id"] for j in body["jobs"]][:3] == [
+    assert [j["id"] for j in body["jobs"]][:4] == [
         "daily_sheets_sync",
+        "brokerage_link_check",
         "daily_brokerage_sync",
         "daily_capture",
     ]
@@ -96,7 +97,18 @@ def test_status_points_out_what_needs_a_look(db):
     assert (
         status["capture"]["missing"] == []
     )  # a broken link is not expected to capture
-    assert "The brokerage link for Brokerage is broken." in status["attention"]
+    # Said once for the link, not once for each account under it.
+    assert (
+        "The A Brokerage link stopped sharing data. "
+        "Sign in to it again from the client's page."
+    ) in status["attention"]
+    (link,) = status["brokerage_links"]
+    assert (link["institution"], link["status"], link["accounts"]) == (
+        "A Brokerage",
+        "broken",
+        1,
+    )
+    assert link["client"] == "Maya Rao"
     assert "Transactions for Brokerage stop at 2026-09-25." in status["attention"]
 
 

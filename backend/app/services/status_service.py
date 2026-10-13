@@ -27,6 +27,7 @@ from app.services.performance_build_service import last_market_day
 
 JOBS = (
     ("daily_sheets_sync", "Sheet sync"),
+    ("brokerage_link_check", "Brokerage link check"),
     ("daily_brokerage_sync", "Brokerage sync"),
     ("daily_capture", "Daily capture"),
     ("index_history", "Index history"),
@@ -54,6 +55,7 @@ class StatusService:
         attention: List[str] = []
         database = self._database(attention)
         jobs = self._jobs(attention)
+        links = self._brokerage_links(attention)
         accounts = self._brokerage_accounts(now, attention)
         capture = self._capture(now.date(), accounts, attention)
         backup = self._backup(now, attention)
@@ -71,6 +73,7 @@ class StatusService:
             "database": database,
             "disk": disk,
             "jobs": jobs,
+            "brokerage_links": links,
             "brokerage_accounts": accounts,
             "capture": capture,
             "data": self._data(),
@@ -115,6 +118,46 @@ class StatusService:
             )
         return jobs
 
+    def _brokerage_links(self, attention: List[str]) -> List[Dict]:
+        """Each brokerage login on file, and whether the source still shares it."""
+        counts = dict(
+            self.db.query(
+                BrokerageAccount.connection_id, func.count(BrokerageAccount.id)
+            )
+            .filter(BrokerageAccount.status != "ignored")
+            .group_by(BrokerageAccount.connection_id)
+        )
+        rows = (
+            self.db.query(BrokerageConnection, Client)
+            .outerjoin(Client, BrokerageConnection.client_id == Client.id)
+            .filter(BrokerageConnection.status != "deleted")
+            .order_by(BrokerageConnection.institution)
+        )
+        links = []
+        for connection, client in rows:
+            name = connection.institution or "Brokerage"
+            disabled_at = _aware(connection.disabled_at)
+            if connection.status != "active":
+                since = f" on {disabled_at.date().isoformat()}" if disabled_at else ""
+                attention.append(
+                    f"The {name} link stopped sharing data{since}. "
+                    "Sign in to it again from the client's page."
+                )
+            links.append(
+                {
+                    "id": connection.id,
+                    "institution": name,
+                    "source": connection.source,
+                    "status": connection.status,
+                    "checked_at": _aware(connection.status_checked_at),
+                    "disabled_at": disabled_at,
+                    "client_id": connection.client_id,
+                    "client": client.name if client else None,
+                    "accounts": counts.get(connection.id, 0),
+                }
+            )
+        return links
+
     def _brokerage_accounts(self, now: datetime, attention: List[str]) -> List[Dict]:
         captured = dict(
             self.db.query(
@@ -143,10 +186,6 @@ class StatusService:
             name = display_name(account or ba)
             last = _aware(ba.last_synced_at)
             reconciliation = ba.reconciliation or {}
-            if connection.status != "active":
-                attention.append(
-                    f"The brokerage link for {name} is {connection.status}."
-                )
             through = ba.transactions_synced_through
             if (
                 ba.status == "mapped"

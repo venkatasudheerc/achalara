@@ -49,6 +49,20 @@ class StatusBrokerageAccount(BaseModel):
     skipped_rows: int = 0
 
 
+class StatusBrokerageLink(BaseModel):
+    """One brokerage login, and whether the source is still sharing it."""
+
+    id: str
+    institution: str
+    source: str
+    status: str  # active | broken
+    checked_at: Optional[datetime] = None  # when the source was last asked
+    disabled_at: Optional[datetime] = None  # since when it stopped, if it has
+    client_id: str
+    client: Optional[str] = None  # whose page the link is managed from
+    accounts: int
+
+
 class StatusCapture(BaseModel):
     market_day: date  # the last finished market day
     accounts: int
@@ -93,6 +107,7 @@ class SystemStatusResponse(BaseModel):
     database: StatusDatabase
     disk: StatusDisk
     jobs: List[StatusJob]
+    brokerage_links: List[StatusBrokerageLink]
     brokerage_accounts: List[StatusBrokerageAccount]
     capture: StatusCapture
     data: StatusData

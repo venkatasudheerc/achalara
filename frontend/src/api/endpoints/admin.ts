@@ -6,6 +6,9 @@ import type {
 
 export const adminApi = {
   status: () => apiClient.get<SystemStatusResponse>('/api/v1/admin/status').then((r) => r.data),
+  /** Asks the source now whether each brokerage link still shares data; returns the status afresh. */
+  checkLinks: () =>
+    apiClient.post<SystemStatusResponse>('/api/v1/admin/status/check-links').then((r) => r.data),
 
   importHistorical: (
     params: { client_id: string; sleeve_id?: string; mode: 'VALIDATE' | 'IMPORT' },

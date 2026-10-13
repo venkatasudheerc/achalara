@@ -14,7 +14,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db.database import SessionLocal
 from app.services import run_log
 from app.services.daily_sync import run_all_enabled_syncs
-from app.services.connection_service import run_all_brokerage_syncs
+from app.services.connection_service import run_all_brokerage_syncs, run_link_check
 from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
 from app.services.index_history_service import IndexHistoryService
 from app.services.price_history_service import PriceHistoryService
@@ -44,6 +44,18 @@ def _brokerage_job_wrapper() -> None:
         run_all_brokerage_syncs(db)
     except Exception as exc:
         logger.error(f"Unhandled error in brokerage sync job: {exc}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("brokerage_link_check")
+def _link_check_wrapper() -> None:
+    """Ask the source whether each brokerage link is still sharing data."""
+    db = SessionLocal()
+    try:
+        run_link_check(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in brokerage link check: {exc}")
     finally:
         db.close()
 
@@ -112,6 +124,14 @@ def start_scheduler() -> None:
         _brokerage_job_wrapper,
         CronTrigger(hour=16, minute=30),
         id="daily_brokerage_sync",
+        replace_existing=True,
+    )
+    # A brokerage ends a session without notice; every six hours is soon
+    # enough to say so, and well inside what the source allows.
+    _scheduler.add_job(
+        _link_check_wrapper,
+        CronTrigger(hour="*/6", minute=10),
+        id="brokerage_link_check",
         replace_existing=True,
     )
     # After the US close (21:00 UTC) and the brokerage's own daily refresh.

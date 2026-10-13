@@ -419,6 +419,10 @@ symbol the sleeve set has traded. They enter MWR as cash flows and TWR/monthly r
 fund's interest) are stored for audit and never counted. See `CashActivityService.income_flows`.
 
 ### `brokerage_connections`
+`status_checked_at` is when the source was last asked whether the link still shares data;
+`disabled_at` is since when it has not (empty while active). Both are set by `discover` and by
+`ConnectionService.check_links`, which the scheduler runs every six hours.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | String(36) PK | uuid |

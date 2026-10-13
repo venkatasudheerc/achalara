@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { useSystemStatus } from '@/hooks/useAdmin'
+import { Link } from 'react-router-dom'
+import { useCheckBrokerageLinks, useSystemStatus } from '@/hooks/useAdmin'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatDate, formatNumber } from '@/lib/formatters'
@@ -20,7 +21,7 @@ function distance(instant: string | null, now: number): string {
   const minutes = Math.round((new Date(instant).getTime() - now) / 60000)
   const size = Math.abs(minutes)
   const text = size < 1 ? 'a moment' : size < 60 ? `${size} min` : size < 1440 ? `${Math.round(size / 60)} h` : `${Math.round(size / 1440)} d`
-  return minutes < 0 ? `${text} ago` : `in ${text}`
+  return minutes <= 0 ? `${text} ago` : `in ${text}`
 }
 
 function bytes(value: number | null): string {
@@ -97,6 +98,70 @@ function Jobs({ status, now }: { status: SystemStatusResponse; now: number }) {
   )
 }
 
+function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
+  const check = useCheckBrokerageLinks()
+  return (
+    <section className="bg-surface border border-stone/20 rounded-card">
+      <div className="px-6 py-4 border-b border-stone/15 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium text-summit-ink">Brokerage links</h2>
+          <p className="text-xs text-stone mt-0.5">
+            Whether each brokerage is still sharing data. Checked every six hours, and when you ask.
+          </p>
+        </div>
+        <button type="button" onClick={() => check.mutate()} disabled={check.isPending || status.brokerage_links.length === 0}
+          className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine">
+          {check.isPending ? 'Checking…' : 'Check now'}
+        </button>
+      </div>
+      {check.isError && <p className="px-6 pt-3 text-xs text-loss">Could not check: {check.error.message}</p>}
+      <div className="overflow-x-auto">
+        {status.brokerage_links.length === 0 ? <p className="px-6 py-6 text-sm text-stone">No brokerage is linked yet.</p> : (
+          <table className="w-full min-w-[720px] border-collapse">
+            <thead>
+              <tr>
+                <th className={th}>Brokerage</th><th className={th}>State</th><th className={th}>Last checked</th>
+                <th className={th}>Accounts</th><th className={th}>Managed from</th>
+              </tr>
+            </thead>
+            <tbody>
+              {status.brokerage_links.map((link) => {
+                const active = link.status === 'active'
+                return (
+                  <tr key={link.id} className="border-t border-stone/10">
+                    <td className={td}>{link.institution}</td>
+                    <td className={td}>
+                      <span className="flex items-center gap-2">
+                        <Dot tone={active ? 'ok' : 'attention'} />
+                        {active ? 'Sharing data' : <span className="text-loss">Stopped sharing</span>}
+                      </span>
+                      {!active && (
+                        <div className="text-xs text-stone mt-1">
+                          {link.disabled_at ? `Since ${when(link.disabled_at)}. ` : ''}Sign in to it again from the client’s page.
+                        </div>
+                      )}
+                    </td>
+                    <td className={mono}>
+                      {when(link.checked_at)}
+                      {link.checked_at && <span className="text-stone font-sans ml-2">{distance(link.checked_at, now)}</span>}
+                    </td>
+                    <td className={mono}>{link.accounts}</td>
+                    <td className={td}>
+                      <Link to={`/app/clients/${link.client_id}`} className="text-pine underline underline-offset-2">
+                        {link.client ?? 'Client'}
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function Accounts({ status, now }: { status: SystemStatusResponse; now: number }) {
   const rows = status.brokerage_accounts
   return (
@@ -123,7 +188,7 @@ function Accounts({ status, now }: { status: SystemStatusResponse; now: number }
                     {a.status !== 'mapped' && <span className="ml-2 text-xs text-stone">not added yet</span>}
                   </td>
                   <td className={td}>{a.owner ?? '—'}</td>
-                  <td className={td}><span className="flex items-center gap-2"><Dot tone={linkOk ? 'ok' : 'attention'} />{linkOk ? 'Active' : a.connection_status}</span></td>
+                  <td className={td}><span className="flex items-center gap-2"><Dot tone={linkOk ? 'ok' : 'attention'} />{linkOk ? 'Active' : 'Stopped'}</span></td>
                   <td className={mono}>{formatDate(a.transactions_synced_through)}</td>
                   <td className={mono}>
                     {when(a.last_synced_at)}
@@ -202,6 +267,7 @@ export function StatusPage() {
           note={status.backup.known ? `${bytes(status.backup.size_bytes)} · disk ${(diskUsed * 100).toFixed(0)}% used` : `Disk ${(diskUsed * 100).toFixed(0)}% used`} />
       </div>
 
+      <Links status={status} now={now} />
       <Jobs status={status} now={now} />
       <Accounts status={status} now={now} />
 
