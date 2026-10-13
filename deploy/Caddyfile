@@ -25,10 +25,13 @@
 		file_server
 	}
 
-	# Built files carry a hash in their name, so they can be kept; the page is always fetched fresh.
+	# Built files carry a hash in their name, so they can be kept. The page itself
+	# is served at every address the app has (/app/status, /portal, ...), and must
+	# be asked for afresh each time, or a browser goes on showing an old version
+	# after an update.
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
-	@page path /index.html /
+	@page not path /assets/* /api/* /health
 	header @page Cache-Control "no-cache"
 }
 
