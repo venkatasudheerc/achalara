@@ -310,7 +310,7 @@ def test_external_id_separates_accounts():
 
 def test_external_id_separates_buy_from_sell():
     # A same-day round trip at one price is two real trades.
-    args = ("acct-1", datetime(2025, 7, 28).date(), "ABC", Decimal("100"), "21")
+    args = ("acct-1", datetime(2025, 7, 24).date(), "ABC", Decimal("100"), "21")
     assert snaptrade_external_id(*args, TradeAction.BUY) != snaptrade_external_id(
         *args, TradeAction.SELL
     )

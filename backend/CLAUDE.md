@@ -37,6 +37,10 @@ backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # sing
 export SNAPTRADE_TEST_USER_ID=<the userId you linked>
 backend/venv/bin/pytest backend/tests/integration -m live -v -s
 
+# Google Sheets sync against a sheet you name (opt-in; no sheet id is kept in the repo)
+export GOOGLE_SHEETS_TEST_SHEET_ID=<sheet id>
+backend/venv/bin/pytest backend/tests/test_google_sheets.py -m live -v
+
 # First advisor login (run from backend/, asks for a password)
 python -m app.cli create-advisor --email you@example.com --name "Your Name"
 

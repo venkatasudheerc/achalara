@@ -1,15 +1,26 @@
-"""Integration tests for Google Sheets sync using the real trade sheet.
+"""Live tests for the Google Sheets sync, against a sheet you name.
 
-These tests make live HTTP requests to Google Sheets and require network access.
-Run with: pytest backend/tests/test_google_sheets.py -v
+Opt-in only: they make real HTTP requests, so they are marked ``live`` and
+skip themselves unless ``GOOGLE_SHEETS_TEST_SHEET_ID`` names a sheet that is
+readable by link. No sheet id is kept in the repository.
+
+    export GOOGLE_SHEETS_TEST_SHEET_ID=<sheet id>
+    pytest backend/tests/test_google_sheets.py -m live -v
 """
+import os
+
+import pytest
 
 from tests.conftest import create_test_strategy
 from app.services.google_sheets_sync import GoogleSheetsService
 
-# Real sheet with 617 trade rows (public, no auth required)
-SHEET_ID = "12aXyVYCGtpmc44pBAdmKu7U6igT91cI93AT4vnJseM0"
-SHEET_GID = "0"  # First tab
+SHEET_ID = os.environ.get("GOOGLE_SHEETS_TEST_SHEET_ID", "")
+SHEET_GID = os.environ.get("GOOGLE_SHEETS_TEST_SHEET_GID", "0")  # first tab
+
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(not SHEET_ID, reason="GOOGLE_SHEETS_TEST_SHEET_ID is not set"),
+]
 
 
 class TestGoogleSheetsFetch:
@@ -20,7 +31,7 @@ class TestGoogleSheetsFetch:
         service = GoogleSheetsService()
         rows = service.fetch_sheet_data(SHEET_ID, SHEET_GID)
 
-        assert len(rows) >= 617
+        assert len(rows) > 0
 
     def test_fetch_has_expected_columns(self):
         """Each row should have the required trade columns"""
@@ -37,17 +48,14 @@ class TestGoogleSheetsFetch:
         }
         assert required_columns.issubset(set(rows[0].keys()))
 
-    def test_first_row_values(self):
-        """Spot-check the first known row"""
+    def test_first_row_is_a_trade(self):
+        """The first row reads as a trade: a date, a symbol and a side."""
         service = GoogleSheetsService()
         rows = service.fetch_sheet_data(SHEET_ID, SHEET_GID)
 
         first = rows[0]
-        assert first["Date"] == "2025/03/17"
-        assert first["Symbol"] == "FCG"
-        assert first["Action"] == "Buy"
-        assert first["Quantity"] == "41"
-        assert first["Price"] == "24.28"
+        assert first["Date"] and first["Symbol"]
+        assert first["Action"].upper() in ("BUY", "SELL")
 
     def test_contains_buy_and_sell_actions(self):
         """Sheet should contain both BUY and SELL trades"""
@@ -60,7 +68,7 @@ class TestGoogleSheetsFetch:
 
 
 class TestSyncDailyEndpoint:
-    """Tests for the sync-daily endpoint using the real Google Sheet"""
+    """Tests for the sync-daily endpoint using the sheet named in the environment"""
 
     def test_sync_validates_sheet_data(self, client):
         """Full sync-daily round-trip: fetch sheet, validate, import trades"""
@@ -83,8 +91,8 @@ class TestSyncDailyEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["summary"]["total_rows"] >= 617
-        assert data["summary"]["imported"] >= 617
+        assert data["summary"]["total_rows"] > 0
+        assert data["summary"]["imported"] > 0
         assert data["summary"]["duplicates_skipped"] == 0
 
     def test_sync_deduplicates_on_second_run(self, client):

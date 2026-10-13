@@ -205,28 +205,28 @@ class TestPositionCalculation:
 
     def test_repeated_same_quantity_round_trips_pair_chronologically(self, client):
         """Two BUY/SELL pairs of the same symbol+qty form two distinct round-trips,
-        each matched oldest-buy to oldest-sell (the FCG-style sheet pattern)."""
+        each matched oldest-buy to oldest-sell (the sheet pattern)."""
         client_id, account_id, sleeve_id = create_test_strategy(
             client, client_email="qmatch@test.com", strategy_name="QMatch Strategy"
         )
 
-        # Round-trip A: buy 41 @ 24.28, later sell 41 @ 20.35  (loss)
+        # Round-trip A: buy 40 @ 25.00, later sell 40 @ 21.00  (loss)
         client.post("/api/v1/trades/", json={
             "sleeve_id": sleeve_id, "trade_date": "2025-03-17",
-            "symbol": "FCG", "action": "BUY", "quantity": 41, "price": 24.28, "commission": 0,
+            "symbol": "ABC", "action": "BUY", "quantity": 40, "price": 25.00, "commission": 0,
         })
         client.post("/api/v1/trades/", json={
             "sleeve_id": sleeve_id, "trade_date": "2025-04-04",
-            "symbol": "FCG", "action": "SELL", "quantity": 41, "price": 20.35, "commission": 0,
+            "symbol": "ABC", "action": "SELL", "quantity": 40, "price": 21.00, "commission": 0,
         })
-        # Round-trip B: buy 41 @ 24.74, later sell 41 @ 24.00  (loss)
+        # Round-trip B: buy 40 @ 25.50, later sell 40 @ 24.50  (loss)
         client.post("/api/v1/trades/", json={
             "sleeve_id": sleeve_id, "trade_date": "2025-12-01",
-            "symbol": "FCG", "action": "BUY", "quantity": 41, "price": 24.74, "commission": 0,
+            "symbol": "ABC", "action": "BUY", "quantity": 40, "price": 25.50, "commission": 0,
         })
         client.post("/api/v1/trades/", json={
             "sleeve_id": sleeve_id, "trade_date": "2025-12-15",
-            "symbol": "FCG", "action": "SELL", "quantity": 41, "price": 24.00, "commission": 0,
+            "symbol": "ABC", "action": "SELL", "quantity": 40, "price": 24.50, "commission": 0,
         })
 
         # No open position — both round-trips fully closed
@@ -244,12 +244,12 @@ class TestPositionCalculation:
         # Sorted by close date; each pairs with the correct entry price
         closed.sort(key=lambda p: p["closed_at"])
         a, b = closed
-        assert a["entry_price"] == pytest.approx(24.28)
-        assert a["exit_price"] == pytest.approx(20.35)
-        assert a["realized_gain"] == pytest.approx((20.35 - 24.28) * 41)
-        assert b["entry_price"] == pytest.approx(24.74)
-        assert b["exit_price"] == pytest.approx(24.00)
-        assert b["realized_gain"] == pytest.approx((24.00 - 24.74) * 41)
+        assert a["entry_price"] == pytest.approx(25.00)
+        assert a["exit_price"] == pytest.approx(21.00)
+        assert a["realized_gain"] == pytest.approx((21.00 - 25.00) * 40)
+        assert b["entry_price"] == pytest.approx(25.50)
+        assert b["exit_price"] == pytest.approx(24.50)
+        assert b["realized_gain"] == pytest.approx((24.50 - 25.50) * 40)
 
     def test_calculate_positions_multiple_symbols(self, client):
         """Portfolio with multiple holdings"""
