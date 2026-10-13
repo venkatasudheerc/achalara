@@ -4341,6 +4341,36 @@ components:
           allOf:
             - $ref: "#/components/schemas/Reconciliation"
           nullable: true
+        duplicate_of:
+          allOf:
+            - $ref: "#/components/schemas/DuplicateAccount"
+          nullable: true
+          description: |
+            On an account not yet brought in, the account already in Achalara
+            that it appears to be. Sent to advisors only.
+
+    DuplicateAccount:
+      type: object
+      required: [certainty, account_id, account_name, client_id, client_name]
+      description: |
+        One brokerage account can be reached through more than one login (its
+        owner's, and an agent's). It is brought in once, then shared.
+      properties:
+        certainty:
+          type: string
+          enum: [same, likely]
+          description: |
+            `same`: the brokerage and the full account number agree; the account
+            cannot be added again. `likely`: the brokerage and the last four
+            digits agree; adding it needs `confirmed_distinct`.
+        account_id:
+          type: string
+        account_name:
+          type: string
+        client_id:
+          type: string
+        client_name:
+          type: string
 
     BrokerageAccountUpdate:
       type: object
@@ -4379,6 +4409,13 @@ components:
           format: date
           nullable: true
           description: Earliest activity date to load on the first sync; omit for full history
+        confirmed_distinct:
+          type: boolean
+          default: false
+          description: |
+            The account shares its brokerage and last four digits with one
+            already in Achalara (`duplicate_of.certainty` is `likely`) and is a
+            different account. Has no effect on a `same` match, which is refused.
 
     BrokerageSyncResult:
       type: object

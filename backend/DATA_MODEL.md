@@ -444,6 +444,7 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | external_account_ref | String(255) | the source's account id |
 | name | String(255) | as reported by the brokerage |
 | number_last4 | String(4) | nullable — only the last four characters are kept |
+| account_fingerprint | String(64) | nullable, indexed — SHA-256 of the brokerage and the full account number, where the source shows one; the same account reached through a second login has the same value |
 | account_id | String(36) FK→accounts.id | nullable, **ON DELETE SET NULL** — set when mapped |
 | default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
 | sleeve_routes | JSON | nullable — security type → sleeve id, e.g. `{"ETF": "…"}`; other types use `default_sleeve_id` |

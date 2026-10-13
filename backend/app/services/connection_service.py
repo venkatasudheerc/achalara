@@ -9,7 +9,9 @@ scheduler job and the webhook handler all call it — do not inline it.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
@@ -31,6 +33,7 @@ from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.strategy import Strategy
 from app.models.trade import Trade
+from app.services.auth_service import display_name
 from app.services.cash_activity_service import CashActivityService
 from app.services.ingestion_service import IngestionService
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -56,6 +59,33 @@ LINK_EXPIRES_SECONDS = 300
 
 # Share-count differences below this are rounding, not drift.
 _QUANTITY_TOLERANCE = Decimal("0.000001")
+
+# A run of digits this long in an account's name or number is its full number.
+_FULL_NUMBER = re.compile(r"\d{6,}")
+
+# How sure we are that a discovered account is one already brought in.
+DUPLICATE_SAME = "same"  # the brokerage and the full number agree
+DUPLICATE_LIKELY = "likely"  # the brokerage and the last four agree
+
+
+def account_fingerprint(
+    institution: Optional[str], name: Optional[str], account_number: Optional[str]
+) -> Optional[str]:
+    """A digest identifying one account at one brokerage, whichever login shows it.
+
+    Built from the full account number where the source gives one, in the
+    account's name first and its number field otherwise. None when only a
+    masked number is known: the last four alone do not identify an account.
+    """
+    runs = _FULL_NUMBER.findall(name or "")
+    if not runs:
+        plain = re.sub(r"[\s-]", "", account_number or "")
+        runs = [plain] if _FULL_NUMBER.fullmatch(plain) else []
+    if not runs:
+        return None
+    number = max(runs, key=len)
+    key = f"{(institution or '').strip().lower()}|{number}"
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 class ConnectionService:
@@ -104,7 +134,9 @@ class ConnectionService:
             "expires_in_seconds": LINK_EXPIRES_SECONDS,
         }
 
-    def discover(self, client_id: str) -> List[BrokerageConnection]:
+    def discover(
+        self, client_id: str, with_duplicates: bool = False
+    ) -> List[BrokerageConnection]:
         """Record the logins and accounts the source currently reports.
 
         There is no callback to exchange after the portal, so this is how a new
@@ -157,11 +189,18 @@ class ConnectionService:
             self._upsert_brokerage_account(connection, remote_account)
 
         self.db.commit()
-        return self.list_connections(client_id)
+        return self.list_connections(client_id, with_duplicates)
 
-    def list_connections(self, client_id: str) -> List[BrokerageConnection]:
-        """A client's connections that have not been removed."""
-        return (
+    def list_connections(
+        self, client_id: str, with_duplicates: bool = False
+    ) -> List[BrokerageConnection]:
+        """A client's connections that have not been removed.
+
+        ``with_duplicates`` marks each account not yet brought in that appears
+        to be in Achalara already. The mark names another client's account, so
+        it is for an advisor only.
+        """
+        rows = (
             self.db.query(BrokerageConnection)
             .filter(
                 BrokerageConnection.client_id == client_id,
@@ -170,6 +209,9 @@ class ConnectionService:
             .order_by(BrokerageConnection.created_at)
             .all()
         )
+        if with_duplicates:
+            self._mark_duplicates(rows)
+        return rows
 
     def remove_connection(self, connection_id: str) -> None:
         """Revoke a login at the source and stop syncing it.
@@ -200,6 +242,7 @@ class ConnectionService:
         client_id: Optional[str] = None,
         strategy_routes: Optional[Dict[str, str]] = None,
         history_start: Optional[date] = None,
+        confirmed_distinct: bool = False,
     ) -> BrokerageAccount:
         """Bring a discovered account into the hierarchy.
 
@@ -216,10 +259,29 @@ class ConnectionService:
         security type ("ETF") to the strategy whose sleeve takes those trades,
         and every other type goes to ``strategy_id``. ``history_start`` limits
         how far back the first sync reaches.
+
+        An account already brought in through another login is refused, so its
+        history is never held twice. Where only the brokerage and the last four
+        digits agree it may be a different account, and ``confirmed_distinct``
+        lets it through.
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.last_synced_at is not None:
             raise ValueError("Account has already been synced and cannot be remapped")
+        duplicate = self.duplicate_of(ba)
+        if duplicate and duplicate["certainty"] == DUPLICATE_SAME:
+            raise ValueError(
+                f"This account is already in Achalara as "
+                f"{duplicate['account_name']} ({duplicate['client_name']}), "
+                "through another brokerage link, and cannot be added a second time."
+            )
+        if duplicate and not confirmed_distinct:
+            raise ValueError(
+                f"This looks like {duplicate['account_name']} "
+                f"({duplicate['client_name']}), which is already in Achalara: "
+                "the brokerage and the last four digits match. Confirm it is a "
+                "different account to add it."
+            )
 
         if account_id:
             account = self.db.query(Account).filter(Account.id == account_id).first()
@@ -258,6 +320,56 @@ class ConnectionService:
         ba.status = "mapped"
         self.db.commit()
         return ba
+
+    def duplicate_of(self, ba: BrokerageAccount) -> Optional[Dict]:
+        """The account already in Achalara that ``ba`` appears to be, if any.
+
+        One brokerage account can be reached through more than one login (an
+        owner's, and an agent's). The source gives each login its own ids for
+        it, so the full account number is what tells them apart; the last four
+        digits are the fallback, and only ever a likely match.
+        """
+        institution = (ba.connection.institution or "").strip().lower()
+        likely = None
+        others = (
+            self.db.query(BrokerageAccount)
+            .filter(
+                BrokerageAccount.id != ba.id,
+                BrokerageAccount.status == "mapped",
+                BrokerageAccount.account_id.isnot(None),
+            )
+            .order_by(BrokerageAccount.created_at)
+        )
+        for other in others:
+            if other.account is None:
+                continue
+            if (other.connection.institution or "").strip().lower() != institution:
+                continue
+            if ba.account_fingerprint and other.account_fingerprint:
+                if ba.account_fingerprint == other.account_fingerprint:
+                    return self._duplicate_hint(other, DUPLICATE_SAME)
+                continue
+            if ba.number_last4 and ba.number_last4 == other.number_last4:
+                likely = likely or self._duplicate_hint(other, DUPLICATE_LIKELY)
+        return likely
+
+    @staticmethod
+    def _duplicate_hint(other: BrokerageAccount, certainty: str) -> Dict:
+        owner = other.account.client
+        return {
+            "certainty": certainty,
+            "account_id": other.account_id,
+            "account_name": display_name(other.account),
+            "client_id": other.account.client_id,
+            "client_name": owner.name if owner is not None else "",
+        }
+
+    def _mark_duplicates(self, connections: List[BrokerageConnection]) -> None:
+        """Attach ``duplicate_of`` to each account not yet brought in."""
+        for connection in connections:
+            for ba in connection.brokerage_accounts:
+                if ba.status != "mapped":
+                    ba.duplicate_of = self.duplicate_of(ba)
 
     def _strategy_or_raise(self, strategy_id: str) -> Strategy:
         strategy = self.db.query(Strategy).filter(Strategy.id == strategy_id).first()
@@ -1041,6 +1153,9 @@ class ConnectionService:
         row.name = remote.name
         digits = "".join(ch for ch in (remote.account_number or "") if ch.isalnum())
         row.number_last4 = digits[-4:] or None
+        row.account_fingerprint = account_fingerprint(
+            connection.institution, remote.name, remote.account_number
+        )
         if remote.initial_sync_completed is not None:
             row.initial_sync_completed = remote.initial_sync_completed
         return row

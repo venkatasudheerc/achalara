@@ -17,6 +17,7 @@ import pytest
 from app.config import settings
 from app.connectors import registry
 from app.connectors.snaptrade_connector import SnapTradeConnector
+from app.models.account import Account
 from app.models.brokerage_connection import (
     BrokerageAccount,
     BrokerageActivity,
@@ -32,6 +33,7 @@ from app.models.sync_log import SyncLog
 from app.models.trade import Trade
 from app.services.cash_activity_service import CashActivityService
 from app.services.connection_service import (
+    account_fingerprint,
     ConnectionService,
     run_all_brokerage_syncs,
     sync_brokerage_account,
@@ -67,6 +69,7 @@ class _StubSDK:
         self.rate_limited = False
         self.cash = None
         self.total = None
+        self.extra_accounts = []
         self.calls = []
         self.account_information = self
         self.connections = self
@@ -117,6 +120,7 @@ class _StubSDK:
                     "sync_status": status,
                 },
             ]
+            + self.extra_accounts
         )
 
     def get_account_activities(self, **kwargs):
@@ -1764,3 +1768,100 @@ def test_the_daily_job_takes_no_for_an_answer_from_the_source(
     # Refused once, reported, and not tried again until the next day's run.
     assert outcomes[ba.id] == "rate_limited"
     assert len([c for c in sdk.calls if c[0] == "activities"]) - calls_before <= 1
+
+
+# ---------------------------------------------------------------------------
+# One account reached through two logins
+# ---------------------------------------------------------------------------
+
+
+def _second_login(sdk, client, name, number, ref="acct-9", institution="Vanguard"):
+    """A second client links their own login, which shows one more account."""
+    sdk.authorizations.append(
+        {"id": "auth-2", "brokerage": {"name": institution}, "disabled": False}
+    )
+    sdk.extra_accounts.append(
+        {
+            "id": ref,
+            "name": name,
+            "number": number,
+            "institution_name": institution,
+            "brokerage_authorization": "auth-2",
+            "sync_status": {"transactions": {"initial_sync_completed": True}},
+        }
+    )
+    resp = client.post(
+        "/api/v1/clients/", json={"name": "Second", "email": "second@example.com"}
+    )
+    assert resp.status_code == 201
+    second = resp.json()["id"]
+    found = client.post(f"/api/v1/clients/{second}/connections/discover").json()
+    assert [c["client_id"] for c in found] == [second]
+    return second, found[0]["brokerage_accounts"][0]
+
+
+def test_fingerprint_reads_the_full_number_from_the_name_or_the_number():
+    by_name = account_fingerprint("Vanguard", "Jo Doe — Brokerage — 55667788", "7788")
+    by_number = account_fingerprint("vanguard ", "Brokerage Account", "5566-7788")
+    assert by_name == by_number
+    assert account_fingerprint("Fidelity", "Brokerage Account", "55667788") != by_name
+    assert account_fingerprint("Vanguard", "Brokerage Account", "****7788") is None
+
+
+def test_an_account_already_brought_in_is_refused_from_a_second_login(
+    db, client, client_id, sdk
+):
+    first = _mapped_account(db, client_id)
+    _, again = _second_login(sdk, client, "Brokerage Account", "11112222")
+
+    assert again["status"] == "unmapped"
+    assert again["duplicate_of"] == {
+        "certainty": "same",
+        "account_id": first.account_id,
+        "account_name": "Brokerage Account",
+        "client_id": client_id,
+        "client_name": "Linked",
+    }
+    for body in ({"status": "mapped"}, {"status": "mapped", "confirmed_distinct": True}):
+        resp = client.patch(f"/api/v1/brokerage-accounts/{again['id']}", json=body)
+        assert resp.status_code == 409
+        assert "already in Achalara" in resp.json()["detail"]
+    assert db.query(Account).count() == 1
+
+
+def test_a_matching_last_four_needs_confirming_before_it_is_added(
+    db, client, client_id, sdk
+):
+    _mapped_account(db, client_id)
+    second, other = _second_login(sdk, client, "Individual", "****2222")
+
+    assert other["duplicate_of"]["certainty"] == "likely"
+    url = f"/api/v1/brokerage-accounts/{other['id']}"
+    assert client.patch(url, json={"status": "mapped"}).status_code == 409
+    resp = client.patch(url, json={"status": "mapped", "confirmed_distinct": True})
+    assert resp.status_code == 200
+    assert resp.json()["owner_client_id"] == second
+
+
+def test_a_different_account_from_a_second_login_is_added_freely(
+    db, client, client_id, sdk
+):
+    _mapped_account(db, client_id)
+    second, other = _second_login(sdk, client, "Individual", "55556666")
+
+    assert other["duplicate_of"] is None
+    resp = client.patch(
+        f"/api/v1/brokerage-accounts/{other['id']}", json={"status": "mapped"}
+    )
+    assert resp.status_code == 200
+    assert db.query(Account).count() == 2
+
+
+def test_the_same_number_at_another_brokerage_is_a_different_account(
+    db, client, client_id, sdk
+):
+    _mapped_account(db, client_id)
+    _, other = _second_login(
+        sdk, client, "Individual", "11112222", institution="Fidelity"
+    )
+    assert other["duplicate_of"] is None
