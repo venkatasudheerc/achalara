@@ -69,7 +69,7 @@ cp .env.example .env && chmod 600 .env
 nano .env
 ```
 
-Fill in `DOMAIN`, a long random `POSTGRES_PASSWORD` (`openssl rand -base64 32`), and the
+Fill in `DOMAIN`, a long random `POSTGRES_PASSWORD` (`openssl rand -hex 32`; letters and digits only, since it becomes part of an address), and the
 market-data and brokerage keys. Use keys issued for production, not ones that have been in a
 development file.
 
@@ -117,6 +117,10 @@ Logins come across with the data. Delete the dump from both machines afterwards.
 
 ## Routine
 
+**Times.** The server's clock is US Eastern. Security updates install themselves, and when one
+needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
+The app's own daily jobs keep their UTC times.
+
 **Update to the latest code**
 
 ```sh
@@ -136,7 +140,7 @@ tail -3 /srv/achalara-backups/backup.log
 df -h /        # disk space
 ```
 
-**Backups** run nightly at 07:15 UTC into `/srv/achalara-backups`, keeping 14 days. The
+**Backups** run nightly at 3:15am Eastern into `/srv/achalara-backups`, keeping 14 days. The
 server's automatic snapshots carry those files off the disk. Every few months, prove one
 restores: copy a dump to another machine and load it into a scratch database.
 
