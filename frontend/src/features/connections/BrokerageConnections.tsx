@@ -220,6 +220,11 @@ function BrokerageAccountRow({
     return found ? found.id : (await createStrategy.mutateAsync({ name })).id
   }
 
+  // The same account can be reached through a second login; it is brought in once.
+  const duplicate = account.status === 'mapped' ? null : account.duplicate_of ?? null
+  const alreadyHere = duplicate?.certainty === 'same'
+  const confirmed = duplicate ? { confirmed_distinct: true } : {}
+
   const handleMap = async () => {
     setMessage('')
     try {
@@ -229,7 +234,7 @@ function BrokerageAccountRow({
         await update.mutateAsync({
           id: account.id,
           body: {
-            status: 'mapped', client_id: ownerId,
+            status: 'mapped', client_id: ownerId, ...confirmed,
             strategy_id: await strategyNamed(REST_STRATEGY), strategy_routes: routes,
           },
         })
@@ -237,10 +242,15 @@ function BrokerageAccountRow({
       }
       await update.mutateAsync({
         id: account.id,
-        body: { status: 'mapped', strategy_id: strategyId || null, client_id: ownerId },
+        body: { status: 'mapped', strategy_id: strategyId || null, client_id: ownerId, ...confirmed },
       })
-    } catch {
-      setMessage('Could not map this account. The chosen strategy may already hold trades.')
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+      setMessage(
+        typeof detail === 'string'
+          ? detail
+          : 'Could not map this account. The chosen strategy may already hold trades.',
+      )
     }
   }
 
@@ -280,6 +290,21 @@ function BrokerageAccountRow({
             </p>
           )}
           {account.status === 'ignored' && <p className="text-xs text-stone mt-0.5">Ignored</p>}
+          {duplicate && (
+            <p className="text-xs text-stone mt-0.5 max-w-md">
+              {alreadyHere ? 'Already in Achalara as ' : 'Looks like '}
+              <Link
+                to={`/app/clients/${duplicate.client_id}/accounts/${duplicate.account_id}`}
+                className="text-pine hover:underline"
+              >
+                {duplicate.account_name}
+              </Link>
+              {` (${duplicate.client_name})`}
+              {alreadyHere
+                ? ', through another brokerage link. To let this client see it, share it under "Accounts shared with this client".'
+                : ': same brokerage and last four digits. Add it only if it is a different account.'}
+            </p>
+          )}
         </div>
 
         {account.status === 'mapped' ? (
@@ -308,6 +333,18 @@ function BrokerageAccountRow({
             >
               {sync.isPending ? 'Syncing…' : 'Sync now'}
             </button>
+          </div>
+        ) : alreadyHere ? (
+          <div className="flex items-center gap-2 shrink-0">
+            {account.status === 'unmapped' && (
+              <button
+                onClick={() => update.mutate({ id: account.id, body: { status: 'ignored' } })}
+                disabled={update.isPending}
+                className="text-xs text-stone hover:text-summit-ink disabled:opacity-50"
+              >
+                Ignore
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2 shrink-0">
@@ -338,7 +375,7 @@ function BrokerageAccountRow({
               disabled={update.isPending || createStrategy.isPending}
               className="text-xs bg-pine text-on-dark px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50"
             >
-              Add account
+              {duplicate ? 'Add anyway' : 'Add account'}
             </button>
             {account.status === 'unmapped' && (
               <button

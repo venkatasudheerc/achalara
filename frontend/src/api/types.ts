@@ -250,6 +250,13 @@ export interface Reconciliation {
   unmatched_sells: number; skipped_rows: Record<string, number>
 }
 
+/** The account already in Achalara that a discovered one appears to be */
+export interface DuplicateAccount {
+  /** same: full number agrees, cannot be added. likely: last four agree, needs confirming */
+  certainty: 'same' | 'likely'
+  account_id: string; account_name: string
+  client_id: string; client_name: string
+}
 export interface BrokerageAccount {
   id: string; connection_id: string; name: string; number_last4: string | null
   status: BrokerageAccountStatus
@@ -262,6 +269,7 @@ export interface BrokerageAccount {
   transactions_synced_through: string | null
   last_synced_at: string | null; last_reconciled_at: string | null
   reconciliation: Reconciliation | null
+  duplicate_of?: DuplicateAccount | null
 }
 export interface Connection {
   id: string; client_id: string; source: string; institution: string
@@ -276,6 +284,8 @@ export interface BrokerageAccountUpdate {
   /** Security type → strategy id; other types use strategy_id */
   strategy_routes?: Record<string, string> | null
   history_start?: string | null
+  /** Shares a brokerage and last four with an account already here, and is a different one */
+  confirmed_distinct?: boolean
 }
 export interface BrokerageSyncResult {
   status: 'synced' | 'skipped'

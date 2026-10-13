@@ -303,6 +303,17 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 - A synced trade goes to the sleeve already holding its symbol, else the sleeve routed for its
   `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
   one symbol in two sleeves of an account.
+- **One brokerage account is brought in once**, however many logins reach it (an owner's and an
+  agent's). The source gives each login its own ids for the account, so
+  `ConnectionService.duplicate_of` goes by `account_fingerprint` (brokerage + full number):
+  `map_account` refuses a `same` match and wants `confirmed_distinct` for a `likely` one
+  (brokerage + last four). A second client sees the account through `account_access`, never
+  through a second mapping. The hint names another client's account, so it is sent to
+  advisors only.
+- **A new link belongs to the client whose page started it.** Every link sits under one identity
+  at the source, so `discover` sees them all whichever client it is run for; `start_link`
+  stamps `clients.brokerage_link_started_at` and `discover` files a link seen for the first
+  time under that client, falling back to the client asked about only when none started one.
 
 ## System status
 

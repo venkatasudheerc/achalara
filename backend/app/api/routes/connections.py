@@ -19,9 +19,11 @@ from app.api.schemas.connection import (
     Reconciliation,
     SyncResult,
 )
+from app.api.deps import get_current_user
 from app.config import settings
 from app.connectors.models import NotSupported
 from app.db.database import get_db
+from app.models.user import ROLE_ADVISOR, User
 from app.services import alerts
 from app.services.connection_service import (
     ConnectionService,
@@ -71,17 +73,27 @@ def start_link(
     "/clients/{client_id}/connections/discover",
     response_model=List[ConnectionResponse],
 )
-def discover_connections(client_id: str, db: Session = Depends(get_db)):
+def discover_connections(
+    client_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Record the logins and accounts the source reports; run after linking."""
     with _http_errors():
-        return ConnectionService(db).discover(client_id)
+        return ConnectionService(db).discover(client_id, user.role == ROLE_ADVISOR)
 
 
 @router.get("/clients/{client_id}/connections", response_model=List[ConnectionResponse])
-def list_connections(client_id: str, db: Session = Depends(get_db)):
+def list_connections(
+    client_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """List a client's brokerage connections and their accounts."""
     with _http_errors():
-        return ConnectionService(db).list_connections(client_id)
+        return ConnectionService(db).list_connections(
+            client_id, user.role == ROLE_ADVISOR
+        )
 
 
 @router.delete("/connections/{connection_id}", status_code=204)
@@ -112,6 +124,7 @@ def update_brokerage_account(
             body.client_id,
             body.strategy_routes,
             body.history_start,
+            body.confirmed_distinct,
         )
 
 

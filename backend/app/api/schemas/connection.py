@@ -47,6 +47,18 @@ class Reconciliation(BaseModel):
     skipped_rows: Dict[str, int] = {}
 
 
+class DuplicateAccount(BaseModel):
+    """The account already in Achalara that a discovered one appears to be."""
+
+    # same: the brokerage and full account number agree, and it cannot be added.
+    # likely: the brokerage and last four digits agree; adding needs confirming.
+    certainty: Literal["same", "likely"]
+    account_id: str
+    account_name: str
+    client_id: str
+    client_name: str
+
+
 class BrokerageAccountResponse(BaseModel):
     """An account discovered under a connection."""
 
@@ -67,6 +79,8 @@ class BrokerageAccountResponse(BaseModel):
     last_synced_at: Optional[datetime] = None
     last_reconciled_at: Optional[datetime] = None
     reconciliation: Optional[Reconciliation] = None
+    # Advisors only, on an account not yet brought in.
+    duplicate_of: Optional[DuplicateAccount] = None
 
     class Config:
         from_attributes = True
@@ -102,6 +116,9 @@ class BrokerageAccountUpdate(BaseModel):
     strategy_routes: Optional[Dict[str, str]] = None
     # mapped only: earliest activity date to load (omit for full history).
     history_start: Optional[date] = None
+    # mapped only: the account shares its brokerage and last four digits with
+    # one already here, and is a different account all the same.
+    confirmed_distinct: bool = False
 
 
 class SyncResult(BaseModel):

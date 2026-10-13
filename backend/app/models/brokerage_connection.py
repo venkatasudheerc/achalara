@@ -76,6 +76,10 @@ class BrokerageAccount(BaseModel):
     external_account_ref = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     number_last4 = Column(String(4))
+    # A digest of the brokerage and the account's full number, where the source
+    # shows one. The same account reached through a second login has the same
+    # value, which is how it is kept from being brought in twice.
+    account_fingerprint = Column(String(64), index=True)
     account_id = Column(String(36), ForeignKey("accounts.id", ondelete="SET NULL"))
     default_sleeve_id = Column(
         String(36), ForeignKey("sleeves.id", ondelete="SET NULL")
@@ -112,6 +116,10 @@ class BrokerageAccount(BaseModel):
     )
 
     account = relationship("Account")
+
+    # Set by the service on an unmapped account that looks like one already
+    # brought in; not stored.
+    duplicate_of = None
 
     @property
     def owner_client_id(self):
