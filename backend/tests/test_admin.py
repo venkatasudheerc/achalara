@@ -293,12 +293,12 @@ class TestSyncLogs:
 class TestAutoRouteImport:
     """Auto-routing import: no sleeve_id, route by Account + Strategy columns."""
 
-    # Columns mirror the real historical format (note YYYY/MM/DD + Buy/Sell case)
+    # Columns mirror the historical sheet format (note YYYY/MM/DD + Buy/Sell case)
     CSV = (
         b"Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes\n"
-        b"2025/03/17,FCG,Buy,41,24.28,0,Thematic ETFs,10000001,\n"
-        b"2025/03/17,KIE,Buy,17,59.90,0,Thematic ETFs,10000001,\n"
-        b"2025/04/04,FCG,Sell,41,20.35,0,Thematic ETFs,10000001,\n"
+        b"2025/03/17,ABC,Buy,40,25.00,0,Thematic ETFs,10000001,\n"
+        b"2025/03/17,DEF,Buy,15,60.00,0,Thematic ETFs,10000001,\n"
+        b"2025/04/04,ABC,Sell,40,21.00,0,Thematic ETFs,10000001,\n"
         b"2026/01/05,AAPL,Buy,10,150.00,0,Core Equity,99999999,\n"
     )
 
@@ -361,8 +361,8 @@ class TestAutoRouteImport:
         client_id = self._client(client, "route_ci@test.com")
         csv = (
             b"Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes\n"
-            b"2025/03/17,FCG,Buy,10,24.28,0,Thematic ETFs,10000001,\n"
-            b"2025/03/18,KIE,Buy,5,59.90,0,thematic etfs,10000001,\n"
+            b"2025/03/17,ABC,Buy,10,25.00,0,Thematic ETFs,10000001,\n"
+            b"2025/03/18,DEF,Buy,5,60.00,0,thematic etfs,10000001,\n"
         )
         resp = client.post(
             "/api/v1/admin/import-historical",

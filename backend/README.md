@@ -122,7 +122,7 @@ Re-running the same sync is safe — duplicate rows are skipped via `google_shee
 
 ```
 Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes
-2025-03-17,FCG,BUY,41,24.28,0,Thematic ETFs,Taxable,Initial purchase
+2025-03-17,ABC,BUY,40,25.00,0,Thematic ETFs,Taxable,Initial purchase
 ```
 
 ```bash

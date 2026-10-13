@@ -10,8 +10,6 @@ info:
     - A **Sleeve** is one strategy as run in one account — it owns trades, positions, and sync configs.
     - All resource IDs are UUIDs (string).
   version: 1.0.0
-  contact:
-    email: venkatasudheerc@gmail.com
 
 servers:
   - url: http://localhost:8000
