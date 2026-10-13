@@ -1,0 +1,20 @@
+script:pre-request {
+  // Requests use {{clientId}}, {{accountId}} and {{sleeveId}}, which the Create
+  // requests set for the run. When those were not run, use the ids in the
+  // environment (ClientId, AccountId, sleeveId) so a request can be sent by itself
+  // against data that already exists.
+  //
+  // A value copied from the environment is remembered as such, so editing the
+  // environment takes effect on the next request. An id set by a Create request is
+  // left alone.
+  const fallbacks = { clientId: "ClientId", accountId: "AccountId", sleeveId: "sleeveId" };
+  for (const [name, envName] of Object.entries(fallbacks)) {
+    const fromEnv = bru.getEnvVar(envName);
+    const current = bru.getVar(name);
+    const copied = bru.getVar(`fromEnv_${name}`);
+    if (fromEnv && (!current || current === copied)) {
+      bru.setVar(name, fromEnv);
+      bru.setVar(`fromEnv_${name}`, fromEnv);
+    }
+  }
+}

@@ -21,6 +21,12 @@ class ChangePasswordRequest(BaseModel):
 
 class InviteRequest(BaseModel):
     client_id: str
+    # The address the client will sign in with; the client's own by default.
+    email: Optional[EmailStr] = None
+
+
+class ChangeEmailRequest(BaseModel):
+    email: EmailStr
 
 
 class AccountAccessRequest(BaseModel):

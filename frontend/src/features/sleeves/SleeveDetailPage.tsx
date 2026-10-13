@@ -10,7 +10,7 @@ import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
-import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatPercent, formatStoredPrice } from '@/lib/formatters'
 import { GainBadge } from '@/components/StatCard'
 import type { PositionResponse, ClosedPosition, TradeSummary, CashActivity } from '@/api/types'
 
@@ -109,9 +109,9 @@ export function SleeveDetailPage() {
   const openPosCols: Column<PositionResponse>[] = [
     { key: 'symbol', header: 'Symbol', render: (r) => <><span className="font-medium">{r.symbol}</span><ShortBadge quantity={r.quantity} /></>, sortValue: (r) => r.symbol },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
-    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
+    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatStoredPrice(r.symbol, r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
     { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), sortValue: (r) => r.cost_basis, numeric: true },
-    { key: 'current_price', header: 'Price', render: (r) => formatCurrency(r.current_price), sortValue: (r) => r.current_price ?? 0, numeric: true },
+    { key: 'current_price', header: 'Price', render: (r) => formatStoredPrice(r.symbol, r.current_price), sortValue: (r) => r.current_price ?? 0, numeric: true },
     { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
       <span className={(r.unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}>
@@ -126,13 +126,22 @@ export function SleeveDetailPage() {
     { key: 'matched_quantity', header: 'Qty', render: (r) => r.matched_quantity ?? '—', sortValue: (r) => r.matched_quantity ?? 0, numeric: true },
     { key: 'opened_at', header: 'Opened', render: (r) => r.opened_at ? formatDate(r.opened_at) : '—', sortValue: (r) => r.opened_at ?? '' },
     { key: 'closed_at', header: 'Closed', render: (r) => r.closed_at ? formatDate(r.closed_at) : '—', sortValue: (r) => r.closed_at ?? '' },
-    { key: 'entry_price', header: 'Entry', render: (r) => r.entry_price != null ? formatCurrency(r.entry_price) : '—', sortValue: (r) => r.entry_price ?? 0, numeric: true },
-    { key: 'exit_price', header: 'Exit', render: (r) => r.exit_price != null ? formatCurrency(r.exit_price) : '—', sortValue: (r) => r.exit_price ?? 0, numeric: true },
-    { key: 'realized_gain', header: 'Realised gain', render: (r) => (
-      <span className={r.realized_gain >= 0 ? 'text-gain' : 'text-loss'}>
-        {formatCurrency(r.realized_gain)}
-      </span>
-    ), sortValue: (r) => r.realized_gain, numeric: true },
+    { key: 'entry_price', header: 'Entry', render: (r) => formatStoredPrice(r.symbol, r.entry_price), sortValue: (r) => r.entry_price ?? 0, numeric: true },
+    { key: 'exit_price', header: 'Exit', render: (r) => formatStoredPrice(r.symbol, r.exit_price), sortValue: (r) => r.exit_price ?? 0, numeric: true },
+    { key: 'cost', header: 'Cost', render: (r) => r.cost != null ? formatCurrency(r.cost) : '—', sortValue: (r) => r.cost ?? 0, numeric: true },
+    { key: 'proceeds', header: 'Proceeds', render: (r) => r.proceeds != null ? formatCurrency(r.proceeds) : '—', sortValue: (r) => r.proceeds ?? 0, numeric: true },
+    { key: 'realized_gain', header: 'Realised gain', render: (r) => {
+      const gain = r.reported_gain ?? r.realized_gain
+      return (
+        <span className={gain >= 0 ? 'text-gain' : 'text-loss'}>
+          {formatCurrency(gain)}
+          {(r.disallowed_loss ?? 0) > 0 && (
+            <span title={`Wash sale: ${formatCurrency(r.disallowed_loss)} of this loss is carried in the replacement shares' cost`}
+              className="ml-1.5 px-1.5 py-0.5 rounded bg-mist text-summit-ink text-[11px] font-sans font-semibold">W</span>
+          )}
+        </span>
+      )
+    }, sortValue: (r) => r.reported_gain ?? r.realized_gain, numeric: true },
     { key: 'realized_gain_pct', header: '% Gain', render: (r) => (
       <span className={r.realized_gain_pct >= 0 ? 'text-gain' : 'text-loss'}>
         {formatPercent(r.realized_gain_pct / 100)}
@@ -148,7 +157,7 @@ export function SleeveDetailPage() {
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
     ), sortValue: (r) => r.action },
     { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
-    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), sortValue: (r) => r.price, numeric: true },
+    { key: 'price', header: 'Price', render: (r) => formatStoredPrice(r.symbol, r.price), sortValue: (r) => r.price, numeric: true },
     { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), sortValue: (r) => r.commission, numeric: true },
     { key: 'notes', header: 'Notes', render: (r) => <span className="text-stone">{r.notes}</span> },
   ]
@@ -189,7 +198,7 @@ export function SleeveDetailPage() {
               })
               navigate('/app/performance')
             }}
-            className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
+            className="px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
           >
             View performance
           </button>
@@ -236,7 +245,7 @@ export function SleeveDetailPage() {
             <div className="ml-auto px-4 flex items-center">
               <button
                 onClick={() => setShowTradeForm(!showTradeForm)}
-                className="text-xs border border-pine text-pine px-3 py-1 rounded-btn hover:bg-pine hover:text-paper"
+                className="text-xs border border-pine text-pine px-3 py-1 rounded-btn hover:bg-pine hover:text-on-dark"
               >
                 + Add trade
               </button>
@@ -287,7 +296,7 @@ export function SleeveDetailPage() {
               {tradeError && <p className="text-loss text-xs">{tradeError}</p>}
               <div className="flex gap-2">
                 <button type="submit" disabled={createTrade.isPending}
-                  className="px-3 py-1.5 bg-pine text-paper text-xs rounded-btn disabled:opacity-50">
+                  className="px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn disabled:opacity-50">
                   {createTrade.isPending ? 'Saving…' : 'Add trade'}
                 </button>
                 <button type="button" onClick={() => setShowTradeForm(false)} className="text-stone text-xs">Cancel</button>
@@ -308,9 +317,12 @@ export function SleeveDetailPage() {
               {closedPositions && (
                 <p className="text-sm font-mono text-stone mb-3">
                   Total realised gain: {' '}
-                  <span className={closedPositions.total_realized_gain >= 0 ? 'text-gain' : 'text-loss'}>
-                    {formatCurrency(closedPositions.total_realized_gain)}
+                  <span className={(closedPositions.total_reported_gain ?? closedPositions.total_realized_gain) >= 0 ? 'text-gain' : 'text-loss'}>
+                    {formatCurrency(closedPositions.total_reported_gain ?? closedPositions.total_realized_gain)}
                   </span>
+                  {(closedPositions.total_disallowed_loss ?? 0) > 0 && (
+                    <span> · {formatCurrency(closedPositions.total_disallowed_loss)} of losses carried forward by wash sales (W)</span>
+                  )}
                 </p>
               )}
               <DataTable
@@ -352,7 +364,7 @@ export function SleeveDetailPage() {
                   <button
                     type="submit"
                     disabled={reassign.isPending}
-                    className="border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper disabled:opacity-50"
+                    className="border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50"
                   >
                     {reassign.isPending ? 'Moving…' : 'Move'}
                   </button>

@@ -43,6 +43,18 @@ def db(db_engine):
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def no_live_quotes(monkeypatch):
+    """Live quotes never reach the network in tests: the source knows nothing
+    unless a test hands it prices through ``live_quotes._fetch``."""
+    from app.services import live_quotes
+
+    live_quotes.forget()
+    monkeypatch.setattr(live_quotes, "_fetch", lambda symbols: {})
+    yield
+    live_quotes.forget()
+
+
 @pytest.fixture
 def client(db):
     """Test client signed in as an advisor, who may call every route.

@@ -17,6 +17,7 @@ Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sle
                                         └──< BrokerageActivity            (source rows, verbatim)
 
 SyncLog                                            (standalone import/sync audit trail)
+index_bars                                         (market indices, per day; research and benchmarks)
 
 perf.daily_valuation  (per sleeve and per account, per day)     perf.daily_price
 perf.daily_holding    (per account, per security, per day)      perf.corporate_action
@@ -138,8 +139,14 @@ Relationships: `accounts` (1→N, cascade delete).
 | account_number | String(50) | nullable (e.g. "10000001") |
 | name | String(255) | not null |
 | description | String(500) | nullable |
+| cost_basis_method | String(20) | not null, default `FIFO`; `MIN_TAX` where the brokerage is set that way |
 
 Relationships: `client` (N→1), `sleeves` (1→N, cascade delete).
+
+`cost_basis_method` is which lots a sale closes first in the account's `FIFO` sleeves: oldest
+first, or `MIN_TAX` (short-term losses, long-term losses, long-term gains, short-term gains;
+largest loss and smallest gain first). It is set per account to match the brokerage
+(`PATCH /clients/{id}/accounts/{id}`), so realised gains and cost agree with theirs.
 
 ### `strategies`  *(firm-wide definition)*
 | Column | Type | Notes |
@@ -167,6 +174,31 @@ partial sell, which real brokerage activity needs. FIFO also handles **short sal
 beyond the shares held opens a short lot, a later BUY covers the oldest short lots first, and
 an open short is a position with negative quantity and negative cost basis. A sleeve set mixing both is matched sleeve
 by sleeve and rolled up per symbol.
+
+**Two readings of a closed lot.** FIFO sleeves are matched in `services/tax_lots.py`. Each
+closed lot keeps `realized_gain` — proceeds less what was paid, on the day it closed — which
+performance and every total built on it read. Beside it are the figures a brokerage reports,
+which follow tax rules that move gain between lots and years without changing any cash:
+`cost`, `proceeds`, `disallowed_loss`, `reported_gain`, `short_term_gain`, `long_term_gain`,
+`term` and `adjustments`. The realised-gains screens show these. The rules:
+
+- **Wash sales.** A loss on shares replaced from 30 days before to 30 days after the sale is
+  disallowed and added to the replacement shares' cost, with the holding time. Scope is one
+  security in one account, as the brokerage applies it. A purchase after the sale changes the
+  lot already closed, so a recent loss can still become one.
+- **Index options** (SPX, NDX, RUT, VIX and the like, by symbol root): gain is 60% long-term and
+  40% short-term whatever the time held, and a contract open over 31 December is marked to that
+  day's price, entered by hand as a `manual` row in `perf.daily_price`. The year-end entries
+  come back under `marked`, apart from `closed`. With no price on file the lot is left whole
+  and flagged `unmarked`. Options on GLD and SLV are split 60/40 as well, only because the
+  brokerage's list shows them that way; they are usually read as equity options, and they are
+  not marked at a year end.
+- **Written options** bought back or expired are short-term.
+- **Share-for-share mergers** move the lots to the new shares with their cost and opening
+  dates; nothing is realised. The two legs are paired across the account's sleeves.
+
+The daily `cost_value` in `perf.daily_valuation` stays first-in-first-out and takes none of
+these: it is a reading of returns, not a tax figure.
 
 Constraints: `UNIQUE(account_id, strategy_id)` — one sleeve per strategy per account.
 `RESTRICT` on `strategy_id` prevents deleting a strategy definition that still has live
@@ -323,17 +355,36 @@ but no screen uses it at present.
 ### `perf.daily_holding`
 What the brokerage reported an account as holding on one day: `account_id` (CASCADE),
 `sleeve_id` (SET NULL), `as_of_date`, `symbol`, `security_type`, `quantity`, `price`,
-`market_value`, `captured_at`; `UNIQUE(account_id, as_of_date, symbol)`. A record of fact,
+`market_value`, `avg_cost` (the brokerage's own cost per unit; NULL when it reported none, which
+happens for a lot bought since its last transaction sync), `captured_at`; `UNIQUE(account_id, as_of_date, symbol)`. A record of fact,
 captured on the day and not recoverable afterwards; not a per-position performance history. A
 holding's sleeve is the one already holding its symbol, else the route for its security type,
 else the default sleeve.
+
+### `index_bars` (public schema)
+Market reference data, so it sits in `public`: the `perf` schema is for client data.
+
+`symbol` (`SPX`, `DJI`, `NDX`), `bar_date`, `open`, `high`, `low`, `close`, `volume`,
+`source`, `fetched_at`; `UNIQUE(symbol, bar_date)`. The market indices themselves, day by day,
+as far back as the source gives them, kept for research. It is apart from `perf.daily_price` on
+purpose: nothing that values an account or works out its own return reads this table. An
+index may be chosen as a benchmark (`services/benchmarks.py`); its level leaves dividends
+out, unlike the funds in `daily_price`, and the screens say so. The early
+years of an index were published as a close only; those days have no `open`, `high` or `low`,
+and none is filled in. Webull does not serve indices, so the rows come from Yahoo's chart feed
+(`IndexHistoryService`): free and unofficial. Its terms have not been cleared for figures
+shown to clients, which is an open item before go-live. Loaded from downloaded files with
+`python -m app.cli load-index-file --symbol SPX --file <csv> --source <name> --replace`; the scheduler adds each day's bar at 23:45 UTC
+on weekdays and reads the last week again, so a figure the source corrects is taken.
 
 ### `perf.daily_price`
 `symbol`, `price_date`, `close`, `source`, `fetched_at`; `UNIQUE(symbol, price_date, source)`.
 `webull` closes are **adjusted for later splits and dividends** and the source restates the
 whole series when a new one occurs, so a symbol's series is always replaced whole
 (`PriceHistoryService.backfill`). `brokerage` closes are the price the brokerage put on a
-holding the day it was captured, unadjusted. Also holds benchmark tickers (SPY, QQQ, AGG, DIA);
+holding the day it was captured, unadjusted. `manual` closes are entered by hand
+(`python -m app.cli set-price`) for what no source prices: the year-end price an index option
+is marked to, quoted per share. Also holds benchmark tickers (SPY, QQQ, AGG, DIA);
 SPY's dates serve as the market calendar. Because the history is adjusted, a past holding is
 valued by tying the series to the price it actually traded at and using only its movement
 since (see `PerformanceBuildService`); an option assignment, which trades at the strike and not
@@ -352,7 +403,7 @@ as 40 at 100), which every position, value and return calculation goes through.
 | id | String(36) PK | uuid |
 | sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
 | activity_date | Date | not null |
-| type | String(20) | `DIVIDEND` / `INTEREST` / `FEE` / `WITHHOLDING` / `CONTRIBUTION` / `WITHDRAWAL` / `TRANSFER` / `OTHER` |
+| type | String(20) | `DIVIDEND` / `INTEREST` / `FEE` / `MARGIN_INTEREST` / `WITHHOLDING` / `CONTRIBUTION` / `WITHDRAWAL` / `TRANSFER` / `OTHER` |
 | symbol | String(50) | nullable — the security the money relates to |
 | amount | Numeric(18,2) | signed; positive is cash received |
 | notes | Text | nullable |
@@ -361,7 +412,8 @@ as 40 at 100), which every position, value and return calculation goes through.
 Constraints: `UNIQUE(sleeve_id, external_id)`.
 
 Non-trade money movements. Performance is securities-only (no cash balance), so only some of
-these are returns: `FEE` always, and `DIVIDEND` / `INTEREST` / `WITHHOLDING` when paid on a
+these are returns: `FEE` and `MARGIN_INTEREST` (interest paid on money borrowed, a cost of
+the account that the portal shows on its own line) always, and `DIVIDEND` / `INTEREST` / `WITHHOLDING` when paid on a
 symbol the sleeve set has traded. They enter MWR as cash flows and TWR/monthly returns via
 `cash_out`. Contributions, withdrawals, transfers and income on untraded symbols (a settlement
 fund's interest) are stored for audit and never counted. See `CashActivityService.income_flows`.
@@ -459,7 +511,9 @@ One row per login: `email` (unique, stored lower-case), `name`, `role` (`advisor
 `client_id` (unique, CASCADE; set for a client login and NULL for an advisor, enforced by a
 CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
 cannot sign in), `is_active`, `failed_attempts`, `locked_until`, `last_login_at`. One login per
-client. The first advisor is created with `python -m app.cli create-advisor`.
+client. The sign-in `email` is the advisor's to set, at the invite and afterwards
+(`AuthService.change_email`), and may differ from the client's contact email in `clients.email`:
+it has to when that address already belongs to another login. The first advisor is created with `python -m app.cli create-advisor`.
 
 ### `user_sessions`
 A signed-in browser: `user_id` (CASCADE), `token_hash`, `expires_at`. The browser holds a random
@@ -534,6 +588,11 @@ from trades. Rebuild the reconstructed rows with `POST /admin/rebuild-performanc
   `OPTION`, `quantity` is the contract count and `price` is **per contract** (the per-share
   quote × 100). An expiry or assignment is a closing trade at price 0, which is why
   `trades.price` allows zero (`non_negative_price`). Writing an option is a short position.
+- **Assigned options.** Stored as the brokerage reports them (the option closing at price 0, the
+  shares trading at the strike) and read with the premium moved onto the shares; see
+  `corporate_actions.assignment_adjustments`. Cost and realised gains therefore follow the tax
+  treatment. Wash-sale adjustments are not modelled: where shares were sold at a loss and bought
+  back within 30 days, the brokerage's cost is higher than ours.
 - **Brokerage coverage gaps are counted, not hidden.** Splits, mergers and rows with an
   unresolvable symbol are skipped by the connector and tallied per sync in `skipped_rows`; the
   resulting share-count differences appear in the account's reconciliation.

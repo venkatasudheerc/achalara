@@ -41,7 +41,7 @@ export function StrategiesPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
+          className="px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
         >
           + New strategy
         </button>
@@ -67,7 +67,7 @@ export function StrategiesPage() {
           {error && <p className="text-loss text-xs mt-2">{error}</p>}
           <div className="flex gap-2 mt-4">
             <button type="submit" disabled={createStrategy.isPending}
-              className="px-4 py-2 bg-pine text-paper text-sm rounded-btn hover:bg-pine-deep disabled:opacity-50">
+              className="px-4 py-2 bg-pine text-on-dark text-sm rounded-btn hover:bg-pine-deep disabled:opacity-50">
               {createStrategy.isPending ? 'Creating…' : 'Create'}
             </button>
             <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-stone text-sm">Cancel</button>
@@ -91,7 +91,7 @@ export function StrategiesPage() {
               </div>
               <button
                 onClick={() => { setStrategy(s.id, s.name); navigate('/app/performance') }}
-                className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-paper transition-colors"
+                className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
               >
                 View performance
               </button>

@@ -16,7 +16,16 @@ from app.models.sleeve import Sleeve
 from app.models.strategy import Strategy
 from app.models.trade import Trade
 from app.services.connection_service import sync_brokerage_account
-from app.services.corporate_actions import adjusted_trades
+from app.models.brokerage_connection import (
+    BrokerageAccount,
+    BrokerageActivity,
+    BrokerageConnection,
+)
+from app.services.corporate_actions import (
+    adjusted_trades,
+    carry_exchange_costs,
+    record_splits,
+)
 from app.services.daily_capture_service import DailyCaptureService
 from app.services.performance_build_service import (
     PerformanceBuildService,
@@ -307,11 +316,11 @@ def test_an_assignment_at_the_strike_does_not_set_the_price(db):
     sleeve = _sleeve(db, account)
     start = date(2025, 10, 27)
     _closes(db, "SPY", start, [1, 1, 1, 1, 1, 1])
-    _closes(db, "FISV", start, [120, 120, 70, 68, 66, 67])
-    put = "FI251031P00109000"
+    _closes(db, "XYZ", start, [120, 120, 70, 68, 66, 67])
+    put = "XYZ251031P00109000"
     _trade(db, sleeve, date(2025, 10, 28), "SELL", 10, 55, symbol=put)
     _trade(db, sleeve, date(2025, 10, 31), "BUY", 10, 0, symbol=put)
-    _trade(db, sleeve, date(2025, 10, 31), "BUY", 1000, 109, symbol="FISV")
+    _trade(db, sleeve, date(2025, 10, 31), "BUY", 1000, 109, symbol="XYZ")
 
     PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 11, 3))
 
@@ -450,6 +459,7 @@ def test_capture_records_the_days_holdings_and_totals_as_observed(
         D(110),
         D(4400),
     )
+    assert holding.avg_cost == D(100)  # the brokerage's own cost is kept
     assert holding.security_type == "STOCK"
     assert holding.sleeve_id == ba.default_sleeve_id
     row = (
@@ -874,3 +884,359 @@ def test_period_endpoints_take_a_basis(db, client):
     assert monthly["months"][0]["return_pct"] == 50.0
     assert series["series"][-1]["twr_cumul"] == pytest.approx(0.5)
     assert client.get(f"{base}/periods?basis=book").status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# History faults found when more accounts were loaded
+# ---------------------------------------------------------------------------
+
+
+def _split_row(db, ba, day, units, row_id):
+    db.add(
+        BrokerageActivity(
+            brokerage_account_id=ba.id,
+            source_activity_id=row_id,
+            activity_date=day,
+            type="SPLIT",
+            symbol="ABC",
+            outcome="skipped:corporate_action",
+            payload={"units": units},
+        )
+    )
+
+
+def _linked(db, account, sleeve):
+    connection = BrokerageConnection(
+        client_id=account.client_id,
+        source="snaptrade",
+        external_user_id="u",
+        external_connection_id="c",
+    )
+    db.add(connection)
+    db.flush()
+    ba = BrokerageAccount(
+        connection_id=connection.id,
+        external_account_ref="ref",
+        name="Linked",
+        account_id=account.id,
+        default_sleeve_id=sleeve.id,
+        status="mapped",
+    )
+    db.add(ba)
+    db.commit()
+    return ba
+
+
+def test_a_split_ratio_is_worked_out_in_the_shares_of_its_own_day(db):
+    """A later split already on file must not inflate what was held then."""
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    ba = _linked(db, account, sleeve)
+    _trade(db, sleeve, date(2021, 7, 6), "BUY", 3, 800)
+    db.add(
+        CorporateAction(
+            symbol="ABC",
+            effective_date=date(2024, 6, 10),
+            action_type="SPLIT",
+            ratio=D(10),
+            source="brokerage",
+        )
+    )
+    _split_row(db, ba, date(2021, 7, 20), 9, "s1")  # 3 shares became 12
+    db.commit()
+
+    assert record_splits(db, ba.id) == 1
+
+    split = (
+        db.query(CorporateAction)
+        .filter(CorporateAction.effective_date == date(2021, 7, 20))
+        .one()
+    )
+    assert split.ratio == D(4)  # not (30 + 9) / 30
+
+
+def test_a_split_entry_the_brokerage_undid_takes_effect_on_the_day_it_was_undone(db):
+    """Sold the day before the split: shares are added, then taken back. The
+    sale was in old shares, so the split must fall after it."""
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    ba = _linked(db, account, sleeve)
+    _trade(db, sleeve, date(2021, 7, 6), "BUY", 3, 800)
+    _trade(db, sleeve, date(2021, 7, 19), "SELL", 3, 750)
+    _split_row(db, ba, date(2021, 7, 19), 9, "s1")
+    _split_row(db, ba, date(2021, 7, 20), -9, "s2")
+    db.commit()
+
+    assert record_splits(db, ba.id) == 1
+
+    split = db.query(CorporateAction).one()
+    assert (split.effective_date, split.ratio) == (date(2021, 7, 20), D(4))
+    # Bought and sold in the same shares: nothing is left over.
+    assert PortfolioCalculationService(db).calculate_positions(sleeve.id)["open"] == []
+
+
+def test_shares_exchanged_in_a_merger_carry_their_cost_across(db):
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    _trade(db, sleeve, date(2025, 3, 3), "BUY", 100, 12, symbol="OLD")
+    for action, quantity, symbol in [("SELL", 100, "OLD"), ("BUY", 40, "NEW")]:
+        db.add(
+            Trade(
+                sleeve_id=sleeve.id,
+                trade_date=date(2026, 1, 9),
+                symbol=symbol,
+                action=action,
+                quantity=D(quantity),
+                price=D(0),
+                commission=D(0),
+                notes="Merger: OLD CORP",
+            )
+        )
+    db.commit()
+
+    assert carry_exchange_costs(db, account.id) == 2
+
+    positions = PortfolioCalculationService(db).calculate_positions(sleeve.id)
+    (held,) = positions["open"]
+    assert (held["symbol"], held["quantity"], held["cost_basis"]) == (
+        "NEW",
+        D(40),
+        D(1200),
+    )
+    # Nothing closed: the old shares became the new ones, opening date and all.
+    assert positions["closed"] == []
+    assert carry_exchange_costs(db, account.id) == 0  # already priced
+
+
+def test_a_closed_positions_price_scale_does_not_follow_into_the_next_one(db):
+    """Held at 700 while the restated series said 140 (a 5-for-1 split came
+    later). Shares that arrive after the split, off the market, are worth the
+    series' own price, not five times it."""
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    start = date(2025, 1, 6)
+    _closes(db, "SPY", start, [1, 1, 1, 1])
+    _closes(db, "ABC", start, [140, 140, 104, 105])
+    _trade(db, sleeve, start, "BUY", 10, 700)
+    _trade(db, sleeve, date(2025, 1, 7), "SELL", 10, 700)
+    db.add(
+        Trade(
+            sleeve_id=sleeve.id,
+            trade_date=date(2025, 1, 8),
+            symbol="ABC",
+            action="BUY",
+            quantity=D(500),
+            price=D(110),
+            commission=D(0),
+            notes="Merger: ABC CORP",  # any trade that is not at the market
+        )
+    )
+    db.commit()
+
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 1, 9))
+
+    values = {
+        r.as_of_date: float(r.securities_value)
+        for r in db.query(DailyValuation).filter(DailyValuation.sleeve_id == sleeve.id)
+    }
+    assert values[date(2025, 1, 8)] == 500 * 104
+    assert values[date(2025, 1, 9)] == 500 * 105
+
+
+def test_a_recent_fetch_does_not_cover_a_span_that_has_since_widened():
+    """Another account held the security for longer: the stored series, though
+    fetched today, stops short at both ends."""
+    from datetime import datetime, timezone
+
+    from app.services.price_history_service import PriceHistoryService
+
+    now = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    narrow = (date(2023, 10, 16), date(2023, 11, 13), now)
+    covered = PriceHistoryService._covered
+
+    assert covered(narrow, date(2023, 10, 14), date(2023, 11, 14), now)
+    assert not covered(narrow, date(2023, 8, 15), date(2024, 5, 17), now)
+    # Fetched today and reaching the start: today's close may simply not be in yet.
+    assert covered(
+        (date(2023, 8, 15), date(2026, 10, 9), now),
+        date(2023, 8, 15),
+        date(2026, 10, 12),
+        now,
+    )
+    # Nothing older exists at the source, so an early start is as served as it can be.
+    assert covered(
+        (date(2021, 12, 29), date(2026, 10, 9), now),
+        date(2019, 12, 1),
+        date(2026, 10, 12),
+        now,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Assigned options: the premium belongs to the shares
+# ---------------------------------------------------------------------------
+
+PUT = "ABC260116P00020000"  # strike 20
+CALL = "ABC260116C00030000"  # strike 30
+
+
+def _noted(db, sleeve, day, action, qty, price, symbol, notes=None, commission=0):
+    db.add(
+        Trade(
+            sleeve_id=sleeve.id,
+            trade_date=day,
+            symbol=symbol,
+            action=action,
+            quantity=D(str(qty)),
+            price=D(str(price)),
+            commission=D(str(commission)),
+            notes=notes,
+        )
+    )
+    db.commit()
+
+
+def _two_sleeves(db):
+    """Options in one sleeve and shares in another, as a brokerage account has them."""
+    account = _account(db)
+    return account, _sleeve(db, account, "Options"), _sleeve(db, account, "Stocks")
+
+
+def test_an_assigned_puts_premium_lowers_the_cost_of_the_shares(db):
+    _, options, stocks = _two_sleeves(db)
+    # Sold 5 puts at $2.00 a share ($200 a contract), $5 commission: $995 received.
+    _noted(db, options, date(2026, 1, 5), "SELL", 5, 200, PUT, commission=5)
+    _noted(
+        db,
+        options,
+        date(2026, 1, 16),
+        "BUY",
+        5,
+        0,
+        PUT,
+        notes="Assignment: PUT ABC $20",
+    )
+    _noted(db, stocks, date(2026, 1, 16), "BUY", 500, 20, "ABC")
+    calc = PortfolioCalculationService(db)
+
+    option_side = calc.calculate_positions(options.id)
+    share_side = calc.calculate_positions(stocks.id)
+
+    # The option shows no profit; the $995 is in the shares' cost instead.
+    assert option_side["open"] == []
+    assert sum(lot["realized_gain"] for lot in option_side["closed"]) == D(0)
+    (held,) = share_side["open"]
+    assert held["cost_basis"] == D(500 * 20 - 995)
+    assert held["avg_cost"] == D("18.01")
+    # Nothing is stored differently: the rule is applied on reading.
+    assert db.query(Trade).filter(Trade.symbol == "ABC").one().price == D(20)
+
+
+def test_an_assigned_calls_premium_raises_the_sale_proceeds(db):
+    _, options, stocks = _two_sleeves(db)
+    _noted(db, stocks, date(2025, 6, 2), "BUY", 300, 25, "ABC")
+    _noted(db, options, date(2026, 1, 5), "SELL", 3, 150, CALL)  # $450 received
+    _noted(
+        db,
+        options,
+        date(2026, 1, 16),
+        "BUY",
+        3,
+        0,
+        CALL,
+        notes="Assignment: CALL ABC $30",
+    )
+    _noted(db, stocks, date(2026, 1, 16), "SELL", 300, 30, "ABC")
+    calc = PortfolioCalculationService(db)
+
+    option_gain = sum(
+        lot["realized_gain"] for lot in calc.calculate_positions(options.id)["closed"]
+    )
+    share_gain = sum(
+        lot["realized_gain"] for lot in calc.calculate_positions(stocks.id)["closed"]
+    )
+
+    assert option_gain == D(0)
+    assert share_gain == D(300 * (30 - 25) + 450)
+
+
+def test_an_expired_option_keeps_its_premium_as_a_gain(db):
+    _, options, stocks = _two_sleeves(db)
+    _noted(db, options, date(2026, 1, 5), "SELL", 5, 200, PUT)
+    _noted(
+        db, options, date(2026, 1, 16), "BUY", 5, 0, PUT, notes="Expired: PUT ABC $20"
+    )
+    # Shares bought at the strike the same day, by coincidence: not a delivery.
+    _noted(db, stocks, date(2026, 1, 16), "BUY", 500, 20, "ABC")
+    calc = PortfolioCalculationService(db)
+
+    option_gain = sum(
+        lot["realized_gain"] for lot in calc.calculate_positions(options.id)["closed"]
+    )
+
+    assert option_gain == D(1000)
+    assert calc.calculate_positions(stocks.id)["open"][0]["cost_basis"] == D(10000)
+
+
+def test_only_the_contracts_assigned_give_up_their_premium(db):
+    """Sold 8, assigned on 7: one contract is still written, with its premium."""
+    _, options, stocks = _two_sleeves(db)
+    _noted(db, options, date(2026, 1, 5), "SELL", 8, 100, PUT)
+    _noted(
+        db, options, date(2026, 1, 6), "BUY", 7, 0, PUT, notes="Assignment: PUT ABC $20"
+    )
+    _noted(db, stocks, date(2026, 1, 6), "BUY", 700, 20, "ABC")
+    calc = PortfolioCalculationService(db)
+
+    (still_written,) = calc.calculate_positions(options.id)["open"]
+    (held,) = calc.calculate_positions(stocks.id)["open"]
+
+    assert (still_written["quantity"], still_written["cost_basis"]) == (D(-1), D(-100))
+    assert held["cost_basis"] == D(700 * 20 - 700)
+
+
+def test_an_assignment_without_its_delivery_on_file_is_left_as_reported(db):
+    """The shares have not reached the feed yet: moving the premium now would
+    take it out of the option with nowhere to put it."""
+    _, options, _stocks = _two_sleeves(db)
+    _noted(db, options, date(2026, 1, 5), "SELL", 5, 200, PUT)
+    _noted(
+        db,
+        options,
+        date(2026, 1, 16),
+        "BUY",
+        5,
+        0,
+        PUT,
+        notes="Assignment: PUT ABC $20",
+    )
+
+    closed = PortfolioCalculationService(db).calculate_positions(options.id)["closed"]
+
+    assert sum(lot["realized_gain"] for lot in closed) == D(1000)
+
+
+def test_assignment_moves_money_between_sleeves_but_not_in_total(db):
+    account, options, stocks = _two_sleeves(db)
+    start = date(2026, 1, 5)
+    _closes(db, "SPY", start, [1, 1, 1])
+    _closes(db, "ABC", start, [19, 18, 18])
+    _noted(db, options, start, "SELL", 5, 200, PUT)
+    _noted(
+        db, options, date(2026, 1, 6), "BUY", 5, 0, PUT, notes="Assignment: PUT ABC $20"
+    )
+    _noted(db, stocks, date(2026, 1, 6), "BUY", 500, 20, "ABC")
+
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2026, 1, 7))
+
+    day = {
+        r.sleeve_id: r
+        for r in db.query(DailyValuation).filter(
+            DailyValuation.as_of_date == date(2026, 1, 6),
+            DailyValuation.sleeve_id.isnot(None),
+        )
+    }
+    # $1,000 goes into the option to close it flat, and comes off the shares.
+    assert (day[options.id].flow_in, day[stocks.id].flow_in) == (D(1000), D(9000))
+    # The shares are worth the market price, not the strike or the adjusted cost.
+    assert day[stocks.id].securities_value == D(500 * 18)

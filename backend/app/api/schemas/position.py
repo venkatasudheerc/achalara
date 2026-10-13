@@ -35,6 +35,17 @@ class ClosedPositionResponse(BaseModel):
     opened_at: Optional[date] = None
     closed_at: Optional[date] = None
     trades_count: int
+    # As the brokerage reports the lot (see ``services/tax_lots``): cost and
+    # proceeds in full, the loss a wash sale disallowed, and the gain after it
+    # split by term. None where the sleeve is not matched by lots.
+    cost: Optional[float] = None
+    proceeds: Optional[float] = None
+    disallowed_loss: Optional[float] = None
+    reported_gain: Optional[float] = None
+    short_term_gain: Optional[float] = None
+    long_term_gain: Optional[float] = None
+    term: Optional[str] = None  # short | long | mixed (an index option: 60/40)
+    adjustments: List[str] = []
 
     class Config:
         from_attributes = True
@@ -69,6 +80,8 @@ class ClosedPositionsResponse(BaseModel):
     """All closed positions for a sleeve"""
 
     total_realized_gain: float
+    total_reported_gain: Optional[float] = None
+    total_disallowed_loss: Optional[float] = None
     positions: List[ClosedPositionResponse]
 
     class Config:

@@ -86,7 +86,7 @@ function ImportValidator({ result, onImport, loading }: {
         <button
           onClick={onImport}
           disabled={!canImport || loading}
-          className="px-6 py-2 bg-gold text-summit-ink font-medium rounded-btn hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-6 py-2 bg-gold text-on-gold font-medium rounded-btn hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading ? 'Importing…' : canImport ? 'Confirm import' : `Cannot import (${summary.errors} error${summary.errors !== 1 ? 's' : ''})`}
         </button>
@@ -203,7 +203,7 @@ export function ImportsPage() {
                   <button
                     onClick={handleValidate}
                     disabled={!clientId || importMutation.isPending}
-                    className="px-4 py-1.5 bg-pine text-paper text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50"
+                    className="px-4 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50"
                   >
                     {importMutation.isPending ? 'Validating…' : 'Validate'}
                   </button>
@@ -248,7 +248,7 @@ export function ImportsPage() {
           <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Google Sheet sync configs</h2>
           <button
             onClick={() => setShowSyncConfigForm(!showSyncConfigForm)}
-            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper"
+            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark"
           >
             + Add config
           </button>
@@ -277,7 +277,7 @@ export function ImportsPage() {
             </div>
             <div className="flex gap-2">
               <button type="submit" disabled={createSyncConfig.isPending}
-                className="px-3 py-1.5 bg-pine text-paper text-xs rounded-btn disabled:opacity-50">
+                className="px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn disabled:opacity-50">
                 {createSyncConfig.isPending ? 'Saving…' : 'Save config'}
               </button>
               <button type="button" onClick={() => setShowSyncConfigForm(false)} className="text-stone text-xs">Cancel</button>

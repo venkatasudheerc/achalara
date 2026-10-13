@@ -15,8 +15,13 @@ export const authApi = {
 
   users: () => apiClient.get<UserResponse[]>(`${base}/users`).then((r) => r.data),
 
-  invite: (clientId: string) =>
-    apiClient.post<LinkResponse>(`${base}/invites`, { client_id: clientId }).then((r) => r.data),
+  /** `email` is the address the client will sign in with; the client's own when omitted. */
+  invite: (clientId: string, email?: string) =>
+    apiClient.post<LinkResponse>(`${base}/invites`, { client_id: clientId, email }).then((r) => r.data),
+
+  /** Changes a client's sign-in email and returns a link (reset, or a fresh invite) to send them. */
+  changeEmail: (userId: string, email: string) =>
+    apiClient.patch<LinkResponse>(`${base}/users/${userId}/email`, { email }).then((r) => r.data),
 
   passwordReset: (userId: string) =>
     apiClient.post<LinkResponse>(`${base}/users/${userId}/password-reset`).then((r) => r.data),

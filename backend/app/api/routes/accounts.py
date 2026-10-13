@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date
-from typing import Optional
+from typing import List, Literal, Optional
 import uuid
 
 from app.db.database import get_db
@@ -11,7 +11,9 @@ from app.models.account import Account
 from app.models.client import Client
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
+from app.services.auth_service import AuthService
 from app.services.performance_service import PerformanceService
+from app.services.portfolio_calculation import PortfolioCalculationService
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -36,10 +38,23 @@ class AccountResponse(BaseModel):
     client_id: str
     name: str
     description: str
-    account_number: str
+    account_number: Optional[str] = None
+    cost_basis_method: str = "FIFO"
+    # True for an account another client owns that this client may view.
+    # ``client_id`` is always the owner, so it differs from the client asked
+    # about when ``shared``.
+    shared: bool = False
+    owner_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class AccountUpdate(BaseModel):
+    """Change how an account is read"""
+
+    # Which lots a sale closes first, as set at the brokerage.
+    cost_basis_method: Literal["FIFO", "MIN_TAX"]
 
 
 @router.post("/{client_id}/accounts", status_code=201)
@@ -64,15 +79,35 @@ def create_account(
     return account
 
 
-@router.get("/{client_id}/accounts")
-def list_accounts(client_id: str, db: Session = Depends(get_db)):
-    """List all accounts for a client"""
+@router.get("/{client_id}/accounts", response_model=List[AccountResponse])
+def list_accounts(
+    client_id: str,
+    include_shared: bool = Query(
+        True,
+        description="Also list accounts of other clients this client may view, "
+        "marked `shared`. False lists only the accounts the client owns.",
+    ),
+    db: Session = Depends(get_db),
+):
+    """The accounts a client owns, then those shared with them (read-only)."""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    accounts = db.query(Account).filter(Account.client_id == client_id).all()
-    return accounts
+    return [
+        AccountResponse(
+            id=account.id,
+            client_id=account.client_id,
+            name=account.name,
+            description=account.description or "",
+            account_number=account.account_number,
+            cost_basis_method=account.cost_basis_method,
+            shared=shared,
+            owner_name=account.client.name,
+        )
+        for account, shared in AuthService(db).accounts_for_client(client_id)
+        if include_shared or not shared
+    ]
 
 
 @router.get("/{client_id}/accounts/{account_id}")
@@ -86,6 +121,25 @@ def get_account(client_id: str, account_id: str, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    return account
+
+
+@router.patch("/{client_id}/accounts/{account_id}")
+def update_account(
+    client_id: str,
+    account_id: str,
+    body: AccountUpdate,
+    db: Session = Depends(get_db),
+):
+    """Set the account's cost basis method and re-read its positions under it."""
+    account = _account_or_404(db, client_id, account_id)
+    if account.cost_basis_method != body.cost_basis_method:
+        account.cost_basis_method = body.cost_basis_method
+        db.commit()
+        calc = PortfolioCalculationService(db)
+        for sleeve in account.sleeves:
+            calc.persist_all_positions(sleeve.id)
+        db.refresh(account)
     return account
 
 

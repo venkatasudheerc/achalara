@@ -36,7 +36,7 @@ from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.cash_activity_service import CashActivityService
 from app.services.cash_ledger import CashLedger
-from app.services.corporate_actions import adjusted_trades
+from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -173,13 +173,15 @@ class PerformanceBuildService:
             for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id)
         ]
         ledger = CashLedger.for_accounts(self.db, [account_id])
-        trades = adjusted_trades(
-            self.db,
+        stored = (
             self.db.query(Trade)
             .filter(Trade.sleeve_id.in_(sleeve_ids))
             .order_by(Trade.trade_date, Trade.id)
-            .all(),
+            .all()
         )
+        trades = adjusted_trades(self.db, stored)
+        # Legs of a merger are priced to carry cost across, not at the market.
+        off_market = {t.id for t in stored if (t.notes or "").startswith(MERGER_NOTE)}
 
         observed = self._observed_rows(account_id, sleeve_ids)
         self._delete_reconstructed(account_id, sleeve_ids)
@@ -207,7 +209,6 @@ class PerformanceBuildService:
             for sleeve_id in sleeve_ids
         }
         provisional_after = self._transactions_through(account_id)
-        deliveries = self._assignment_deliveries(trades)
         captured = self._captured_holdings(account_id)
         on_file = {
             row.symbol: Decimal(str(row.current_price))
@@ -251,14 +252,15 @@ class PerformanceBuildService:
                 )
                 holding.last_price = trade.price
                 close = series[trade.symbol].on(day) if trade.symbol in series else None
-                at_market = (
-                    trade.trade_date,
-                    trade.price,
-                    trade.quantity,
-                ) not in deliveries
+                at_market = trade.at_market and trade.id not in off_market
                 holding.scale = self._anchor(
                     holding.scale, trade.price, close, at_market
                 )
+                if holding.quantity == 0:
+                    # A closed position's scale says nothing about the next
+                    # one: the series may have been restated for a split in
+                    # between, which we were never told about.
+                    holding.scale = None
 
             for paid_on, sleeve_id, symbol, amount in dividends:
                 if not previous_day < paid_on <= day:
@@ -463,32 +465,14 @@ class PerformanceBuildService:
 
         A trade that did not happen at the market says nothing about what the
         security is worth, so it leaves the scale alone (or at 1 if there is
-        none yet). See ``_assignment_deliveries``.
+        none yet): shares delivered on an assigned option
+        (``corporate_actions.assignment_adjustments``) and the legs of a merger.
         """
         if not close:
             return None
         if at_market and traded_at > 0:
             return traded_at / close
         return scale if scale is not None else Decimal(1)
-
-    @staticmethod
-    def _assignment_deliveries(trades) -> set:
-        """Share trades that were deliveries on an assigned option.
-
-        When an option is assigned the shares change hands at its strike, not
-        at the market: 1,000 shares at 109 on a day they traded near 66. The
-        brokerage reports the delivery as an ordinary buy or sell, sometimes
-        under a different ticker from the option's, so it is recognised by what
-        it must match: the day, the strike as its price, and a hundred shares
-        per contract. Returns ``(date, price, quantity)`` keys.
-        """
-        deliveries = set()
-        for trade in trades:
-            if trade.price != 0 or not is_option_symbol(trade.symbol):
-                continue
-            strike = Decimal(trade.symbol[-8:]) / 1000
-            deliveries.add((trade.trade_date, strike, trade.quantity * 100))
-        return deliveries
 
     @staticmethod
     def _implied_flows(today, before, sleeve_ids) -> Dict[str, Decimal]:

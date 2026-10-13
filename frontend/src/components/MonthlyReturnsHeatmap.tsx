@@ -3,13 +3,13 @@ import type { MonthlyReturn } from '@/api/types'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function cellColor(ret: number): string {
-  if (ret > 5) return 'bg-gain text-paper'
+  if (ret > 5) return 'bg-gain text-on-dark'
   if (ret > 2) return 'bg-gain/60 text-summit-ink'
   if (ret > 0) return 'bg-gain/30 text-summit-ink'
   if (ret === 0) return 'bg-mist text-stone'
   if (ret > -2) return 'bg-loss/30 text-summit-ink'
-  if (ret > -5) return 'bg-loss/60 text-paper'
-  return 'bg-loss text-paper'
+  if (ret > -5) return 'bg-loss/60 text-on-dark'
+  return 'bg-loss text-on-dark'
 }
 
 interface Props { monthlyReturns: MonthlyReturn[] }

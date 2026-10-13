@@ -1,0 +1,36 @@
+meta {
+  name: Login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{advisorEmail}}",
+    "password": "{{advisorPassword}}"
+  }
+}
+
+
+assert {
+  res.status: eq 200
+  res.body.role: eq advisor
+}
+
+docs {
+  Signs in as an advisor. The session comes back as an http-only cookie, which Bruno
+  keeps and sends on every later request, so run this once before anything else.
+  
+  Set `advisorEmail` and `advisorPassword` in your private environment
+  (`environments/Local.private.bru`, which is not committed).
+}

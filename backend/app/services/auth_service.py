@@ -232,20 +232,36 @@ class AuthService:
 
     # -- one-time links ------------------------------------------------
 
-    def invite_client(self, client_id: str) -> Tuple[str, AuthToken]:
-        """Create (or reuse) the client's login and a link to set its password."""
+    def _free_email(self, email: str, user: Optional[User] = None) -> str:
+        """``email`` normalised, or a refusal if another login already uses it."""
+        email = email.strip().lower()
+        holder = self.user_by_email(email)
+        if holder is not None and (user is None or holder.id != user.id):
+            raise AuthError(
+                409,
+                f"Another login already uses {email}. Choose a different sign-in email.",
+            )
+        return email
+
+    def invite_client(
+        self, client_id: str, email: Optional[str] = None
+    ) -> Tuple[str, AuthToken]:
+        """Create (or reuse) the client's login and a link to set its password.
+
+        The sign-in email is the advisor's to choose; it defaults to the
+        client's own. Inviting again before the first link is used may correct
+        the address.
+        """
         client = self.db.query(Client).filter(Client.id == client_id).first()
         if client is None:
             raise AuthError(404, "Client not found")
         user = self.db.query(User).filter(User.client_id == client_id).first()
         if user is None:
-            email = client.email.strip().lower()
-            if self.user_by_email(email):
-                raise AuthError(
-                    409, "Another user already signs in with this client's email."
-                )
             user = User(
-                email=email, name=client.name, role=ROLE_CLIENT, client_id=client_id
+                email=self._free_email(email or client.email),
+                name=client.name,
+                role=ROLE_CLIENT,
+                client_id=client_id,
             )
             self.db.add(user)
             self.db.flush()
@@ -253,6 +269,27 @@ class AuthService:
             raise AuthError(
                 409, "This client already has a login. Send a password reset instead."
             )
+        elif email:
+            user.email = self._free_email(email, user)
+        return self._issue(user, PURPOSE_INVITE, timedelta(days=INVITE_DAYS))
+
+    def change_email(self, user_id: str, email: str) -> Tuple[str, AuthToken]:
+        """Give a client's login a new sign-in email, and a link to send them.
+
+        The old address stops working at once and the client is signed out
+        everywhere. A password already set is kept, so the new address works
+        straight away; the link (a reset, or a fresh invite if no password was
+        ever set) is there for the advisor to pass on.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise AuthError(404, "User not found")
+        if user.role != ROLE_CLIENT:
+            raise AuthError(422, "Only a client's sign-in email is changed here.")
+        user.email = self._free_email(email, user)
+        self.db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+        if user.password_hash:
+            return self._issue(user, PURPOSE_RESET, timedelta(hours=RESET_HOURS))
         return self._issue(user, PURPOSE_INVITE, timedelta(days=INVITE_DAYS))
 
     def reset_link(self, user_id: str) -> Tuple[str, AuthToken]:
@@ -314,13 +351,17 @@ class AuthService:
     # -- who may see what ----------------------------------------------
 
     def accessible_accounts(self, user: User) -> List[Tuple[Account, bool]]:
-        """A client user's accounts as ``(account, shared)``: their own first,
-        then those of other clients they have been granted."""
+        """A client user's accounts as ``(account, shared)``; none for an advisor."""
         if user.role != ROLE_CLIENT:
             return []
+        return self.accounts_for_client(user.client_id)
+
+    def accounts_for_client(self, client_id: str) -> List[Tuple[Account, bool]]:
+        """What a client may view, as ``(account, shared)``: their own accounts
+        first, then those of other clients they have been granted."""
         own = (
             self.db.query(Account)
-            .filter(Account.client_id == user.client_id)
+            .filter(Account.client_id == client_id)
             .order_by(Account.name)
             .all()
         )
@@ -328,8 +369,8 @@ class AuthService:
             self.db.query(Account)
             .join(AccountAccess, AccountAccess.account_id == Account.id)
             .filter(
-                AccountAccess.client_id == user.client_id,
-                Account.client_id != user.client_id,
+                AccountAccess.client_id == client_id,
+                Account.client_id != client_id,
             )
             .order_by(Account.name)
             .all()

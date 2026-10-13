@@ -1,10 +1,12 @@
 """Request dependencies: who is signed in, and whether they may make this call."""
+from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Cookie, Depends, HTTPException, Request
+from fastapi import Cookie, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
+from app.models.client import Client
 from app.models.user import ROLE_ADVISOR, User
 from app.services.auth_service import SESSION_COOKIE, AuthService
 
@@ -59,3 +61,31 @@ def require_access(
     if not allowed:
         raise HTTPException(status_code=403, detail="Not allowed")
     return user
+
+
+@dataclass
+class PortalViewer:
+    """Whose portal a request is for."""
+
+    client_id: str
+    name: str
+    preview: bool  # an advisor looking at a client's portal
+
+
+def portal_viewer(
+    as_client: Optional[str] = Query(
+        None, description="Advisor only: the client whose portal to preview"
+    ),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PortalViewer:
+    """The portal shows a client user their own data. An advisor may open any
+    client's portal by naming the client; a client user cannot name another."""
+    if user.role != ROLE_ADVISOR:
+        return PortalViewer(client_id=user.client_id, name=user.name, preview=False)
+    if not as_client:
+        raise HTTPException(status_code=422, detail="Name a client to preview")
+    client = db.query(Client).filter(Client.id == as_client).first()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return PortalViewer(client_id=client.id, name=client.name, preview=True)

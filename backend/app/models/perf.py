@@ -29,13 +29,19 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+# The source of a price entered by hand (``python -m app.cli set-price``).
+MANUAL_SOURCE = "manual"
+
+
 class DailyPrice(BaseModel):
     """A security's closing price on one day, from one source.
 
     ``webull`` closes are adjusted for later splits and dividends, as the
     source delivers them; ``brokerage`` closes are the price the brokerage put
     on a holding that day, unadjusted. The two are not interchangeable, which
-    is why the source is part of the key.
+    is why the source is part of the key. ``manual`` closes are entered by
+    hand for what no source prices: the year-end price an index option is
+    marked to (quoted per share, like the option itself).
     """
 
     __tablename__ = "daily_price"
@@ -44,7 +50,7 @@ class DailyPrice(BaseModel):
     symbol = Column(String(50), nullable=False, index=True)
     price_date = Column(Date, nullable=False)
     close = Column(Numeric(15, 6), nullable=False)
-    source = Column(String(20), nullable=False)  # webull | brokerage
+    source = Column(String(20), nullable=False)  # webull | brokerage | manual
     fetched_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
@@ -77,6 +83,9 @@ class DailyHolding(BaseModel):
     quantity = Column(Numeric(18, 8), nullable=False)  # negative for a short
     price = Column(Numeric(15, 6))
     market_value = Column(Numeric(18, 2), nullable=False)
+    # The brokerage's own cost per unit; NULL when it reported none (a lot
+    # bought since its last transaction sync).
+    avg_cost = Column(Numeric(15, 6))
     captured_at = Column(DateTime(timezone=True))
 
     __table_args__ = (

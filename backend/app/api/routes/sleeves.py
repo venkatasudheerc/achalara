@@ -63,6 +63,21 @@ class MarketPriceUpdate(BaseModel):
     prices: dict  # {symbol: price}
 
 
+# A closed lot's figures as the brokerage reports them (see ``tax_lots``).
+_REPORTED = (
+    "cost",
+    "proceeds",
+    "disallowed_loss",
+    "reported_gain",
+    "short_term_gain",
+    "long_term_gain",
+)
+
+
+def _number(value) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
 def _get_account_or_404(db: Session, client_id: str, account_id: str) -> Account:
     account = (
         db.query(Account)
@@ -339,12 +354,22 @@ def get_sleeve_closed_positions(
             opened_at=pos.get("opened_at"),
             closed_at=pos.get("closed_at"),
             trades_count=pos["trades_count"],
+            **{field: _number(pos.get(field)) for field in _REPORTED},
+            term=pos.get("term"),
+            adjustments=pos.get("adjustments", []),
         )
         for pos in closed
     ]
 
+    by_lots = [p for p in closed if "reported_gain" in p]
     return ClosedPositionsResponse(
         total_realized_gain=float(total_realized),
+        total_reported_gain=(
+            float(sum(p["reported_gain"] for p in by_lots)) if by_lots else None
+        ),
+        total_disallowed_loss=(
+            float(sum(p["disallowed_loss"] for p in by_lots)) if by_lots else None
+        ),
         positions=position_responses,
     )
 

@@ -133,10 +133,18 @@ class DailyCaptureService:
                     "value": ZERO,
                     "price": price,
                     "type": holding.security_type,
+                    "cost": ZERO,
+                    "costed": True,
                 },
             )
             entry["quantity"] += holding.quantity
             entry["value"] += value
+            # The connector reports a missing cost as zero. One uncosted lot
+            # leaves the whole holding without a cost, not with a wrong one.
+            if holding.avg_cost:
+                entry["cost"] += holding.quantity * holding.avg_cost
+            else:
+                entry["costed"] = False
         holdings_value = ZERO
         for symbol, entry in merged.items():
             sleeve_id = placed.get(symbol) or routes.get(
@@ -153,6 +161,11 @@ class DailyCaptureService:
                     quantity=entry["quantity"],
                     price=entry["price"],
                     market_value=value,
+                    avg_cost=(
+                        entry["cost"] / entry["quantity"]
+                        if entry["costed"] and entry["quantity"]
+                        else None
+                    ),
                     captured_at=now,
                 )
             )

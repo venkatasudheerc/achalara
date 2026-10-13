@@ -15,6 +15,7 @@ from app.db.database import SessionLocal
 from app.services.daily_sync import run_all_enabled_syncs
 from app.services.connection_service import run_all_brokerage_syncs
 from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
+from app.services.index_history_service import IndexHistoryService
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,17 @@ def _capture_job_wrapper() -> None:
         run_daily_capture(db)
     except Exception as exc:
         logger.error(f"Unhandled error in daily capture job: {exc}")
+    finally:
+        db.close()
+
+
+def _index_history_wrapper() -> None:
+    """Add the day's bar to each market index kept for research."""
+    db = SessionLocal()
+    try:
+        IndexHistoryService(db).refresh()
+    except Exception as exc:
+        logger.error(f"Unhandled error in index history job: {exc}")
     finally:
         db.close()
 
@@ -103,6 +115,13 @@ def start_scheduler() -> None:
         id="daily_capture",
         replace_existing=True,
     )
+    # The indices' own bars, once the session's figures are final.
+    _scheduler.add_job(
+        _index_history_wrapper,
+        CronTrigger(day_of_week="mon-fri", hour=23, minute=45),
+        id="index_history",
+        replace_existing=True,
+    )
     # Once, shortly after start-up: catch the day if the schedule was missed.
     _scheduler.add_job(
         _catch_up_wrapper,
@@ -114,7 +133,7 @@ def start_scheduler() -> None:
     _scheduler.start()
     logger.info(
         "APScheduler started — sheets sync 16:00 UTC, brokerage sync 16:30 UTC, "
-        "daily capture 23:30 UTC on weekdays"
+        "daily capture 23:30 UTC and index history 23:45 UTC on weekdays"
     )
 
 

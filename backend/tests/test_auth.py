@@ -230,6 +230,141 @@ def test_reset_link_replaces_the_password_and_signs_everyone_out(
     assert old.status_code == 401
 
 
+# -- the sign-in email is the advisor's to set ----------------------------
+
+
+def test_a_client_can_be_invited_under_a_different_sign_in_email(
+    as_advisor, db, household
+):
+    """The advisor's own login may already use the client's email."""
+    maya = household["maya"]
+    maya.email = ADVISOR_EMAIL
+    db.commit()
+    refused = as_advisor.post("/api/v1/auth/invites", json={"client_id": maya.id})
+    assert (
+        refused.status_code == 409
+        and "different sign-in email" in refused.json()["detail"]
+    )
+
+    link = as_advisor.post(
+        "/api/v1/auth/invites",
+        json={"client_id": maya.id, "email": "Maya.Portal@Example.com"},
+    )
+
+    assert link.status_code == 201 and link.json()["email"] == "maya.portal@example.com"
+    browser = TestClient(app)
+    browser.post(
+        f"/api/v1/auth/links/{link.json()['token']}/accept",
+        json={"password": CLIENT_PASSWORD},
+    )
+    assert browser.get("/api/v1/auth/me").json()["role"] == "client"
+    signed_in = sign_in(
+        TestClient(app), email="maya.portal@example.com", password=CLIENT_PASSWORD
+    )
+    assert signed_in.status_code == 200
+    # The advisor's login under the shared address is untouched.
+    assert as_advisor.get("/api/v1/auth/me").json()["role"] == "advisor"
+
+
+def test_an_unaccepted_invite_can_be_reissued_to_a_corrected_address(
+    as_advisor, household
+):
+    body = {"client_id": household["maya"].id}
+    first = as_advisor.post("/api/v1/auth/invites", json=body).json()
+
+    second = as_advisor.post(
+        "/api/v1/auth/invites", json={**body, "email": "maya.rao@example.org"}
+    ).json()
+
+    assert (first["email"], second["email"]) == (
+        "maya@example.com",
+        "maya.rao@example.org",
+    )
+    assert (
+        TestClient(app).get(f"/api/v1/auth/links/{first['token']}").status_code == 404
+    )
+    preview = TestClient(app).get(f"/api/v1/auth/links/{second['token']}").json()
+    assert preview["email"] == "maya.rao@example.org"
+
+
+def test_changing_an_active_logins_email_keeps_the_password_and_ends_sessions(
+    as_advisor, as_maya, db
+):
+    maya = db.query(User).filter(User.email == "maya@example.com").one()
+
+    link = as_advisor.patch(
+        f"/api/v1/auth/users/{maya.id}/email", json={"email": "maya.new@example.com"}
+    )
+
+    assert link.status_code == 200
+    assert (link.json()["purpose"], link.json()["email"]) == (
+        "reset",
+        "maya.new@example.com",
+    )
+    assert as_maya.get("/api/v1/auth/me").status_code == 401  # signed out everywhere
+    old = sign_in(TestClient(app), email="maya@example.com", password=CLIENT_PASSWORD)
+    new = sign_in(
+        TestClient(app), email="maya.new@example.com", password=CLIENT_PASSWORD
+    )
+    assert (old.status_code, new.status_code) == (401, 200)
+    # The link works too, for choosing a new password under the new address.
+    accepted = TestClient(app).post(
+        f"/api/v1/auth/links/{link.json()['token']}/accept",
+        json={"password": "brand new phrase 31"},
+    )
+    assert (
+        accepted.status_code == 200
+        and accepted.json()["email"] == "maya.new@example.com"
+    )
+
+
+def test_changing_the_email_of_an_unaccepted_login_gives_a_fresh_invite(
+    as_advisor, household, db
+):
+    as_advisor.post("/api/v1/auth/invites", json={"client_id": household["maya"].id})
+    maya = db.query(User).filter(User.email == "maya@example.com").one()
+
+    link = as_advisor.patch(
+        f"/api/v1/auth/users/{maya.id}/email", json={"email": "maya.new@example.com"}
+    ).json()
+
+    assert link["purpose"] == "invite" and link["path"].startswith("/invite/")
+
+
+def test_a_sign_in_email_already_in_use_is_refused(as_advisor, as_maya, db, advisor):
+    maya = db.query(User).filter(User.email == "maya@example.com").one()
+
+    taken = as_advisor.patch(
+        f"/api/v1/auth/users/{maya.id}/email", json={"email": ADVISOR_EMAIL.upper()}
+    )
+    same = as_advisor.patch(
+        f"/api/v1/auth/users/{maya.id}/email", json={"email": "maya@example.com"}
+    )
+    advisors_own = as_advisor.patch(
+        f"/api/v1/auth/users/{advisor.id}/email", json={"email": "other@firm.example"}
+    )
+
+    assert taken.status_code == 409
+    assert same.status_code == 200  # her own address is not "in use" against her
+    assert advisors_own.status_code == 422
+    assert (
+        as_advisor.patch(
+            "/api/v1/auth/users/nope/email", json={"email": "x@example.com"}
+        ).status_code
+        == 404
+    )
+
+
+def test_a_client_cannot_change_anyones_sign_in_email(as_maya, db):
+    maya = db.query(User).filter(User.email == "maya@example.com").one()
+
+    response = as_maya.patch(
+        f"/api/v1/auth/users/{maya.id}/email", json={"email": "elsewhere@example.com"}
+    )
+
+    assert response.status_code == 403
+
+
 def test_only_an_advisor_can_invite_or_list_users(as_maya, household):
     invite = as_maya.post(
         "/api/v1/auth/invites", json={"client_id": household["ravi"].id}

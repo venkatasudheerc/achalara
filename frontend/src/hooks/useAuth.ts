@@ -46,7 +46,15 @@ export function useUsers() {
 export function useInviteClient() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (clientId: string) => authApi.invite(clientId),
+    mutationFn: ({ clientId, email }: { clientId: string; email?: string }) => authApi.invite(clientId, email),
+    onSuccess: () => qc.invalidateQueries({ queryKey: authKeys.users() }),
+  })
+}
+
+export function useChangeSignInEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, email }: { userId: string; email: string }) => authApi.changeEmail(userId, email),
     onSuccess: () => qc.invalidateQueries({ queryKey: authKeys.users() }),
   })
 }

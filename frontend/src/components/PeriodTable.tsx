@@ -115,7 +115,7 @@ export function PeriodTable({
               onClick={() => setGrain(g.value)}
               className={`px-3 py-1 text-xs font-mono rounded-btn transition-colors ${
                 grain === g.value
-                  ? 'bg-pine text-paper'
+                  ? 'bg-pine text-on-dark'
                   : 'text-stone hover:text-summit-ink'
               }`}
             >

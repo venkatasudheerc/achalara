@@ -75,23 +75,23 @@ export function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-summit-ink text-paper font-sans">
+    <div className="min-h-screen bg-chrome text-on-dark font-sans">
 
       {/* Nav */}
-      <header className="fixed inset-x-0 top-0 z-50 flex items-center justify-between px-8 py-5 bg-summit-ink/90 backdrop-blur border-b border-paper/5">
-        <span className="font-display text-xl font-medium tracking-tight text-paper">
+      <header className="fixed inset-x-0 top-0 z-50 flex items-center justify-between px-8 py-5 bg-chrome/90 backdrop-blur border-b border-on-dark/5">
+        <span className="font-display text-xl font-medium tracking-tight text-on-dark">
           Achalara
         </span>
         <nav className="hidden md:flex items-center gap-8 text-sm text-stone">
           {THEMES.map((t) => (
-            <a key={t.id} href={`#${t.id}`} className="hover:text-paper transition-colors">
+            <a key={t.id} href={`#${t.id}`} className="hover:text-on-dark transition-colors">
               {t.label}
             </a>
           ))}
         </nav>
         <button
           onClick={() => navigate('/app/performance')}
-          className="text-sm font-medium px-4 py-2 rounded-btn bg-gold text-summit-ink hover:bg-gold/90 transition-colors"
+          className="text-sm font-medium px-4 py-2 rounded-btn bg-gold text-on-gold hover:bg-gold/90 transition-colors"
         >
           Open platform →
         </button>
@@ -115,13 +115,13 @@ export function HomePage() {
         <div className="flex flex-col sm:flex-row gap-4 items-center">
           <button
             onClick={() => navigate('/app/performance')}
-            className="px-8 py-3.5 rounded-btn bg-gold text-summit-ink text-sm font-semibold hover:bg-gold/90 transition-colors"
+            className="px-8 py-3.5 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
           >
             Open the platform
           </button>
           <a
             href="#connect"
-            className="px-8 py-3.5 rounded-btn border border-paper/20 text-paper/80 text-sm hover:border-paper/40 hover:text-paper transition-colors"
+            className="px-8 py-3.5 rounded-btn border border-on-dark/20 text-on-dark/80 text-sm hover:border-on-dark/40 hover:text-on-dark transition-colors"
           >
             How it works
           </a>
@@ -138,7 +138,7 @@ export function HomePage() {
       <section className="px-6 py-24 bg-pine-deep">
         <div className="max-w-4xl mx-auto">
           <p className="text-xs font-mono tracking-widest text-gold uppercase mb-8">Why this matters</p>
-          <h2 className="font-display text-3xl md:text-4xl font-light mb-12 leading-snug text-paper">
+          <h2 className="font-display text-3xl md:text-4xl font-light mb-12 leading-snug text-on-dark">
             The market gap is massive.
           </h2>
           <ul className="space-y-6">
@@ -147,7 +147,7 @@ export function HomePage() {
                 <span className="mt-1 flex-shrink-0 w-6 h-6 rounded-full bg-gold/15 text-gold text-xs font-mono flex items-center justify-center">
                   {i + 1}
                 </span>
-                <p className="text-paper/80 text-lg leading-relaxed">{point}</p>
+                <p className="text-on-dark/80 text-lg leading-relaxed">{point}</p>
               </li>
             ))}
           </ul>
@@ -159,29 +159,29 @@ export function HomePage() {
         <section
           key={theme.id}
           id={theme.id}
-          className={`px-6 py-28 ${i % 2 === 0 ? 'bg-summit-ink' : 'bg-pine-deep'}`}
+          className={`px-6 py-28 ${i % 2 === 0 ? 'bg-chrome' : 'bg-pine-deep'}`}
         >
           <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-16 items-center">
             {/* text — alternates sides */}
             <div className={i % 2 === 1 ? 'md:order-2' : ''}>
               <div className="flex items-center gap-3 mb-6">
-                <span className={`flex items-center justify-center w-11 h-11 rounded-card ${theme.accent} text-paper`}>
+                <span className={`flex items-center justify-center w-11 h-11 rounded-card ${theme.accent} text-on-dark`}>
                   {theme.icon}
                 </span>
                 <span className="text-xs font-mono tracking-widest text-stone uppercase">
                   {theme.label}
                 </span>
               </div>
-              <h2 className="font-display text-4xl md:text-5xl font-light text-paper mb-3 leading-tight">
+              <h2 className="font-display text-4xl md:text-5xl font-light text-on-dark mb-3 leading-tight">
                 {theme.name}
               </h2>
               <p className="text-gold text-sm font-mono mb-6">{theme.tagline}</p>
-              <p className="text-paper/70 text-lg leading-relaxed">{theme.description}</p>
+              <p className="text-on-dark/70 text-lg leading-relaxed">{theme.description}</p>
             </div>
 
             {/* visual card */}
             <div className={`${i % 2 === 1 ? 'md:order-1' : ''}`}>
-              <div className="rounded-card border border-paper/10 bg-paper/5 p-8 backdrop-blur">
+              <div className="rounded-card border border-on-dark/10 bg-on-dark/5 p-8 backdrop-blur">
                 <div className={`w-full h-2 rounded-full ${theme.accent} opacity-60 mb-8`} />
                 <div className="space-y-3">
                   {[80, 55, 70, 40, 65].map((w, j) => (
@@ -194,7 +194,7 @@ export function HomePage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-8 pt-6 border-t border-paper/10 flex justify-between text-xs font-mono text-stone">
+                <div className="mt-8 pt-6 border-t border-on-dark/10 flex justify-between text-xs font-mono text-stone">
                   <span>{theme.name}</span>
                   <span className="text-gold">Live</span>
                 </div>
@@ -207,26 +207,26 @@ export function HomePage() {
       {/* CTA */}
       <section className="px-6 py-32 bg-pine text-center">
         <p className="text-xs font-mono tracking-widest text-gold uppercase mb-6">Get started</p>
-        <h2 className="font-display text-4xl md:text-6xl font-light text-paper mb-8 leading-tight">
+        <h2 className="font-display text-4xl md:text-6xl font-light text-on-dark mb-8 leading-tight">
           Ready to see your<br />portfolio clearly?
         </h2>
-        <p className="text-paper/60 text-lg max-w-lg mx-auto mb-12">
+        <p className="text-on-dark/60 text-lg max-w-lg mx-auto mb-12">
           Built for advisory firms who want the truth about performance — not a pretty dashboard that hides it.
         </p>
         <button
           onClick={() => navigate('/app/performance')}
-          className="px-10 py-4 rounded-btn bg-gold text-summit-ink text-sm font-semibold hover:bg-gold/90 transition-colors"
+          className="px-10 py-4 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
         >
           Open Achalara →
         </button>
       </section>
 
       {/* Footer */}
-      <footer className="px-8 py-10 bg-summit-ink border-t border-paper/5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-stone">
-        <span className="font-display text-sm text-paper/60">Achalara</span>
+      <footer className="px-8 py-10 bg-chrome border-t border-on-dark/5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-stone">
+        <span className="font-display text-sm text-on-dark/60">Achalara</span>
         <div className="flex gap-8">
           {THEMES.map((t) => (
-            <a key={t.id} href={`#${t.id}`} className="hover:text-paper transition-colors capitalize">
+            <a key={t.id} href={`#${t.id}`} className="hover:text-on-dark transition-colors capitalize">
               {t.name}
             </a>
           ))}

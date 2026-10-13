@@ -72,7 +72,7 @@ _CASH_TYPES = {
     "INTEREST": "INTEREST",
     "INCOME": "INTEREST",
     "FEE": "FEE",
-    "INTEREST CHARGE": "FEE",
+    "INTEREST CHARGE": "MARGIN_INTEREST",
     "WITHHOLDING": "WITHHOLDING",
     "CONTRIBUTION": "CONTRIBUTION",
     "DEPOSIT": "CONTRIBUTION",
@@ -82,19 +82,30 @@ _CASH_TYPES = {
     "TRANSFER (INCOMING)": "TRANSFER",
     "TRANSFER (OUTGOING)": "TRANSFER",
     "CORP ACTION (CASH IN LIEU)": "OTHER",
+    # A fund passing on its realised gains: paid like a dividend.
+    "CAPITAL GAIN (LT)": "DIVIDEND",
+    "CAPITAL GAIN (ST)": "DIVIDEND",
 }
 
 # Cash that crosses the account boundary, as opposed to income earned inside it.
 _EXTERNAL_CASH_TYPES = {"CONTRIBUTION", "WITHDRAWAL", "TRANSFER"}
 
-# Activity that changes share counts without a trade. Nothing models these
-# yet, so they are skipped and counted; holdings reconciliation shows the
-# resulting drift.
+# Activity that changes share counts without a trade. Splits are recorded
+# from these rows separately (``corporate_actions.record_splits``); the rows
+# themselves are skipped and counted.
 _CORPORATE_ACTION_TYPES = {
     "SPLIT",
     "STOCK_DIVIDEND",
-    "CORP ACTION (MERGER)",
 }
+
+# A merger takes shares away and gives cash, other shares, or both. It is read
+# as the trades it amounts to (see ``_to_merger_trade``).
+_MERGER_TYPE = "CORP ACTION (MERGER)"
+# Starts the notes of every trade made from a merger row, which is how the
+# rest of the system knows the trade did not happen at a market price.
+MERGER_NOTE = "Merger: "
+# The most of a sale's value that fees could plausibly take.
+_MAX_FEE_SHARE = Decimal("0.01")
 
 # How an option position ends without a closing trade. The contracts leave the
 # account at no price: an expiry is worthless, and an assignment's cash moves
@@ -494,6 +505,7 @@ class SnapTradeConnector:
 
     @staticmethod
     def _finish(batch: ActivityBatch) -> ActivityBatch:
+        _drop_unchanged_exchanges(batch)
         _disambiguate_repeats(batch.trades)
         _disambiguate_repeats(batch.cash)
         # SnapTrade returns newest first; ingestion reads chronologically.
@@ -560,6 +572,12 @@ class SnapTradeConnector:
             return "cash"
         if raw_type in _OPTION_CLOSE_TYPES:
             trade = self._to_option_trade(row, account_ref) if _is_option(row) else None
+            if trade is None:
+                return "skipped:corporate_action"
+            batch.trades.append(trade)
+            return "trade"
+        if raw_type == _MERGER_TYPE:
+            trade = self._to_merger_trade(row, account_ref)
             if trade is None:
                 return "skipped:corporate_action"
             batch.trades.append(trade)
@@ -715,10 +733,65 @@ class SnapTradeConnector:
             price=price,
             currency=_currency_code(_get(row, "currency")),
             executed_at=traded_at,
-            commission=_decimal(_get(row, "fee")) or Decimal("0"),
+            commission=self._sale_fee(row, action, quantity * price),
             source=SOURCE,
             security_type=_security_type(row)[0],
             notes=notes,
+            raw=_dict(row),
+        )
+
+    @staticmethod
+    def _sale_fee(row: Any, action: TradeAction, gross: Decimal) -> Decimal:
+        """What a trade cost in fees.
+
+        Vanguard reports ``fee`` as zero and takes the regulatory fees on a
+        sale out of ``amount``, so they are recovered as the gap between the
+        quoted value and the cash received. A purchase carries none, and its
+        gap is only the rounding of the quoted price.
+        """
+        fee = _decimal(_get(row, "fee")) or Decimal("0")
+        amount = _decimal(_get(row, "amount"))
+        if fee or action != TradeAction.SELL or amount is None:
+            return fee
+        gap = gross - abs(amount)
+        # Anything larger is not a fee: the row's amount means something else.
+        return gap if Decimal(0) < gap <= gross * _MAX_FEE_SHARE else Decimal("0")
+
+    def _to_merger_trade(self, row: Any, account_ref: str) -> Optional[NormalizedTrade]:
+        """Read one leg of a merger as the trade it amounts to.
+
+        Shares taken for cash are a sale at the cash paid per share. Shares
+        taken or handed over for other shares carry no price on the row, so
+        the leg is recorded at zero; ``corporate_actions.carry_exchange_costs``
+        then moves the cost of what was given up onto what was received.
+        """
+        symbol = _symbol_ticker(_get(row, "symbol")) or _merger_name_symbol(row)
+        units = _decimal(_get(row, "units"))
+        traded_at = _parse_datetime(_get(row, "trade_date"))
+        if not symbol or not units or traded_at is None:
+            return None
+        quantity = abs(units)
+        cash = _decimal(_get(row, "amount")) or Decimal("0")
+        if units < 0:
+            action = TradeAction.SELL
+            price = cash / quantity if cash > 0 else Decimal("0")
+        else:
+            action, price = TradeAction.BUY, Decimal("0")
+        description = " ".join(str(_get(row, "description") or "").split())
+        return NormalizedTrade(
+            external_id=snaptrade_external_id(
+                account_ref, traded_at.date(), symbol, quantity, price, action
+            ),
+            symbol=symbol,
+            action=action,
+            quantity=quantity,
+            price=price,
+            currency=_currency_code(_get(row, "currency")),
+            executed_at=traded_at,
+            commission=Decimal("0"),
+            source=SOURCE,
+            security_type=_security_type(row)[0],
+            notes=f"{MERGER_NOTE}{description}",
             raw=_dict(row),
         )
 
@@ -815,6 +888,53 @@ def _name_symbol(row: Any) -> str:
     """
     name = " ".join(str(_get(row, "description") or "").upper().split())
     return f"~{name}"[:50] if name else ""
+
+
+def _merger_name_symbol(row: Any) -> str:
+    """The stand-in symbol for a ticker-less merger row.
+
+    Vanguard marks the security being changed by writing ``CHG`` into the
+    fixed-width name ("DECIPHERA            CHGPHARMACEUTICALS INC",
+    "SEABRIDGE GOLD INC   CHG"). Without the marker the name is the one the
+    security's ordinary trades were filed under.
+    """
+    name = str(_get(row, "description") or "").upper()
+    name = re.sub(r"CHG(?=[A-Z])|\bCHG\s*$", " ", name)
+    name = " ".join(name.split())
+    return f"~{name}"[:50] if name else ""
+
+
+def _drop_unchanged_exchanges(batch: ActivityBatch) -> None:
+    """Remove merger legs that hand back what they took.
+
+    A change of ticker or share class is reported as the same number of the
+    same symbol leaving and arriving on one day. Nothing changed hands, and
+    reading it as a sale and a purchase would close the position at nothing.
+    """
+    groups: Dict[tuple, List[NormalizedTrade]] = {}
+    for trade in batch.trades:
+        if (trade.notes or "").startswith(MERGER_NOTE) and trade.price == 0:
+            groups.setdefault((trade.executed_at.date(), trade.symbol), []).append(
+                trade
+            )
+    dropped = set()
+    for legs in groups.values():
+        net = sum(
+            (t.quantity if t.action == TradeAction.BUY else -t.quantity for t in legs),
+            Decimal("0"),
+        )
+        if len(legs) > 1 and net == 0:
+            dropped.update(id(t) for t in legs)
+    if not dropped:
+        return
+    source_ids = {str(t.raw.get("id") or "") for t in batch.trades if id(t) in dropped}
+    batch.trades[:] = [t for t in batch.trades if id(t) not in dropped]
+    for raw in batch.raw:
+        if raw.source_id in source_ids and raw.outcome == "trade":
+            raw.outcome = "skipped:corporate_action"
+            batch.skipped["corporate_action"] = (
+                batch.skipped.get("corporate_action", 0) + 1
+            )
 
 
 def _is_option(row: Any) -> bool:

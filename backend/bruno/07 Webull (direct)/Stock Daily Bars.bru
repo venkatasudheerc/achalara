@@ -1,0 +1,36 @@
+meta {
+  name: Stock Daily Bars
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{webullBaseUrl}}/openapi/market-data/stock/bars?symbol=SPY&category=US_STOCK&timespan=D&count=30&real_time_required=true
+  body: none
+  auth: none
+}
+
+params:query {
+  symbol: SPY
+  category: US_STOCK
+  timespan: D
+  count: 30
+  real_time_required: true
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+docs {
+  Daily bars for the symbol in the `symbol` query parameter (edit it on the Params
+  tab), newest first. This is the source of the price history
+  in `perf.daily_price`.
+
+  - `timespan`: M1, M5, M15, M30, M60, M120, M240, D, W, M, Y
+  - `count`: up to 1200 bars for most timespans, which is why nothing before roughly
+    five years ago can be priced
+  - Closes are adjusted for later splits and dividends, and the whole series is restated
+    when a new one occurs
+}

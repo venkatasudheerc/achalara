@@ -67,6 +67,9 @@
 
 ## Phase 6: Advanced Features (Ongoing)
 
+- [x] **Client portal** — a client's own screens over every account they may view: home,
+      open positions, trades, realised gains and performance, each filterable by account and
+      strategy, with CSV export and the account PDF report. Advisors can preview any client's portal.
 - [x] **Auth** — email + password sign-in (session cookie), advisor and client roles, invite and
       reset links, read-only client access to own and shared accounts. Not built: an email
       service (links are passed on by the advisor), API keys, two-factor sign-in.

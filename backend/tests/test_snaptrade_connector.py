@@ -248,15 +248,15 @@ def test_trade_without_a_ticker_is_matched_by_the_securitys_name():
             activity_id=activity_id,
             type_=type_,
             units=units,
-            description="ACTIVISION   BLIZZARD INC",
+            description="NORTHWIND   TRADING INC",
         )
         row["symbol"] = None
         return row
 
-    page = {"data": [nameless("a1", "BUY", 53), nameless("a2", "SELL", -53)]}
+    page = {"data": [nameless("a1", "BUY", 40), nameless("a2", "SELL", -40)]}
     buy, sell = _connector([page]).fetch_transactions("c", ACCOUNT, credentials=CREDS)
 
-    assert buy.symbol == sell.symbol == "~ACTIVISION BLIZZARD INC"
+    assert buy.symbol == sell.symbol == "~NORTHWIND TRADING INC"
     assert (buy.action, sell.action) == (TradeAction.BUY, TradeAction.SELL)
 
 
@@ -310,7 +310,7 @@ def test_external_id_separates_accounts():
 
 def test_external_id_separates_buy_from_sell():
     # A same-day round trip at one price is two real trades.
-    args = ("acct-1", datetime(2025, 7, 28).date(), "INTC", Decimal("100"), "21")
+    args = ("acct-1", datetime(2025, 7, 28).date(), "ABC", Decimal("100"), "21")
     assert snaptrade_external_id(*args, TradeAction.BUY) != snaptrade_external_id(
         *args, TradeAction.SELL
     )
@@ -543,7 +543,9 @@ def test_activities_tally_every_row_left_out():
     assert len(batch.trades) + len(batch.cash) + sum(batch.skipped.values()) == total
 
 
-def _option(type_, units, price, amount, symbol="BULL270115P00020000", day="2026-04-17"):
+def _option(
+    type_, units, price, amount, symbol="ABCD270115P00020000", day="2026-04-17"
+):
     row = _activity(
         activity_id=f"{type_}-{symbol}-{units}",
         type_=type_,
@@ -552,7 +554,7 @@ def _option(type_, units, price, amount, symbol="BULL270115P00020000", day="2026
         price=price,
         trade_date=f"{day}T05:00:00Z",
         fee=0,
-        description="PUT WEBULL CORP $20 EXP 01/15/27",
+        description="PUT ABCD CORP $20 EXP 01/15/27",
     )
     row["amount"] = amount
     return row
@@ -577,6 +579,32 @@ def test_option_trade_is_counted_in_contracts_at_the_per_contract_price():
     assert trade.quantity * trade.price - trade.commission == Decimal("11975.0")
 
 
+def test_a_stock_sale_recovers_the_fees_taken_out_of_the_amount():
+    """Vanguard reports fee as 0; the regulatory fees are the gap to the cash."""
+    row = {
+        **_activity(type_="SELL", units=-11, price="370.00", fee=0),
+        "amount": 4069.92,
+    }
+    (trade,) = (
+        SnapTradeConnector(client=object()).parse_activities([row], ACCOUNT).trades
+    )
+
+    assert trade.commission == Decimal("0.08")
+    assert trade.quantity * trade.price - trade.commission == Decimal("4069.92")
+
+
+def test_a_purchase_or_an_unbelievable_gap_carries_no_recovered_fee():
+    bought = {**_activity(units=10, price="150.2512", fee=0), "amount": -1502.51}
+    odd = {**_activity("act-2", "SELL", units=-10, price="150", fee=0), "amount": 900}
+    trades = (
+        SnapTradeConnector(client=object())
+        .parse_activities([bought, odd], ACCOUNT)
+        .trades
+    )
+
+    assert [t.commission for t in trades] == [Decimal("0"), Decimal("0")]
+
+
 def test_option_buy_recovers_commission_added_to_the_amount():
     (trade,) = _options(_option("BUY", 10, 3.5, -3510.0)).trades
     assert (trade.action, trade.price, trade.commission) == (
@@ -588,7 +616,7 @@ def test_option_buy_recovers_commission_added_to_the_amount():
 
 def test_option_symbols_with_a_renumbered_root_are_recognised():
     batch = _options(
-        _option("SELL", -10, 1.0, 990.0, symbol="NFE1270115P00000500"),
+        _option("SELL", -10, 1.0, 990.0, symbol="XYZ1270115P00000500"),
         _activity(activity_id="act-2", symbol="AAPL"),
     )
     assert sorted(t.security_type or "-" for t in batch.trades) == ["-", "OPTION"]
@@ -601,7 +629,7 @@ def test_expiry_and_assignment_close_the_contracts_at_zero():
         _option("EXPIRED", 20, 0.0, 0.0, day="2026-08-07"),
         _option("ASSIGNMENT", 17, 0.0, 0.0, day="2026-01-02"),
         # A bought option expiring worthless: contracts go away.
-        _option("EXPIRED", -5, 0.0, 0.0, symbol="COIN260213P00115000"),
+        _option("EXPIRED", -5, 0.0, 0.0, symbol="MNOP260213P00115000"),
     )
 
     by_qty = {t.quantity: t for t in batch.trades}
@@ -623,7 +651,9 @@ def test_stored_rows_parse_the_same_as_fetched_ones():
     fetched = _connector([payload]).fetch_activities("c", ACCOUNT, credentials=CREDS)
     parsed = _connector().parse_activities(payload["data"], ACCOUNT)
 
-    assert [t.external_id for t in parsed.trades] == [t.external_id for t in fetched.trades]
+    assert [t.external_id for t in parsed.trades] == [
+        t.external_id for t in fetched.trades
+    ]
     assert [c.external_id for c in parsed.cash] == [c.external_id for c in fetched.cash]
     assert parsed.skipped == fetched.skipped
     # One raw entry per input row, in input order.
@@ -708,7 +738,9 @@ def _typed(symbol_extra=None, description="ACME CORP", **kwargs):
 
 
 def _one_trade(row):
-    batch = _connector([{"data": [row]}]).fetch_activities("c", ACCOUNT, credentials=CREDS)
+    batch = _connector([{"data": [row]}]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
     return batch.trades[0], batch.security_type_sources
 
 
@@ -762,3 +794,110 @@ def test_every_fetched_row_is_kept_verbatim_with_its_outcome():
     original = next(r for r in payload["data"] if r["type"] == "SPLIT")
     assert split.payload == original
     assert json.loads(json.dumps(split.payload)) == original
+
+
+# ---------------------------------------------------------------------------
+# Mergers
+# ---------------------------------------------------------------------------
+
+
+def _merger(activity_id, description, units, amount=0, symbol=None):
+    row = _activity(
+        activity_id=activity_id,
+        type_="CORP ACTION (MERGER)",
+        symbol=symbol or "X",
+        units=units,
+        price="0",
+        fee="0",
+        description=description,
+    )
+    row["amount"] = amount
+    if symbol is None:
+        row["symbol"] = None
+    return row
+
+
+def _merger_batch(*rows):
+    return _connector([{"data": list(rows)}]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
+
+
+def test_a_cash_merger_is_a_sale_at_the_cash_paid_per_share():
+    # The same nameless security as its ordinary trades, so the two match up.
+    batch = _merger_batch(_merger("m1", "NORTHWIND TRADING INC", -40, amount=3800))
+
+    (sale,) = batch.trades
+    assert sale.symbol == "~NORTHWIND TRADING INC"
+    assert (sale.action, sale.quantity, sale.price) == (
+        TradeAction.SELL,
+        Decimal("40"),
+        Decimal("95"),
+    )
+    assert sale.notes.startswith("Merger: ")
+    assert batch.raw[0].outcome == "trade"
+
+
+def test_the_change_marker_in_a_merger_rows_name_is_ignored():
+    """Vanguard writes CHG into the fixed-width name of the security changed."""
+    batch = _merger_batch(
+        _merger(
+            "m1", "ALDERWOOD            CHGPHARMACEUTICALS INC", -30, amount="768.00"
+        ),
+        _merger("m2", "FAIRVIEW REAL ESTATE CHGINC", -150),
+    )
+
+    assert {t.symbol for t in batch.trades} == {
+        "~ALDERWOOD PHARMACEUTICALS INC",
+        "~FAIRVIEW REAL ESTATE INC",
+    }
+
+
+def test_shares_exchanged_for_shares_are_legs_without_a_price():
+    batch = _merger_batch(
+        _merger("m1", "FAIRVIEW REAL ESTATE CHGINC", -150),
+        _merger("m2", "HARBOUR INC             CL A", 215, symbol="HRBR"),
+    )
+
+    legs = {t.symbol: t for t in batch.trades}
+    assert (legs["~FAIRVIEW REAL ESTATE INC"].action, legs["HRBR"].action) == (
+        TradeAction.SELL,
+        TradeAction.BUY,
+    )
+    assert {t.price for t in batch.trades} == {Decimal("0")}  # cost is carried later
+
+
+def test_a_change_of_ticker_is_not_a_sale_and_a_purchase():
+    """The same shares of the same symbol leaving and arriving on one day."""
+    batch = _merger_batch(
+        _merger("m1", "RIVERTON GOLD INC", 25, symbol="RVG"),
+        _merger("m2", "RIVERTON GOLD INC    CHG", -25, symbol="RVG"),
+        _merger("m3", "TALLOW GOLD CORP", 12, symbol="TLGDF"),
+    )
+
+    (received,) = batch.trades  # only the shares that really arrived
+    assert (received.symbol, received.action, received.price) == (
+        "TLGDF",
+        TradeAction.BUY,
+        Decimal("0"),
+    )
+    assert [r.outcome for r in batch.raw] == [
+        "skipped:corporate_action",
+        "skipped:corporate_action",
+        "trade",
+    ]
+    assert batch.skipped == {"corporate_action": 2}
+
+
+def test_a_funds_capital_gain_distribution_is_income():
+    row = _activity(
+        activity_id="g1", type_="CAPITAL GAIN (LT)", symbol="ABCX", units=0, price="0"
+    )
+    row["amount"] = 12.5
+
+    batch = _connector([{"data": [row]}]).fetch_activities(
+        "c", ACCOUNT, credentials=CREDS
+    )
+
+    (cash,) = batch.cash
+    assert (cash.type, cash.amount) == ("DIVIDEND", Decimal("12.5"))

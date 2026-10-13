@@ -81,7 +81,7 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
           <button
             onClick={handleLink}
             disabled={startLink.isPending}
-            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper transition-colors disabled:opacity-50"
+            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors disabled:opacity-50"
           >
             {startLink.isPending ? 'Opening…' : '+ Link brokerage'}
           </button>
@@ -96,7 +96,7 @@ export function BrokerageConnections({ clientId }: { clientId: string }) {
           <button
             onClick={handleDiscover}
             disabled={discover.isPending}
-            className="shrink-0 px-3 py-1.5 bg-pine text-paper text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50"
+            className="shrink-0 px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50"
           >
             I’ve finished linking
           </button>
@@ -254,7 +254,7 @@ function BrokerageAccountRow({
               onClick={handleSync}
               disabled={sync.isPending || !connectionActive || waitUntil !== null}
               title={waitUntil ? `Next sync after ${new Date(waitUntil).toLocaleString()}` : undefined}
-              className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine"
+              className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine"
             >
               {sync.isPending ? 'Syncing…' : 'Sync now'}
             </button>
@@ -285,7 +285,7 @@ function BrokerageAccountRow({
             <button
               onClick={handleMap}
               disabled={update.isPending}
-              className="text-xs bg-pine text-paper px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50"
+              className="text-xs bg-pine text-on-dark px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50"
             >
               Add account
             </button>

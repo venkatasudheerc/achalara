@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_advisor
 from app.api.schemas.auth import (
     AccountAccessRequest,
     AccountAccessResponse,
+    ChangeEmailRequest,
     ChangePasswordRequest,
     InviteRequest,
     LinkPreview,
@@ -156,7 +157,7 @@ def invite_client(
 ):
     """Create a client's login and a one-time link for them to set a password."""
     with _http_errors():
-        token, record = AuthService(db).invite_client(body.client_id)
+        token, record = AuthService(db).invite_client(body.client_id, body.email)
     return _link(token, record)
 
 
@@ -169,6 +170,23 @@ def password_reset_link(
     """A one-time link for a user to choose a new password."""
     with _http_errors():
         token, record = AuthService(db).reset_link(user_id)
+    return _link(token, record)
+
+
+@router.patch("/users/{user_id}/email", response_model=LinkResponse)
+def change_sign_in_email(
+    user_id: str,
+    body: ChangeEmailRequest,
+    _: User = Depends(require_advisor),
+    db: Session = Depends(get_db),
+):
+    """Change the email a client signs in with, and get a link to send them.
+
+    The old address stops working and the client is signed out. Their password
+    is kept; the link is a reset (or a fresh invite if they never set one).
+    """
+    with _http_errors():
+        token, record = AuthService(db).change_email(user_id, body.email)
     return _link(token, record)
 
 

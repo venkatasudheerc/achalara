@@ -16,26 +16,26 @@ export function StatCard({ label, value, sub, positive, highlight }: Props) {
     <div
       className={`rounded-card p-6 border ${
         highlight
-          ? 'bg-pine-deep border-pine text-paper'
+          ? 'bg-pine-deep border-pine text-on-dark dark:bg-surface dark:border-gold/70'
           : 'bg-paper border-stone/20'
       }`}
     >
       <p
         className={`text-xs font-mono tracking-widest uppercase mb-2 ${
-          highlight ? 'text-mist/60' : 'text-stone'
+          highlight ? 'text-on-dark/60' : 'text-stone'
         }`}
       >
         {label}
       </p>
       <p
         className={`font-mono text-2xl font-medium tabular-nums ${
-          highlight ? 'text-paper' : gainClass
+          highlight ? 'text-on-dark' : gainClass
         }`}
       >
         {value}
       </p>
       {sub && (
-        <p className={`text-xs mt-1 ${highlight ? 'text-mist/60' : 'text-stone'}`}>{sub}</p>
+        <p className={`text-xs mt-1 ${highlight ? 'text-on-dark/60' : 'text-stone'}`}>{sub}</p>
       )}
     </div>
   )

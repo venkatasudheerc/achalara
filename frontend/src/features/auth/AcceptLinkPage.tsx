@@ -23,7 +23,7 @@ export function AcceptLinkPage() {
       <div className="min-h-screen bg-paper flex items-center justify-center px-6">
         <div className="max-w-sm text-center space-y-3">
           <h1 className="font-display text-2xl text-summit-ink">This link is no longer valid</h1>
-          <p className="text-sm text-stone">Links work once and expire. Ask your advisor for a new one.</p>
+          <p className="text-sm text-stone">Links work once and expire. Ask your Achalara contact for a new one.</p>
           <Link to="/login" className="text-sm text-pine underline underline-offset-2">Go to sign in</Link>
         </div>
       </div>
@@ -59,18 +59,18 @@ export function AcceptLinkPage() {
           <h1 className="font-display font-light text-[44px] leading-tight">
             {isInvite ? `Welcome, ${link.name.split(' ')[0]}.` : 'Choose a new password.'}
           </h1>
-          <p className="text-[17px] leading-relaxed text-paper/80">
+          <p className="text-[17px] leading-relaxed text-on-dark/80">
             {isInvite
-              ? 'Your advisor has invited you to view your accounts. Choose a password to finish setting up.'
+              ? 'Your Achalara contact has invited you to view your accounts. Choose a password to finish setting up.'
               : 'Setting a new password signs you out everywhere else.'}
           </p>
           {link.accounts.length > 0 && (
-            <div className="border border-paper/20 rounded-card p-5 space-y-3">
-              <p className="font-mono text-xs uppercase tracking-widest text-paper/70">You will be able to see</p>
+            <div className="border border-on-dark/20 rounded-card p-5 space-y-3">
+              <p className="font-mono text-xs uppercase tracking-widest text-on-dark/70">You will be able to see</p>
               {link.accounts.map((a) => (
-                <div key={a.id} className="flex justify-between gap-4 text-[15px]">
+                <div key={a.id} className="flex justify-between gap-16 text-[15px]">
                   <span>{a.name}{a.number_last4 && <span className="font-mono"> ••{a.number_last4}</span>}</span>
-                  <span className={a.shared ? 'text-gold' : 'text-paper/70'}>{a.shared ? 'Shared with you' : 'Yours'}</span>
+                  <span className={a.shared ? 'text-gold' : 'text-on-dark/70'}>{a.shared ? 'Shared with you' : 'Yours'}</span>
                 </div>
               ))}
             </div>

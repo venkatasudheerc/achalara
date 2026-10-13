@@ -17,6 +17,10 @@ class Account(BaseModel):
     account_number = Column(String(50), nullable=True)  # e.g., "10000001"
     name = Column(String(255), nullable=False)
     description = Column(String(500))
+    # Which lots a sale closes first, as set at the brokerage: FIFO | MIN_TAX.
+    cost_basis_method = Column(
+        String(20), nullable=False, default="FIFO", server_default="FIFO"
+    )
 
     # Relationships
     client = relationship("Client", back_populates="accounts")

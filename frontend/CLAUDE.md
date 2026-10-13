@@ -52,6 +52,32 @@ the client portal at `/portal`. `useMe()` (`src/hooks/useAuth.ts`) is the only s
 signed in; there is no auth context and nothing about the session is kept in `localStorage`.
 `useLogin` / `useLogout` clear the query cache so one user's data is never shown to the next.
 
+The portal lives at `/portal`, `/portal/holdings`, `/portal/activity`, `/portal/realized` and
+`/portal/performance`. `PortalShell` is a slim bar with the menu behind one ≡ button and the
+page at full window width, with a 17px base size (the portal is being redesigned page by page to
+the "wide workspace" mockups; Home is done and reads `/api/v1/portal/home` through
+`usePortalHome`; its chart, `portal/HomeChart.tsx`, reads the performance series, whose points
+carry each day's `value` as well as the cumulative returns). `/portal/holdings` (`PortalHoldingsPage`) replaced the old positions page: every
+account as an expandable tile, its strategies inside it, each strategy's holdings inside that,
+grouped on the client from the `/api/v1/portal/positions` endpoint, with a summary rail fed by `/portal/home`. In portal code written for the redesign, give sizes as explicit pixels
+(`p-[24px]`, `text-[16px]`) so the spacing override below cannot change them. It reads only `/api/v1/portal/*` (`src/hooks/usePortal.ts`), where every
+percentage is a decimal fraction. Its filters (account, strategy, dates, type) are local state on
+each page, not `ScopeContext` / `DateRangeContext`, which belong to the advisor workspace. The
+realised-gains page shows each lot as the custodian reports it (`cost`, `proceeds`,
+`short_term_gain`, `long_term_gain`; `realized_gain` there is after any wash-sale loss, marked
+"W"); do not recompute gains from entry and exit prices on the client. The holdings page is
+on live prices: it shows `live_prices_at`, refetches every minute while open, and
+marks a row "custodian's price" when `price_source` is `custodian`. An account's options
+are valued together at the custodian's figure (`account_balances`), with cash beside them. The
+performance page's "Compare with" list comes from the response (`benchmarks`); the choice is
+sent back as `benchmark`. Do not hard-code benchmark names on a screen. An
+advisor previews a client's portal at `/portal?as=<clientId>`; `usePreviewClient()` reads that
+and every portal hook passes it on, and `PortalShell` keeps the query string on its links.
+
+**Spacing classes:** `tailwind.config.ts` redefines the steps `4, 8, 12, 16, 24, 32, 48, 64, 96`
+as that many pixels (`p-4` is 4px, `h-12` is 12px). Use `p-16` for 16px and so on; other steps
+(`p-3`, `p-5`, `p-6`, `h-11`) keep Tailwind's defaults.
+
 All advisor routes nest under `<AppShell>` at `/app/*`. Route params:
 - `/app/clients/:clientId`
 - `/app/clients/:clientId/accounts/:accountId`
@@ -103,12 +129,13 @@ The headline card, returns chart, monthly grid and period table are all at marke
 Each feature directory contains its page component(s). Implemented:
 - `performance/PerformancePage` — hero MWR/TWR cards, portfolio value chart, TWR vs MWR returns-series chart, monthly heatmap, level breakdown; 1M/3M/6M/1Y/3Y/MAX quick-filter presets
 - `clients/ClientsPage`, `clients/ClientDetailPage`
-- `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend)
+- `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
-- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset), `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state and the one-time invite / reset link to pass on)
-- `portal/PortalHomePage` — where a client lands; lists the accounts they may view (the portal's own screens are still to be built)
+- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset), `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on)
+- `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
+- `portal/*` — the client portal under `<PortalShell>` (top navigation, not the advisor sidebar): `PortalHomePage`, `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls and the account/strategy filter are in `portal/ui.tsx`.
 - `connections/BrokerageConnections` — section on `ClientDetailPage`: link a brokerage (opens the SnapTrade portal, then "I've finished linking" runs discover), map/ignore discovered accounts, sync (disabled inside the 24h window), holdings-drift detail, repair prompt when `broken`, remove link
 
 Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`, `SettingsPage`.
@@ -133,17 +160,47 @@ Central formatters for currency, percent, and dates — use these for every numb
 
 ## Design Tokens
 
-Custom tokens are in `tailwind.config.ts`. Brand rules that must hold:
-- **Losses are clay, never red** — use `text-loss` / `bg-loss` (`#C2703D`), never `text-red-*`
+Custom tokens are in `tailwind.config.ts`; the ones that follow the theme get their values from
+CSS variables in `src/index.css` (`:root` for light, `:root.dark` for dark). Brand rules that must hold:
+- **Losses are clay, never red** — use `text-loss` / `bg-loss`, never `text-red-*`
 - **Gold is the only accent** — one primary CTA per screen, highlighted figures
 - **All numbers: `font-mono` + tabular figures** (`font-feature-settings: "tnum"`)
-- **Gains: `text-gain`** (`#2E8B6B`)
+- **Gains: `text-gain`**
 
-```
-summit-ink #14201C   pine-deep #1E3A2F   pine #2F5D4A
-mist #EAF0EC         paper #FBFCFB       stone #8A968F
-gain #2E8B6B         loss #C2703D        gold #C9A24B
-```
+### Light and dark
+
+The viewer chooses with `<ThemeToggle>` (in the advisor sidebar, the portal header and the
+sign-in panel). `ThemeContext` keeps the choice in `localStorage`, defaults to the system
+setting, and puts `dark` on `<html>`; a script in `index.html` does the same before first paint.
+
+| Token | Use | Light | Dark |
+|---|---|---|---|
+| `paper` | the page | `#FBFCFB` | `#1E3A2F` |
+| `surface` | cards, inputs, tables | `#FFFFFF` | `#264739` |
+| `mist` | tinted panels | `#EAF0EC` | `#305646` |
+| `summit-ink` | body text | `#14201C` | `#EEF3F0` |
+| `stone` | secondary text, hairlines | `#8A968F` | `#ACBBB3` |
+| `chrome` | header, sidebar (dark in both) | `#14201C` | `#0D1814` |
+| `on-dark` | text on chrome, pine, gain/loss fills | `#FBFCFB` | same |
+| `on-gold` | text on a gold button | `#14201C` | same |
+| `pine-deep` | the headline card and sign-in panel (light); a hovered button | `#1E3A2F` | `#356650` |
+| `pine` | buttons, the selected pill | `#2F5D4A` | `#427E65` |
+| `gain`, `loss`, `gold` | fills | `#2E8B6B` `#C2703D` `#C9A24B` | same |
+
+Rules that keep both themes working:
+- **Never `bg-white` or `text-white`**: use `bg-surface` and `text-on-dark`.
+- **`text-summit-ink` flips**, so do not put it on a fill that stays the same in both themes:
+  on gold use `text-on-gold`; on `chrome`, `pine`, `pine-deep`, `bg-gain`, `bg-loss` use `text-on-dark`.
+- `text-pine`, `text-pine-deep`, `text-gain`, `text-loss` and `border-pine` are lighter in dark
+  (set under `textColor` / `borderColor` in the config); the `bg-*` of the same names are not.
+- **Charts take colours from `useChartColours()`** (`src/context/ThemeContext.tsx`), not from
+  hex literals: Recharts writes into SVG attributes, where CSS variables do not resolve.
+- The marketing page (`features/HomePage`) is dark in both themes.
+- In dark the page is the brand's mid green; the near-black green is for `chrome` only.
+- **The headline card** (`<Card dark>`, `StatCard highlight`): a dark-green card in light mode;
+  in dark mode an ordinary card with a gold outline (`dark:bg-surface dark:border-gold/70`).
+- **Restart `npm run dev` after editing `tailwind.config.ts`.** The dev server keeps serving the
+  old colours otherwise, which looks like a half-applied theme.
 
 ## Env Setup
 

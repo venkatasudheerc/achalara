@@ -40,6 +40,13 @@ backend/venv/bin/pytest backend/tests/integration -m live -v -s
 # First advisor login (run from backend/, asks for a password)
 python -m app.cli create-advisor --email you@example.com --name "Your Name"
 
+# Year-end price of an index option (per share, as quoted), for its year-end mark
+python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
+
+# Market indices' daily bars, for research: load a downloaded file, then top up
+python -m app.cli load-index-file --symbol SPX --file SP500_daily.csv --source some-name --replace
+python -m app.cli load-index-history
+
 # Migrations (run from backend/)
 alembic upgrade head
 alembic revision --autogenerate -m "description"
@@ -62,6 +69,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 | `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
+| `/api/v1/portal`     | `portal` (a client's accounts read together: overview, positions, trades, realised gains, performance; CSV) |
 | `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 
@@ -78,6 +86,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/mwr_calculation.py`       | IRR solver (Money Weighted Return)                                                      |
 | `app/services/twr_calculation.py`       | Geometric linking (Time Weighted Return)                                                |
 | `app/services/portfolio_calculation.py` | Position tracking, weighted-avg cost basis, `persist_positions`                         |
+| `app/services/tax_lots.py`              | Lot matching (FIFO / MinTax) and the brokerage's reading of each closed lot             |
 | `app/services/trade_ingestion.py`       | Row validation + **duplicate detection** (intentional — do not skip)                    |
 | `app/services/trade_import.py`          | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes)                    |
 | `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
@@ -88,6 +97,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/daily_capture_service.py` | Captures the brokerage's holdings, cash and total as observed daily rows                 |
 | `app/services/performance_stats_service.py` | Periods, account activity, drawdowns, risk — all read from daily rows                |
 | `app/services/price_history_service.py` | Daily closes from Webull for held securities and benchmarks                             |
+| `app/services/index_history_service.py` | Daily bars of the market indices (`index_bars`), for research only                        |
+| `app/services/benchmarks.py`            | The one list of benchmarks a return may be compared with, and their closes              |
 | `app/services/corporate_actions.py`     | Splits; `adjusted_trades` restates trades in today's shares on read                     |
 | `app/services/report_service.py`        | The account performance report (HTML template → PDF)                                    |
 | `app/services/cash_ledger.py`           | Cash balance on any date, worked back from the brokerage's reported balance             |
@@ -97,12 +108,14 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
 | `app/services/market_price.py`          | Position price updates / persistence                                                    |
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
+| `app/services/live_quotes.py`           | Batched, briefly cached live prices for the portal's holdings screen                    |
 | `app/models/sleeve.py`                  | The account × strategy join that owns trades/positions/sync configs                     |
 | `app/models/sync_log.py`                | Standalone import/sync audit trail (no FK to the hierarchy)                             |
 | `app/models/user.py`                    | Logins, sessions, one-time links, shared-account grants                                 |
 | `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
 | `app/cli.py`                            | `python -m app.cli create-advisor` — the first advisor login                            |
+| `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
 | `tests/conftest.py`                     | Shared fixtures (DB session, `TestClient`)                                              |
 
 ## Coding Conventions
@@ -156,6 +169,33 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   `last_four`.
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
   log or return a stored hash.
+- **The portal (`/api/v1/portal`) is the exception to the path rule.** Its routes carry no
+  client id; `deps.portal_viewer` answers for the signed-in client, or for the client an advisor
+  names in `as_client` (ignored from a client user). `PortalService` starts from
+  `AuthService.accounts_for_client`, so nothing outside the viewer's accounts can be reached, and
+  an `account_id` that is not in view is a 404.
+- Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
+  come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
+  cost included (`avg_cost`; the trade history's average is the fallback when the custodian
+  gives none); options are added from trades, unpriced.
+- **Home (`PortalService.home`) mixes two clocks on purpose.** Total value, the day's change,
+  the allocation and the largest holdings are at live prices; this year's return, cash, income
+  and deposits come from the daily record and run through `record_through`. `_matched` holds
+  each sleeve's matched lots for the request, so positions, realised gains and Home's notes
+  do the matching once between them.
+- **The positions and home screens show live prices; nothing else does.** `PortalService.positions(live=True)`
+  reprices each holding from `services/live_quotes.py`: one batched Webull request for every
+  symbol in view, kept for a minute. Only the price is live. Quantity and cost stay the
+  custodian's, a holding with no quote keeps the custodian's price (`price_source` says which),
+  and the request never fails or waits on the source. Do not fetch prices one symbol at a time,
+  and do not feed live quotes into Home, Performance or the `perf` schema: returns stay tied
+  to the custodian's daily record.
+- **The portal's activity list (`PortalService.activity`) is trades and cash rows together.**
+  The custodian's moves between the cash and margin sides of one account (`_is_bookkeeping`)
+  are left out, and a cash row's description goes through `_cash_detail`, which drops trace
+  and account numbers. Do not return `cash_activities.notes` to a client as stored.
+- Tests never reach Webull: the autouse `no_live_quotes` fixture replaces `live_quotes._fetch`,
+  and a test that wants live prices hands them in there.
 - Tests: the `client` fixture is signed in as an advisor by overriding `get_current_user`;
   `anon_client` goes through the real sign-in (see `tests/test_auth.py`).
 
@@ -176,9 +216,46 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   them wholesale. After anything that changes trades, call
   `performance_build_service.rebuild_for_sleeves`.
 - **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
-  value or returns, so splits are applied. Never mutate a stored trade for a split.
+  value or returns. It applies two things on reading and never changes a stored trade: splits,
+  and the assignment rule below.
+- **An assigned option's premium belongs to the shares** (`corporate_actions.assignment_adjustments`).
+  The brokerage reports the option leaving at no price and the shares changing hands at the
+  strike. Read that way: an assigned written put lowers the shares' cost by the premium, an
+  assigned written call raises the sale proceeds, and the option itself closes with no gain or
+  loss. This is how it is taxed and how the brokerage states cost. An **expired** option keeps
+  its premium as its own gain. The rule is worked out across all sleeves of the account (option
+  and shares usually sit in different ones), only when the delivery is on file in full, so the
+  cash of the two legs together never changes. Trades made by the connector carry
+  `Assignment:` / `Expired:` at the start of their notes (`option_event`).
+- **A closed lot has two readings, and they must not be mixed** (`services/tax_lots.py`).
+  `realized_gain` is what happened and is what performance, returns and totals read.
+  `cost` / `proceeds` / `disallowed_loss` / `reported_gain` / `short_term_gain` /
+  `long_term_gain` are what the brokerage reports: wash sales, the 60/40 split and year-end
+  mark of index options, written options as short-term. These move gain between lots and
+  years and never change cash, so nothing in the `perf` schema may read them; only the
+  realised-gains screens do. Add a tax rule in `tax_lots.py`, never in a route or the portal.
+- **Which lots a sale closes** is the account's `cost_basis_method` (`FIFO` or `MIN_TAX`), set
+  to match the brokerage. The source gives days, not times: a same-day purchase is read as
+  bought after the sale.
+- **A year-end price for an index option is entered by hand** (`set-price`, stored as a
+  `manual` row in `perf.daily_price`); no feed prices options. Without one the lot is left
+  unmarked and says so. Never estimate it.
 - **Webull closes are adjusted** (splits and dividends). Never multiply a past adjusted close by
-  a share count directly; value through the build service's trade-price anchoring.
+  a share count directly; value through the build service's trade-price anchoring. The anchor
+  belongs to one run of a holding: it is dropped when the quantity returns to zero, and a trade
+  that was not at the market (an assignment delivery, a merger leg) never sets it.
+- **Price history must cover the whole time a security was held, by any account.**
+  `PriceHistoryService._covered` checks both ends of the span; a recent fetch alone does not
+  make a series complete. The source serves about 1,200 daily bars, so nothing before roughly
+  five years ago can be priced and is carried at its last trade.
+- **`index_bars` (public schema) holds the market indices' own daily bars.** The `perf` schema
+  is for client data, so market reference tables like this one go in `public`. Never read it
+  in a valuation or a portfolio's own return. It may be chosen as a benchmark: an index level
+  leaves dividends out, and every screen that offers one says so.
+- **One list of benchmarks: `services/benchmarks.py`.** Funds (closes in `perf.daily_price`,
+  dividends included) and indices (`index_bars`). Add a benchmark there, not on a screen; the
+  portal's performance response carries the list (`benchmarks`) and takes the choice
+  (`?benchmark=`), and `PerformanceStatsService` reads closes through `benchmarks.closes`.
 - **One daily-return formula per basis:** `dietz_factor` at market, `realized_factor` at cost
   (both in `performance_build_service.py`). The realised basis is a way of *reading* the same
   rows (`daily_valuation.cost_value` in place of `securities_value`), never a second table.
@@ -199,7 +276,18 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   `ROUND_TRIP` sleeve, and keep one trade source per sleeve.
 - Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
   be reassigned to other strategy sleeves after ingestion.
-- Rows the connector cannot represent (splits, mergers) are skipped **and counted**
+- **Mergers are read as trades** (`snaptrade_connector._to_merger_trade`): shares taken for cash
+  are a sale at the cash per share; shares exchanged for shares are legs priced afterwards by
+  `corporate_actions.carry_exchange_costs` so the cost carries across, and the lot matching
+  moves the lots themselves to the new shares, opening dates included, with nothing closed
+  (`PortfolioCalculationService._share_exchanges`, paired across the account's sleeves); a
+  change of ticker (the same symbol leaving and arriving on one day) is dropped. Their notes start
+  with `MERGER_NOTE`, which is how the rebuild knows they were not at a market price.
+- **Fees on a stock sale** are the gap between the quoted value and `amount`: Vanguard reports
+  `fee` as zero. `rederive` brings the fees of trades already on file up to date.
+- Splits are recorded from the brokerage's rows by `corporate_actions.record_splits`, with the
+  ratio worked out in the shares of the split's own day.
+- Rows the connector still cannot represent are skipped **and counted**
   — never dropped silently. Every fetched row, skipped or not, is stored verbatim in
   `brokerage_activities`; use `ConnectionService.rederive` to re-read them before spending
   another pull.

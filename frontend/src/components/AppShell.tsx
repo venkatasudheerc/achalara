@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useLogout, useMe } from '@/hooks/useAuth'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useScope } from '@/context/ScopeContext'
 
@@ -27,9 +28,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-paper flex">
       {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-56 bg-summit-ink text-paper shrink-0 fixed top-0 left-0 h-full z-10">
-        <div className="px-6 py-6 border-b border-pine">
-          <span className="font-display text-lg text-paper tracking-tight">Achalara</span>
+      <aside className="hidden md:flex flex-col w-56 bg-chrome text-on-dark shrink-0 fixed top-0 left-0 h-full z-10">
+        <div className="px-6 py-6 border-b border-on-dark/15">
+          <span className="font-display text-lg text-on-dark tracking-tight">Achalara</span>
           <p className="text-xs text-stone mt-0.5">Performance Platform</p>
         </div>
 
@@ -41,8 +42,8 @@ export function AppShell() {
               className={({ isActive }) =>
                 `block px-3 py-2 rounded-btn text-sm transition-colors ${
                   isActive
-                    ? 'bg-pine text-paper font-medium'
-                    : 'text-mist/70 hover:text-paper hover:bg-pine/30'
+                    ? 'bg-pine text-on-dark font-medium'
+                    : 'text-on-dark/70 hover:text-on-dark hover:bg-pine/30'
                 }`
               }
             >
@@ -50,7 +51,7 @@ export function AppShell() {
             </NavLink>
           ))}
 
-          <div className="pt-4 mt-4 border-t border-pine/40">
+          <div className="pt-4 mt-4 border-t border-on-dark/15">
             <p className="text-xs text-stone px-3 mb-2 uppercase tracking-wide">Coming soon</p>
             {fastFollowers.map((item) => (
               <NavLink
@@ -64,16 +65,19 @@ export function AppShell() {
           </div>
         </nav>
 
-        <div className="px-4 py-4 border-t border-pine/40">
+        <div className="px-4 py-4 border-t border-on-dark/15">
           <NavLink
             to="/app/settings"
-            className="block px-3 py-2 rounded-btn text-sm text-stone/60 hover:text-paper transition-colors"
+            className="block px-3 py-2 rounded-btn text-sm text-stone/60 hover:text-on-dark transition-colors"
           >
             Settings
           </NavLink>
-          <div className="px-3 pt-3 mt-2 border-t border-pine/40">
-            <p className="text-xs text-paper/80 truncate">{me?.name}</p>
-            <button onClick={signOut} className="text-xs text-stone hover:text-paper underline underline-offset-2 mt-1">
+          <div className="px-3 pt-3 mt-2 border-t border-on-dark/15">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-on-dark/80 truncate">{me?.name}</p>
+              <ThemeToggle className="-mr-2 shrink-0" />
+            </div>
+            <button onClick={signOut} className="text-xs text-stone hover:text-on-dark underline underline-offset-2 mt-1">
               Sign out
             </button>
           </div>
@@ -150,14 +154,14 @@ export function AppShell() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-summit-ink border-t border-pine flex z-20">
+      <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-chrome border-t border-on-dark/15 flex z-20">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               `flex-1 py-3 text-center text-xs transition-colors ${
-                isActive ? 'text-gold font-medium' : 'text-mist/60'
+                isActive ? 'text-gold font-medium' : 'text-on-dark/60'
               }`
             }
           >

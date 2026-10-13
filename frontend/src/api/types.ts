@@ -46,9 +46,14 @@ export interface ClientResponse {
 }
 
 export interface AccountCreate { name: string; description?: string; account_number?: string | null }
+/** Which lots a sale closes first, as set at the brokerage */
+export type CostBasisMethod = 'FIFO' | 'MIN_TAX'
 export interface AccountResponse {
   id: string; client_id: string; name: string
   description: string; account_number: string | null
+  cost_basis_method: CostBasisMethod
+  /** True for an account another client owns that this client may view; client_id is always the owner */
+  shared: boolean; owner_name: string | null
 }
 
 export interface SleeveCreate { strategy_id: string }
@@ -158,9 +163,17 @@ export interface ClosedPosition {
   matched_quantity: number | null; entry_price: number | null; exit_price: number | null
   realized_gain: number; realized_gain_pct: number
   opened_at: string | null; closed_at: string | null; trades_count: number
+  /** As the brokerage reports the lot; null where the sleeve is not matched by lots */
+  cost: number | null; proceeds: number | null
+  disallowed_loss: number | null; reported_gain: number | null
+  short_term_gain: number | null; long_term_gain: number | null
+  term: 'short' | 'long' | 'mixed' | null
+  adjustments: LotAdjustment[]
 }
 export interface ClosedPositionsResponse {
-  sleeve_id: string; total_realized_gain: number; positions: ClosedPosition[]
+  sleeve_id: string; total_realized_gain: number
+  total_reported_gain: number | null; total_disallowed_loss: number | null
+  positions: ClosedPosition[]
 }
 
 export interface ClientTradesResponse {
@@ -311,4 +324,252 @@ export interface PeriodsResponse {
   /** market: holdings at each day's prices. realized: at cost, unrealised gains left out */
   basis: 'market' | 'realized'
   periods: PeriodPerformance[]
+}
+
+// ── Client portal ─────────────────────────────────────────────────────────
+// All percentages in the portal are decimal fractions (0.05 = 5%).
+
+export type SecurityGroup = 'stock' | 'etf' | 'option' | 'other'
+
+export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy_name: string }
+export interface PortalAccount extends VisibleAccount { sleeves: PortalSleeve[] }
+export interface PortalAccountsResponse {
+  /** `preview` is true when an advisor is looking at this client's portal */
+  viewer: { client_id: string; name: string; preview: boolean }
+  accounts: PortalAccount[]
+}
+
+/** Where a row sits: its account, and the strategy it is held under */
+export interface RowPlace {
+  account_id: string; account_name: string; shared: boolean
+  sleeve_id: string; strategy_id: string; strategy_name: string
+}
+
+export interface PortalPosition extends RowPlace {
+  symbol: string; security_type: SecurityGroup; quantity: number
+  /** Per share; null when the cost is not known */
+  avg_cost: number | null; cost_basis: number | null
+  /** Shares per unit of quantity: 100 for an option contract, else 1 */
+  multiplier: number
+  /** null when there is no price (options) */
+  price: number | null; market_value: number | null
+  /** live = the market's current price; custodian = its last reported price, kept where there is no live quote */
+  price_source: 'live' | 'custodian' | null
+  /** Since the previous close, when the price is live */
+  day_change?: number | null; day_change_pct?: number | null
+  unrealized_gain: number | null; unrealized_gain_pct: number | null
+  is_short: boolean
+}
+export interface PortalPositionsResponse {
+  /** The custodian's holdings: quantity and cost */
+  as_of: string | null; count: number
+  /** When the live prices shown were fetched; null when none are live */
+  live_prices_at: string | null
+  /** Listed without a price of their own */
+  unpriced_count: number
+  /** The custodian's combined value for the unpriced options; counted in the totals when present */
+  options: { count: number; market_value: number; cost_basis: number; unrealized_gain: number } | null
+  total_market_value: number; total_cost_basis: number
+  total_unrealized_gain: number; total_unrealized_gain_pct: number | null
+  /** Cash (negative when borrowed) and the custodian's combined options value by account, as last reported */
+  account_balances: { account_id: string; as_of: string; cash_value: number | null; options_value: number | null; options_cost: number | null }[]
+  positions: PortalPosition[]
+}
+
+export interface PortalTrade extends RowPlace {
+  id: string; trade_date: string; symbol: string; action: TradeAction
+  /** Set when the row is an option ending without a trade */
+  event: 'assigned' | 'expired' | null
+  security_type: SecurityGroup; quantity: number
+  /** Per share, also for an option; `multiplier` is shares per unit of quantity (100 for a contract) */
+  price: number; multiplier: number
+  amount: number; commission: number
+}
+export interface PortalTradesResponse {
+  total: number; skip: number; limit: number
+  /** Totals for everything the filters match, not just the page */
+  bought: number; sold: number; net_invested: number
+  /** Each account with a matching trade and its totals, whatever page `trades` is on */
+  accounts: { account_id: string; account_name: string; shared: boolean; total: number; bought: number; sold: number }[]
+  trades: PortalTrade[]
+}
+
+export type ActivityKind =
+  | 'trade' | 'deposit' | 'withdrawal' | 'transfer' | 'dividend' | 'interest'
+  | 'margin_interest' | 'fee' | 'withholding' | 'other'
+/** One thing that happened: a trade, or cash that moved */
+export interface ActivityRow extends RowPlace {
+  id: string; date: string; kind: ActivityKind
+  /** The row in a word or two: Bought, Deposit, Transfer in */
+  label: string
+  /** The custodian's description, tidied; null on a trade */
+  detail: string | null
+  symbol: string | null
+  /** The trade fields are null on a cash row */
+  action: TradeAction | null; event: 'assigned' | 'expired' | null
+  security_type: SecurityGroup | null; quantity: number | null
+  price: number | null; multiplier: number | null
+  /** A trade's value, unsigned. A cash row's amount, signed: money arriving is positive */
+  amount: number
+}
+export interface ActivityFigures {
+  total: number; trades: number; bought: number; sold: number
+  /** Deposits and transfers in; withdrawals and transfers out (positive) */
+  money_in: number; money_out: number
+  /** Dividends and interest; margin interest, fees and tax withheld (positive) */
+  income: number; charges: number
+}
+export interface PortalActivityResponse extends ActivityFigures {
+  skip: number; limit: number; net_invested: number
+  /** Each account with a matching row and its totals, whatever page `rows` is on */
+  accounts: (ActivityFigures & { account_id: string; account_name: string; shared: boolean })[]
+  rows: ActivityRow[]
+}
+
+/** The portal's home page. Value and the day's change are at live prices; the year's figures run through `record_through` */
+export interface PortalHomeHolding {
+  symbol: string; value: number
+  /** Today's move in dollars, and as a fraction */
+  day_change: number | null; day_change_pct: number | null; share: number | null
+}
+export interface PortalExpiringOption {
+  symbol: string; account_name: string; underlying: string; kind: 'put' | 'call'
+  strike: number; expiry: string; days: number; contracts: number; written: boolean
+  underlying_price: number | null
+  /** Positive when the shares are above the strike; null with no live price */
+  above_strike_pct: number | null
+}
+export interface PortalHomeResponse {
+  as_of: string | null; live_prices_at: string | null; record_through: string | null
+  is_provisional: boolean
+  total_value: number; day_change: number | null; day_change_pct: number | null
+  ytd_twr_pct: number | null; benchmark: string
+  benchmark_ytd_pct: number | null; excess_ytd_pct: number | null
+  /** Over the whole record, which starts on `first_date`; the fall is a negative fraction */
+  first_date: string | null; since_start_twr_pct: number | null; max_drawdown_pct: number | null
+  allocation: { kind: SecurityGroup | 'cash'; value: number; share: number | null }[]
+  cash_value: number | null
+  /** Dividends and interest */
+  income_ytd: number
+  realized_ytd: number; realized_short_ytd: number; realized_long_ytd: number
+  /** Deposits less withdrawals */
+  added_ytd: number | null
+  holdings_count: number
+  top_holdings: PortalHomeHolding[]
+  /** The holdings that moved the total most today, in dollars; up to three each */
+  movers_up: PortalHomeHolding[]; movers_down: PortalHomeHolding[]
+  expiring_options: PortalExpiringOption[]
+  /** Wash-sale losses in the cost of shares still held */
+  carried_losses: number
+  turning_long_term: { symbol: string; date: string }[]
+  concentrated: PortalHomeHolding[]
+}
+
+export interface PortalClosedLot extends RowPlace {
+  symbol: string; security_type: SecurityGroup
+  /** An assigned option shows no gain: its premium is carried by the shares that changed hands */
+  event: 'assigned' | 'expired' | 'marked' | null
+  opened_at: string | null; closed_at: string; days_held: number | null
+  /** short = held a year or less; mixed = an index option, 60% long-term and 40% short-term */
+  term: 'short' | 'long' | 'mixed'
+  quantity: number | null
+  /** Shares per unit of quantity: 100 for an option contract */
+  multiplier: number
+  /** Per share */
+  entry_price: number | null; exit_price: number | null
+  /** As the custodian reports the lot; cost includes any earlier wash-sale loss carried into it */
+  cost: number; proceeds: number
+  /** The part of this lot's loss a wash sale carried into the shares that replaced it */
+  disallowed_loss: number
+  short_term_gain: number; long_term_gain: number
+  /** Proceeds less cost, plus the disallowed loss */
+  realized_gain: number; realized_gain_pct: number | null
+  adjustments: LotAdjustment[]
+}
+export type LotAdjustment = 'wash' | 'mark' | 'unmarked' | 'index_option' | 'written_option'
+/** Capital gains and the income received over one slice; `realized` is short plus long term, income is never in it */
+export interface PortalGainFigures {
+  count: number; short_term: number; long_term: number; realized: number
+  disallowed_loss: number; dividends: number; interest: number
+  /** Interest paid on money borrowed; negative */
+  margin_interest: number
+}
+export interface PortalGainPeriod extends PortalGainFigures { period_start: string; period_end: string }
+export interface PortalGainSleeve extends PortalGainFigures { sleeve_id: string; strategy_id: string; strategy_name: string }
+export interface PortalGainAccount extends PortalGainFigures {
+  account_id: string; account_name: string; shared: boolean; sleeves: PortalGainSleeve[]
+}
+export interface PortalRealizedResponse {
+  count: number; net_realized: number; short_term: number; long_term: number
+  gains: number; losses: number; years: number[]
+  cost: number; proceeds: number; disallowed_loss: number
+  /** Received over the same dates; follows the dates, account and strategy only, and is not part of net_realized */
+  dividends: number; interest: number
+  /** Interest paid on money borrowed over the same dates; negative */
+  margin_interest: number
+  /** By month or quarter, newest first */
+  periods: PortalGainPeriod[]
+  accounts: PortalGainAccount[]
+  positions: PortalClosedLot[]
+}
+
+export interface MonthFigure { year: number; month: number; twr_pct: number | null }
+export interface PortalSummary {
+  start: string; end: string
+  opening_value: number; closing_value: number; cash_value: number | null
+  net_flow: number; gain: number
+  twr_pct: number | null
+  /** null for a single strategy: deposits are made to the account */
+  mwr_pct: number | null
+  benchmark_return_pct: number | null; excess_return_pct: number | null
+  /** Set when the benchmark's price history starts after the window: its return runs from this date */
+  benchmark_from: string | null
+  is_provisional: boolean
+  best_month: MonthFigure | null; worst_month: MonthFigure | null
+  months_up: number; months_total: number
+}
+/** `value` is what it was worth that day; the others are cumulative returns from the start of the window */
+export interface CumulativePoint { date: string; twr: number | null; mwr: number | null; benchmark: number | null; value: number | null }
+export interface PortalMonth extends MonthFigure { is_provisional: boolean }
+export interface PortalYear { year: number; twr_pct: number | null; is_provisional: boolean }
+export interface PortalPeriod {
+  period_start: string; period_end: string
+  opening_value: number; closing_value: number; net_flow: number; gain: number
+  twr_pct: number | null; twr_ytd_pct: number | null
+  benchmark_return_pct: number | null; excess_return_pct: number | null
+  is_provisional: boolean
+}
+export type PortalGrain = 'day' | 'week' | 'month' | 'quarter'
+/** A fund includes its dividends; an index level leaves them out */
+export interface BenchmarkChoice { code: string; name: string; includes_dividends: boolean }
+export interface PortalPerformanceResponse {
+  first_date: string | null; as_of: string | null
+  includes_cash: boolean; benchmark: string; grain: string
+  /** What the return may be compared with; `benchmark` is the code of the one in use */
+  benchmarks: BenchmarkChoice[]
+  summary: PortalSummary | null
+  series: CumulativePoint[]; months: PortalMonth[]; years: PortalYear[]; periods: PortalPeriod[]
+}
+
+export interface OverviewSleeve extends PortalSleeve { value: number | null; twr_pct: number | null; gain: number | null }
+export interface OverviewAccount extends VisibleAccount {
+  value: number | null; cash: number | null
+  /** Year to date */
+  twr_pct: number | null; gain: number | null
+  sleeves: OverviewSleeve[]
+}
+export interface ActivityItem {
+  date: string
+  /** BUY | SELL | DIVIDEND | INTEREST | FEE | WITHHOLDING */
+  kind: string
+  symbol: string | null; quantity: number | null; amount: number; account_name: string
+}
+export interface PortalOverviewResponse {
+  as_of: string | null; includes_cash: boolean
+  total_value: number | null; cash_value: number | null
+  ytd_twr_pct: number | null; ytd_gain: number | null; ytd_realized: number
+  is_provisional: boolean
+  accounts: OverviewAccount[]
+  timeseries: { date: string; value: number }[]
+  recent: ActivityItem[]
 }

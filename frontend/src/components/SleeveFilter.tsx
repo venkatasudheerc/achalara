@@ -43,7 +43,7 @@ export function SleeveFilter() {
       disabled={isLoading}
       onChange={(e) => handleChange(e.target.value)}
       aria-label="Show performance for"
-      className="bg-transparent border border-mist/30 text-paper text-xs font-mono rounded-btn px-2 py-1.5 focus:outline-none focus:border-gold disabled:opacity-50"
+      className="bg-transparent border border-mist/30 text-on-dark text-xs font-mono rounded-btn px-2 py-1.5 focus:outline-none focus:border-gold disabled:opacity-50"
     >
       <option value="client" className="text-summit-ink">
         {single ? 'All sleeves' : 'All accounts'}

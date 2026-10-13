@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import type { BenchmarkPoint, TimeseriesPoint } from '@/api/types'
 import { formatCurrency } from '@/lib/formatters'
+import { useChartColours } from '@/context/ThemeContext'
 
 interface Props {
   data: TimeseriesPoint[]
@@ -90,6 +91,7 @@ export function PerformanceChart({
   benchmarkTicker = 'Benchmark',
   label = 'Portfolio value over time',
 }: Props) {
+  const chart = useChartColours()
   const chartData = useMemo(() => {
     if (!benchmark?.length || !data.length) return data as (TimeseriesPoint & { benchmark_value?: number | null })[]
 
@@ -113,19 +115,19 @@ export function PerformanceChart({
     <div aria-label={label}>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#EAF0EC" />
+          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
           <XAxis
             dataKey="date"
             ticks={ticks}
             tickFormatter={fmtAxisDate}
-            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8A968F' }}
+            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: chart.axis }}
             tickLine={false}
             axisLine={false}
             interval={0}
           />
           <YAxis
             tickFormatter={(v) => formatCurrency(v)}
-            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8A968F' }}
+            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: chart.axis }}
             tickLine={false}
             axisLine={false}
             width={90}
@@ -139,7 +141,9 @@ export function PerformanceChart({
             contentStyle={{
               fontFamily: 'IBM Plex Mono',
               fontSize: 12,
-              border: '1px solid #EAF0EC',
+              border: chart.tooltip.border,
+              backgroundColor: chart.tooltip.backgroundColor,
+              color: chart.tooltip.color,
               borderRadius: 8,
             }}
           />
@@ -152,20 +156,20 @@ export function PerformanceChart({
           <Line
             type="monotone"
             dataKey="value"
-            stroke="#2F5D4A"
+            stroke={chart.primary}
             strokeWidth={2}
             dot={false}
-            activeDot={{ r: 4, fill: '#C9A24B' }}
+            activeDot={{ r: 4, fill: chart.gold }}
           />
           {hasBenchmark && (
             <Line
               type="monotone"
               dataKey="benchmark_value"
-              stroke="#C9A24B"
+              stroke={chart.gold}
               strokeWidth={1.5}
               strokeDasharray="5 3"
               dot={false}
-              activeDot={{ r: 4, fill: '#2F5D4A' }}
+              activeDot={{ r: 4, fill: chart.primary }}
               connectNulls
             />
           )}

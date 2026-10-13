@@ -7,7 +7,10 @@ from app.models.base import BaseModel
 # Types that are investment income or cost and therefore part of returns.
 # Everything else (contributions, withdrawals, transfers) moves cash in or out
 # of the account without being a return, and is kept for audit only.
-INCOME_TYPES = ("DIVIDEND", "INTEREST", "FEE", "WITHHOLDING")
+# Margin interest is a cost of the account, like a fee, kept under its own
+# name so it can be shown for what it is.
+MARGIN_INTEREST = "MARGIN_INTEREST"
+INCOME_TYPES = ("DIVIDEND", "INTEREST", "FEE", MARGIN_INTEREST, "WITHHOLDING")
 
 
 class CashActivity(BaseModel):

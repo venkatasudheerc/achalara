@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useAccount, useAccountPositions } from '@/hooks/useAccounts'
+import { useAccount, useAccountPositions, useSetCostBasisMethod } from '@/hooks/useAccounts'
 import { useSleeves, useCreateSleeve } from '@/hooks/useSleeves'
 import { useStrategies } from '@/hooks/useStrategies'
 import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
@@ -11,7 +11,7 @@ import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency } from '@/lib/formatters'
-import type { SleeveResponse, AggregatedPosition } from '@/api/types'
+import type { SleeveResponse, AggregatedPosition, CostBasisMethod } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
 import { performanceApi } from '@/api/endpoints/performance'
 
@@ -21,6 +21,7 @@ export function AccountDetailPage() {
   const { setAccount, setClient, scope } = useScope()
 
   const { data: account, isLoading, isError, refetch } = useAccount(clientId!, accountId!)
+  const setMethod = useSetCostBasisMethod(clientId!, accountId!)
   const { data: sleeves } = useSleeves(clientId!, accountId!)
   const { data: positions } = useAccountPositions(clientId!, accountId!)
   const { data: strategies } = useStrategies()
@@ -97,12 +98,32 @@ export function AccountDetailPage() {
           </a>
         <button
           onClick={() => { flushSync(() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name) }); navigate('/app/performance') }}
-          className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
+          className="px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance
         </button>
         </div>
       </div>
+
+      <section className="border border-stone/20 rounded-card p-6 flex flex-wrap items-center justify-between gap-16">
+        <div className="max-w-xl">
+          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Cost basis method</h2>
+          <p className="text-sm text-stone mt-1">
+            Which shares a sale closes first. Set it to match the brokerage, so realised gains and cost agree with theirs.
+          </p>
+          {setMethod.isError && <p className="text-sm text-loss mt-1">Could not save the method. Try again.</p>}
+        </div>
+        <select
+          aria-label="Cost basis method"
+          value={account.cost_basis_method}
+          disabled={setMethod.isPending}
+          onChange={(e) => setMethod.mutate(e.target.value as CostBasisMethod)}
+          className="h-11 px-3 border border-stone/40 rounded-btn bg-surface text-summit-ink text-sm disabled:opacity-50"
+        >
+          <option value="FIFO">First in, first out</option>
+          <option value="MIN_TAX">Minimum tax (losses first)</option>
+        </select>
+      </section>
 
       {/* Sleeves */}
       <section className="border border-stone/20 rounded-card p-6">
@@ -110,7 +131,7 @@ export function AccountDetailPage() {
           <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Sleeves (strategies in this account)</h2>
           <button
             onClick={() => setShowSleeveForm(!showSleeveForm)}
-            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-paper transition-colors"
+            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
           >
             + Apply strategy
           </button>
@@ -135,7 +156,7 @@ export function AccountDetailPage() {
             {formError && <p className="text-loss text-xs">{formError}</p>}
             <div className="flex gap-2">
               <button type="submit" disabled={createSleeve.isPending}
-                className="px-3 py-1.5 bg-pine text-paper text-xs rounded-btn disabled:opacity-50">
+                className="px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn disabled:opacity-50">
                 {createSleeve.isPending ? 'Creating…' : 'Apply'}
               </button>
               <button type="button" onClick={() => setShowSleeveForm(false)} className="text-stone text-xs">Cancel</button>

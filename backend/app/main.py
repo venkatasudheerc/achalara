@@ -31,6 +31,7 @@ from app.api.routes import (
     benchmarks,
     connections,
     performance,
+    portal,
 )
 
 # Configure logging
@@ -84,6 +85,8 @@ app.add_middleware(
 _guarded = [Depends(require_access)]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections.public_router, prefix="/api/v1", tags=["connections"])
+# The portal answers only for its viewer (see deps.portal_viewer).
+app.include_router(portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(
     auth.access_router, prefix="/api/v1", tags=["auth"], dependencies=_guarded
 )

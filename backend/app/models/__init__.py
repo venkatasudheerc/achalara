@@ -15,6 +15,7 @@ from app.models.brokerage_connection import (
 )
 from app.models.cash_activity import CashActivity
 from app.models.user import AccountAccess, AuthToken, User, UserSession
+from app.models.index_bar import IndexBar
 from app.models.perf import (
     CorporateAction,
     DailyHolding,
@@ -24,6 +25,7 @@ from app.models.perf import (
 
 __all__ = [
     "Base",
+    "IndexBar",
     "Client",
     "Account",
     "Strategy",

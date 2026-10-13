@@ -3,10 +3,46 @@
 @tailwind utilities;
 
 @layer base {
+  /* Theme colours as RGB channels, so Tailwind's opacity modifiers work on
+     them. Names match the tokens in tailwind.config.ts. */
+  :root {
+    --paper: 251 252 251;          /* #FBFCFB */
+    --surface: 255 255 255;        /* #FFFFFF */
+    --mist: 234 240 236;           /* #EAF0EC */
+    --ink: 20 32 28;               /* #14201C */
+    --stone: 138 150 143;          /* #8A968F */
+    --chrome: 20 32 28;            /* #14201C */
+    --pine-text: 47 93 74;         /* #2F5D4A */
+    --pine-deep-text: 30 58 47;    /* #1E3A2F */
+    --gain-text: 46 139 107;       /* #2E8B6B */
+    --loss-text: 194 112 61;       /* #C2703D */
+    --pine-fill: 47 93 74;         /* #2F5D4A */
+    --pine-deep-fill: 30 58 47;    /* #1E3A2F */
+    color-scheme: light;
+  }
+
+  /* Dark: the brand's mid green is the page, cards sit a step lighter, and
+     the near-black green is kept for the header and sidebar. */
+  :root.dark {
+    --paper: 30 58 47;             /* #1E3A2F */
+    --surface: 38 71 57;           /* #264739 */
+    --mist: 48 86 70;              /* #305646 */
+    --ink: 238 243 240;            /* #EEF3F0 */
+    --stone: 172 187 179;          /* #ACBBB3 */
+    --chrome: 13 24 20;            /* #0D1814 */
+    --pine-text: 157 216 189;      /* #9DD8BD */
+    --pine-deep-text: 196 230 213; /* #C4E6D5 */
+    --gain-text: 116 214 174;      /* #74D6AE */
+    --loss-text: 240 170 122;      /* #F0AA7A */
+    --pine-fill: 66 126 101;       /* #427E65  buttons and the selected pill */
+    --pine-deep-fill: 53 102 80;   /* #356650  a pressed or hovered button */
+    color-scheme: dark;
+  }
+
   html {
     font-family: 'Inter', system-ui, sans-serif;
-    color: #14201C;
-    background-color: #FBFCFB;
+    color: rgb(var(--ink));
+    background-color: rgb(var(--paper));
   }
 
   :focus-visible {

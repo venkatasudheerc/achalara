@@ -1,0 +1,37 @@
+meta {
+  name: Option Snapshot
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{webullBaseUrl}}/openapi/market-data/option/snapshot?symbols=SPY271217P00500000&category=US_OPTION
+  body: none
+  auth: none
+}
+
+params:query {
+  symbols: SPY271217P00500000
+  category: US_OPTION
+}
+
+docs {
+  The current quote for one option contract, named by its OCC symbol in the
+  `symbols` query parameter, edited on the Params tab (root, yymmdd, C or P, strike x 1000 in eight digits, for
+  example `SPY271217P00500000`).
+
+  No assertion on purpose: until US options market data is enabled for these API keys,
+  Webull answers
+
+  ```
+  403 {"error_code":"MARKET_DATA_NOT_SUBSCRIBED",
+       "message":"Insufficient permission, please subscribe to US_OPTION."}
+  ```
+
+  A 200 here is the sign that the subscription is active. The backend does not call
+  this endpoint yet; open option positions are unpriced for that reason.
+
+  There is also `/openapi/market-data/option/bars` for a contract's history. It exists
+  (it answers 400 rather than 404), but its parameters are not confirmed, so it has no
+  request here yet.
+}

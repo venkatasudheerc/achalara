@@ -11,7 +11,8 @@ const PRESETS = [
   { label: 'MAX', months: null },
 ] as const
 
-const QUICK_TICKERS = ['SPY', 'QQQ', 'AGG', 'DIA']
+// SPX, NDX and DJI are the index levels themselves (no dividends), served from our own history.
+const QUICK_TICKERS = ['SPX', 'NDX', 'DJI', 'SPY', 'QQQ', 'AGG', 'DIA']
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -48,63 +49,63 @@ function PerformanceHero({
   const gainPos = (summary.total_unrealized_gain ?? 0) >= 0
 
   return (
-    <div className="rounded-card p-8 bg-pine-deep text-paper mb-8">
+    <div className="rounded-card p-8 bg-pine-deep text-on-dark mb-8 dark:bg-surface dark:border dark:border-gold/70">
       <div>
         <div className="flex items-start justify-between gap-4">
-          <p className="text-xs font-mono tracking-widest text-mist/60 uppercase mb-1">
+          <p className="text-xs font-mono tracking-widest text-on-dark/60 uppercase mb-1">
             {level} · {name}
           </p>
           {level !== 'strategy' && <SleeveFilter />}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mt-6">
           <div>
-            <p className="text-xs text-mist/60 mb-1">TWR</p>
+            <p className="text-xs text-on-dark/60 mb-1">TWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
               summary.twr_pct != null && summary.twr_pct >= 0 ? 'text-gain' : 'text-loss'
             }`}>
               {summary.twr_pct != null ? formatPercent(summary.twr_pct) : '—'}
             </p>
-            <p className="text-xs text-mist/40 mt-0.5">Time Weighted</p>
+            <p className="text-xs text-on-dark/40 mt-0.5">Time Weighted</p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">MWR</p>
+            <p className="text-xs text-on-dark/60 mb-1">MWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
               summary.mwr_pct != null && summary.mwr_pct >= 0 ? 'text-gain' : 'text-loss'
             }`}>
               {summary.mwr_pct != null ? formatPercent(summary.mwr_pct) : '—'}
             </p>
-            <p className="text-xs text-mist/40 mt-0.5">Money Weighted</p>
+            <p className="text-xs text-on-dark/40 mt-0.5">Money Weighted</p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">
+            <p className="text-xs text-on-dark/60 mb-1">
               {summary.cash_balance != null ? 'Total value' : 'Market value'}
             </p>
-            <p className="font-mono text-2xl text-paper tabular-nums">
+            <p className="font-mono text-2xl text-on-dark tabular-nums">
               {formatCurrency(summary.total_value ?? summary.total_market_value)}
             </p>
-            <p className="text-xs text-mist/40 mt-0.5">
+            <p className="text-xs text-on-dark/40 mt-0.5">
               {summary.cash_balance != null
                 ? `${formatCurrency((summary.total_value ?? 0) - summary.cash_balance)} securities · ${formatCurrency(summary.cash_balance)} cash`
                 : `${formatCurrency(summary.total_cost_basis)} cost basis`}
             </p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">Unrealised gain</p>
+            <p className="text-xs text-on-dark/60 mb-1">Unrealised gain</p>
             <p className={`font-mono text-2xl tabular-nums ${gainPos ? 'text-gain' : 'text-loss'}`}>
               {formatCurrency(summary.total_unrealized_gain)}
             </p>
-            <p className="text-xs text-mist/40 mt-0.5">
+            <p className="text-xs text-on-dark/40 mt-0.5">
               {endDate ? `On positions open ${formatDate(endDate)}` : 'On open positions'}
             </p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">Realised gain</p>
+            <p className="text-xs text-on-dark/60 mb-1">Realised gain</p>
             <p className={`font-mono text-2xl tabular-nums ${
               summary.total_realized_gain >= 0 ? 'text-gain' : 'text-loss'
             }`}>
               {formatCurrency(summary.total_realized_gain)}
             </p>
-            <p className="text-xs text-mist/40 mt-0.5">
+            <p className="text-xs text-on-dark/40 mt-0.5">
               {summary.closed_positions_count} closed{ranged ? ' in period' : ''}
               {summary.total_income ? ` · ${formatCurrency(summary.total_income)} income` : ''}
             </p>
@@ -173,8 +174,8 @@ export function PerformancePage() {
   const { data: returnsSeries } = useActiveReturnsSeries()
 
   // Benchmark state — local to this page
-  const [benchmarkTicker, setBenchmarkTicker] = useState('SPY')
-  const [inputValue, setInputValue] = useState('SPY')
+  const [benchmarkTicker, setBenchmarkTicker] = useState('SPX')
+  const [inputValue, setInputValue] = useState('SPX')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Fetch full benchmark history (no date filter) — client-side filtering happens in
@@ -353,7 +354,7 @@ export function PerformancePage() {
                   onClick={() => applyPreset(p.months)}
                   className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
                     activePreset === p.label
-                      ? 'bg-pine text-paper'
+                      ? 'bg-pine text-on-dark'
                       : 'text-stone hover:text-summit-ink hover:bg-mist'
                   }`}
                 >

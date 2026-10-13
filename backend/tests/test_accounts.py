@@ -69,3 +69,37 @@ def test_get_account_not_found(client):
 
     resp = client.get(f"/api/v1/clients/{client_id}/accounts/does-not-exist")
     assert resp.status_code == 404
+
+
+def test_list_accounts_includes_those_shared_with_the_client(client):
+    """An agent on a relative's account sees it listed, marked as shared."""
+
+    def new_client(name):
+        body = {"name": name, "email": f"{name.lower()}@example.com"}
+        return client.post("/api/v1/clients/", json=body).json()["id"]
+
+    agent, relative = new_client("Agent"), new_client("Relative")
+    own = client.post(f"/api/v1/clients/{agent}/accounts", json={"name": "Own"}).json()
+    theirs = client.post(
+        f"/api/v1/clients/{relative}/accounts", json={"name": "Theirs"}
+    ).json()
+    client.post(
+        f"/api/v1/clients/{agent}/account-access", json={"account_id": theirs["id"]}
+    )
+
+    listed = client.get(f"/api/v1/clients/{agent}/accounts").json()
+
+    assert [(a["id"], a["shared"]) for a in listed] == [
+        (own["id"], False),
+        (theirs["id"], True),
+    ]
+    # The owner is still the relative, and says so.
+    assert (listed[1]["client_id"], listed[1]["owner_name"]) == (relative, "Relative")
+    # The owner's own list is unchanged, and owned-only is still available.
+    owned = client.get(
+        f"/api/v1/clients/{agent}/accounts", params={"include_shared": "false"}
+    ).json()
+    assert [a["id"] for a in owned] == [own["id"]]
+    assert [
+        a["shared"] for a in client.get(f"/api/v1/clients/{relative}/accounts").json()
+    ] == [False]

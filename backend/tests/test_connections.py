@@ -625,14 +625,14 @@ def test_sync_keeps_every_source_row_and_replaces_it_on_resync(db, client, clien
 # ---------------------------------------------------------------------------
 
 
-def _option_row(type_, units, price, amount, day, symbol="BULL270115P00020000"):
+def _option_row(type_, units, price, amount, day, symbol="ABCD270115P00020000"):
     return {
         "id": f"opt-{type_}-{day}-{units}",
-        "symbol": {"symbol": symbol, "raw_symbol": symbol, "description": "PUT WEBULL CORP"},
+        "symbol": {"symbol": symbol, "raw_symbol": symbol, "description": "PUT ABCD CORP"},
         "option_symbol": None,
         "currency": {"code": "USD"},
         "type": type_,
-        "description": "PUT WEBULL CORP $20 EXP 01/15/27",
+        "description": "PUT ABCD CORP $20 EXP 01/15/27",
         "amount": amount,
         "price": price,
         "units": units,
@@ -677,7 +677,7 @@ def test_options_route_to_their_own_sleeve(db, client, client_id, sdk):
 
     sync_brokerage_account(db, ba_id)
 
-    assert _symbols(db, mapped["sleeve_routes"]["OPTION"]) == ["BULL270115P00020000"]
+    assert _symbols(db, mapped["sleeve_routes"]["OPTION"]) == ["ABCD270115P00020000"]
 
 
 def test_rederive_reads_stored_rows_again_without_calling_the_source(

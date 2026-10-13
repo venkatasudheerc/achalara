@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.connectors.models import is_option_symbol
 from app.connectors.webull_connector import WebullConnector
-from app.models.perf import DailyPrice
+from app.models.perf import MANUAL_SOURCE, DailyPrice
 from app.models.trade import Trade
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ _MARGIN = timedelta(days=10)
 
 # A series fetched more recently than this is not fetched again.
 _FRESH_FOR = timedelta(hours=18)
+# The source serves about 1,200 daily bars; nothing older can be fetched.
+_SOURCE_DEPTH = timedelta(days=1700)
 
 
 def quotable(symbol: str) -> bool:
@@ -164,18 +166,29 @@ class PriceHistoryService:
 
     @staticmethod
     def _covered(extent, start: date, end: date, now: datetime) -> bool:
-        """Whether a stored series already serves the span needed."""
+        """Whether a stored series already serves the span needed.
+
+        Both ends are checked. The start is served if the series reaches back
+        to it, or as far back as the source goes at all. The end is served if
+        the series reaches it, or was fetched recently enough that asking
+        again would bring nothing new. A recent fetch alone is not enough: the
+        span widens when another account turns out to have held the security
+        over a longer period.
+        """
         if extent is None:
             return False
         first, last, fetched = extent
+        fresh = False
         if fetched is not None:
             if fetched.tzinfo is None:
                 fetched = fetched.replace(tzinfo=timezone.utc)
-            if now - fetched < _FRESH_FOR:
-                return True
-        # Weekends and holidays: a series ending within a few days of the
-        # span's end has every market day in it.
-        return last >= end - timedelta(days=4) and first <= start + timedelta(days=6)
+            fresh = now - fetched < _FRESH_FOR
+        # Weekends and holidays: a series within a few days of either end of
+        # the span has every market day in it.
+        reaches_start = first <= start + timedelta(days=6)
+        as_deep_as_the_source = first <= now.date() - _SOURCE_DEPTH
+        reaches_end = last >= end - timedelta(days=4)
+        return (reaches_start or as_deep_as_the_source) and (reaches_end or fresh)
 
     # ------------------------------------------------------------------
     # Reading
@@ -222,3 +235,30 @@ class PriceHistoryService:
                 days.append(cursor)
             cursor += timedelta(days=1)
         return sorted(set(days))
+
+
+def set_manual_price(db: Session, symbol: str, on: date, close: Decimal) -> DailyPrice:
+    """Record a price entered by hand, replacing one already entered for the day.
+
+    For what no source prices: the year-end price an index option is marked
+    to, quoted per share as the option itself is.
+    """
+    if close <= 0:
+        raise ValueError("A price must be above zero")
+    symbol = symbol.strip().upper()
+    row = (
+        db.query(DailyPrice)
+        .filter(
+            DailyPrice.symbol == symbol,
+            DailyPrice.price_date == on,
+            DailyPrice.source == MANUAL_SOURCE,
+        )
+        .first()
+    )
+    if row is None:
+        row = DailyPrice(symbol=symbol, price_date=on, source=MANUAL_SOURCE)
+        db.add(row)
+    row.close = close
+    row.fetched_at = datetime.now(timezone.utc)
+    db.commit()
+    return row

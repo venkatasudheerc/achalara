@@ -16,8 +16,8 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-# OCC option symbol: root, yymmdd, C/P, strike x1000 ("BULL270115P00020000").
-# The root can carry a digit after a corporate action ("NFE1270115P00000500").
+# OCC option symbol: root, yymmdd, C/P, strike x1000 ("ABCD270115P00020000").
+# The root can carry a digit after a corporate action ("XYZ1270115P00000500").
 _OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
 
 

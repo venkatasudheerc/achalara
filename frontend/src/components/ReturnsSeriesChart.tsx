@@ -2,6 +2,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
 import type { WeeklyReturnPoint } from '@/api/types'
+import { useChartColours } from '@/context/ThemeContext'
 
 interface Props {
   data: WeeklyReturnPoint[]
@@ -41,6 +42,7 @@ function pickTicks(data: WeeklyReturnPoint[]): string[] {
 }
 
 export function ReturnsSeriesChart({ data, benchmarkTicker }: Props) {
+  const chart = useChartColours()
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-48 text-stone text-sm">
@@ -68,19 +70,19 @@ export function ReturnsSeriesChart({ data, benchmarkTicker }: Props) {
     <div>
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data} margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#EAF0EC" />
+          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
           <XAxis
             dataKey="date"
             ticks={ticks}
             tickFormatter={fmtAxisDate}
-            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8A968F' }}
+            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: chart.axis }}
             tickLine={false}
             axisLine={false}
             interval={0}
           />
           <YAxis
             tickFormatter={(v: number) => fmtPct(v)}
-            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8A968F' }}
+            tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: chart.axis }}
             tickLine={false}
             axisLine={false}
             width={72}
@@ -91,7 +93,9 @@ export function ReturnsSeriesChart({ data, benchmarkTicker }: Props) {
             contentStyle={{
               fontFamily: 'IBM Plex Mono',
               fontSize: 12,
-              border: '1px solid #EAF0EC',
+              border: chart.tooltip.border,
+              backgroundColor: chart.tooltip.backgroundColor,
+              color: chart.tooltip.color,
               borderRadius: 8,
             }}
           />
@@ -102,31 +106,31 @@ export function ReturnsSeriesChart({ data, benchmarkTicker }: Props) {
           <Line
             type="monotone"
             dataKey="twr_cumul"
-            stroke="#2F5D4A"
+            stroke={chart.primary}
             strokeWidth={2}
             dot={false}
-            activeDot={{ r: 4, fill: '#C9A24B' }}
+            activeDot={{ r: 4, fill: chart.gold }}
             connectNulls
           />
           <Line
             type="monotone"
             dataKey="mwr_cumul"
-            stroke="#C9A24B"
+            stroke={chart.gold}
             strokeWidth={2}
             strokeDasharray="5 3"
             dot={false}
-            activeDot={{ r: 4, fill: '#2F5D4A' }}
+            activeDot={{ r: 4, fill: chart.primary }}
             connectNulls
           />
           {hasBenchmark && (
             <Line
               type="monotone"
               dataKey="benchmark_cumul"
-              stroke="#C2703D"
+              stroke={chart.benchmark}
               strokeWidth={1.5}
               strokeDasharray="3 3"
               dot={false}
-              activeDot={{ r: 4, fill: '#8A968F' }}
+              activeDot={{ r: 4, fill: chart.axis }}
               connectNulls
             />
           )}

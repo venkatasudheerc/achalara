@@ -1,0 +1,137 @@
+meta {
+  name: 07 Webull (direct)
+  seq: 8
+}
+
+script:pre-request {
+  // Webull signs every request with HMAC-SHA1. The signed string is
+  //   path & (query params + signing headers, sorted by name, joined k=v with &)
+  // percent-encoded as a whole, keyed with "<app secret>&", base64-encoded.
+  // A request body, when there is one, adds "&" + its upper-case MD5.
+  //
+  // This runs for every request in this folder, so each request declares only
+  // its own params. Mirrors WebullMarketDataService._generate_signature() in
+  // backend/app/services/webull_market_data.py.
+  //
+  // Bruno's sandbox allows require() only for whitelisted modules, so this uses
+  // 'crypto-js' and parses the URL by hand (there is no `URL` constructor).
+  const CryptoJS = require('crypto-js');
+
+  const appKey = bru.getEnvVar('webullAppKey');
+  const appSecret = bru.getEnvVar('webullAppSecret');
+  if (!appKey || !appSecret) {
+    throw new Error(
+      'Set webullAppKey and webullAppSecret in the Local.private Bruno ' +
+      'environment (copy WEBULL_APP_KEY and WEBULL_APP_SECRET from backend/.env).'
+    );
+  }
+
+  // Bruno expands {{vars}} after this script runs, so the URL is interpolated
+  // here: the string that is signed has to be the string that is sent.
+  const rawUrl = bru.interpolate(req.getUrl());
+  const qIdx = rawUrl.indexOf('?');
+  const base = qIdx === -1 ? rawUrl : rawUrl.slice(0, qIdx);
+  const rawQuery = qIdx === -1 ? '' : rawUrl.slice(qIdx + 1);
+
+  const schemeEnd = base.indexOf('://');
+  const afterScheme = schemeEnd === -1 ? base : base.slice(schemeEnd + 3);
+  const firstSlash = afterScheme.indexOf('/');
+  const host = firstSlash === -1 ? afterScheme : afterScheme.slice(0, firstSlash);
+  const path = firstSlash === -1 ? '/' : afterScheme.slice(firstSlash);
+
+  // Python's quote(safe="") also encodes these five, which encodeURIComponent leaves.
+  const encodeAll = function (text) {
+    return encodeURIComponent(text).replace(/[!'()*]/g, function (c) {
+      return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+    });
+  };
+
+  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const nonce = CryptoJS.lib.WordArray.random(16).toString();
+
+  const signed = {
+    'x-app-key': appKey,
+    'x-timestamp': timestamp,
+    'x-signature-algorithm': 'HMAC-SHA1',
+    'x-signature-version': '1.0',
+    'x-signature-nonce': nonce,
+    host: host
+  };
+  if (rawQuery) {
+    rawQuery.split('&').forEach(function (pair) {
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const key = eq === -1 ? pair : pair.slice(0, eq);
+      const value = eq === -1 ? '' : pair.slice(eq + 1);
+      // Signed as the plain value, sent encoded.
+      signed[decodeURIComponent(key)] = decodeURIComponent(value);
+    });
+  }
+
+  let toSign = path + '&' + Object.keys(signed).sort().map(function (key) {
+    return key + '=' + signed[key];
+  }).join('&');
+
+  let body = req.getBody();
+  if (body !== undefined && body !== null && body !== '') {
+    if (typeof body !== 'string') body = JSON.stringify(bru.interpolate(body));
+    else body = bru.interpolate(body);
+    toSign += '&' + CryptoJS.MD5(body).toString().toUpperCase();
+  }
+
+  const signature = CryptoJS.HmacSHA1(encodeAll(toSign), appSecret + '&').toString(
+    CryptoJS.enc.Base64
+  );
+
+  req.setUrl(rawUrl);
+  req.setHeader('Accept', 'application/json');
+  req.setHeader('x-app-key', appKey);
+  req.setHeader('x-timestamp', timestamp);
+  req.setHeader('x-signature', signature);
+  req.setHeader('x-signature-algorithm', 'HMAC-SHA1');
+  req.setHeader('x-signature-version', '1.0');
+  req.setHeader('x-signature-nonce', nonce);
+  req.setHeader('x-version', 'v2');
+}
+
+docs {
+  # Webull market data, direct
+
+  These requests hit **Webull's OpenAPI directly**, not the Achalara backend. They are
+  for seeing exactly what Webull returns: the same quotes and daily bars the backend
+  reads through `WebullMarketDataService`, plus the option endpoints the backend does
+  not use yet.
+
+  ## Setup
+
+  Select the **Local.private** environment (git-ignored) and add:
+
+  ```
+  webullAppKey:    <WEBULL_APP_KEY from backend/.env>
+  webullAppSecret: <WEBULL_APP_SECRET from backend/.env>
+  webullBaseUrl:   https://api.webull.com
+  ```
+
+  Bruno environments do not inherit from each other, so `webullBaseUrl` has to be in
+  the environment you select. Never put the key or secret in `Local.bru`: Bruno writes
+  variable values into the file, and this repo is public.
+
+  The symbol is a query parameter on each request (`symbols` or `symbol`), so change it
+  on the request's Params tab; there is no symbol variable.
+
+  ## Auth
+
+  Handled by this folder's pre-request script, which computes the signature headers.
+  No request sign-in to Achalara is needed, and no credential appears in a request file.
+
+  ## Options data needs a subscription
+
+  The option requests answer `403 MARKET_DATA_NOT_SUBSCRIBED` until US options market
+  data is enabled for these API keys on the Webull side. The stock requests work
+  without it.
+
+  ## Limits
+
+  The backend spaces its own calls 200 ms apart (about 300 a minute). Click
+  deliberately. Everything here is read-only: nothing places an order.
+}

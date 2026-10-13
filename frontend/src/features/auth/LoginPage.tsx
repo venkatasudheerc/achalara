@@ -25,24 +25,29 @@ export function LoginPage() {
 
   return (
     <AuthFrame
-      footnote="Access is by invitation from your advisor"
+      footnote={
+        <>
+          <p className="text-gold">Achalara Services · Clarity first, ambition next</p>
+          <p>Access is by invitation from your Achalara contact</p>
+        </>
+      }
       aside={
         <>
-          <h1 className="font-display font-light text-5xl leading-tight">
-            Your portfolio, <span className="text-gold italic">as it stands today.</span>
+          {/* Each sentence stays on one line at every width: the size is worked
+              out from the room the panel has (half the window beside the form,
+              the whole window once the two stack below 840px). */}
+          <h1 className="font-display font-light leading-[1.08] whitespace-nowrap text-[clamp(22px,calc((50vw-112px)/10.2),56px)] max-[839px]:text-[clamp(22px,calc((100vw-128px)/10.4),56px)]">
+            <span className="block">Know where you stand.</span>
+            <span className="block text-gold italic">Then dream bigger.</span>
           </h1>
-          <p className="text-[17px] leading-relaxed text-paper/80">
-            Positions, trades, realised gains and performance for every account you hold or have
-            been given access to.
+          <p className="max-w-md text-[17px] leading-relaxed text-on-dark/80">
+            Every position, trade and return across your accounts, so your next move starts from facts.
           </p>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="font-display text-[32px]">Sign in</h2>
-          <p className="text-[15px] text-stone">Clients and advisors use the same sign-in.</p>
-        </div>
+        <h2 className="font-display text-[32px]">Sign in</h2>
         {login.isError && (
           <div role="alert" className="px-3.5 py-3 rounded-btn bg-loss/10 text-loss text-sm leading-snug">
             {login.error.message}
@@ -63,7 +68,7 @@ export function LoginPage() {
           {login.isPending ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="text-sm text-stone leading-relaxed">
-          Forgot your password? Ask your advisor for a reset link.
+          Forgot your password? Ask your Achalara contact for a reset link.
         </p>
       </form>
     </AuthFrame>

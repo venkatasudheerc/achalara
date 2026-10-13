@@ -15,7 +15,12 @@ import { GrowPage } from '@/features/GrowPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AcceptLinkPage } from '@/features/auth/AcceptLinkPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
+import { PortalShell } from '@/features/portal/PortalShell'
 import { PortalHomePage } from '@/features/portal/PortalHomePage'
+import { PortalHoldingsPage } from '@/features/portal/PortalHoldingsPage'
+import { PortalActivityPage } from '@/features/portal/PortalActivityPage'
+import { PortalRealizedPage } from '@/features/portal/PortalRealizedPage'
+import { PortalPerformancePage } from '@/features/portal/PortalPerformancePage'
 
 export function AppRoutes() {
   return (
@@ -41,7 +46,13 @@ export function AppRoutes() {
         </Route>
       </Route>
       <Route element={<RequireAuth role="client" />}>
-        <Route path="/portal" element={<PortalHomePage />} />
+        <Route path="/portal" element={<PortalShell />}>
+          <Route index element={<PortalHomePage />} />
+          <Route path="holdings" element={<PortalHoldingsPage />} />
+          <Route path="activity" element={<PortalActivityPage />} />
+          <Route path="realized" element={<PortalRealizedPage />} />
+          <Route path="performance" element={<PortalPerformancePage />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -2,6 +2,7 @@
 Webull API Market Data Fetcher
 Fetches real-time quotes and historical bars using HMAC-SHA1 authentication
 """
+from decimal import Decimal
 from typing import Optional, Dict, List
 import time
 import http.client
@@ -195,6 +196,85 @@ class WebullMarketDataService:
             return data
         except Exception as e:
             logger.error(f"Failed to get historical bars for {symbol}: {e}")
+            return None
+
+    # Symbols per snapshot request. 50 is known to be accepted.
+    QUOTE_BATCH = 50
+
+    def get_quotes(self, symbols: List[str]) -> Dict[str, tuple]:
+        """Current prices for many symbols, in as few requests as possible.
+
+        Each is ``(price, previous close)``; the previous close is None when
+        the source gives none.
+
+        The source rejects a whole request when it does not know one of the
+        symbols, and names the ones at fault. Those are dropped and the rest
+        asked for again, so one unlisted security cannot blank the others.
+        Symbols without a quote are simply absent from the result.
+        """
+        if not self.app_key or not self.app_secret:
+            return {}
+        wanted = sorted({self._normalize_symbol(s) for s in symbols if s})
+        prices: Dict[str, tuple] = {}
+        for start in range(0, len(wanted), self.QUOTE_BATCH):
+            batch = wanted[start : start + self.QUOTE_BATCH]
+            # Each retry removes at least one symbol, so this ends.
+            for _ in range(len(batch)):
+                if not batch:
+                    break
+                self._rate_limit()
+                data = self._get_snapshots(batch)
+                if isinstance(data, list):
+                    for item in data:
+                        try:
+                            price = Decimal(str(item["price"]))
+                        except (KeyError, TypeError, ArithmeticError):
+                            continue
+                        try:
+                            previous = Decimal(str(item["pre_close"]))
+                        except (KeyError, TypeError, ArithmeticError):
+                            previous = None
+                        prices[item["symbol"]] = (price, previous)
+                    break
+                rejected = self._rejected_symbols(data)
+                if not rejected:
+                    break  # some other failure: leave this batch unpriced
+                batch = [s for s in batch if s not in rejected]
+        return prices
+
+    @staticmethod
+    def _rejected_symbols(data) -> set:
+        """The symbols an INVALID_SYMBOL reply names, e.g. ``... [ABC, XYZ].``"""
+        if not isinstance(data, dict) or data.get("error_code") != "INVALID_SYMBOL":
+            return set()
+        message = str(data.get("message") or "")
+        start, end = message.find("["), message.find("]")
+        if start == -1 or end <= start:
+            return set()
+        return {
+            part.strip() for part in message[start + 1 : end].split(",") if part.strip()
+        }
+
+    def _get_snapshots(self, symbols: List[str]):
+        """One snapshot request for several symbols; the decoded reply, or None."""
+        try:
+            path = "/openapi/market-data/stock/snapshot"
+            query_params = {
+                "symbols": ",".join(symbols),
+                "category": "US_STOCK",
+                "extend_hour_required": "false",
+                "overnight_required": "false",
+            }
+            headers = self._build_headers(
+                self.MARKET_HOST, path, query_params=query_params
+            )
+            conn = http.client.HTTPSConnection(self.MARKET_HOST, timeout=10)
+            conn.request(
+                "GET", f"{path}?{urllib.parse.urlencode(query_params)}", None, headers
+            )
+            return json.loads(conn.getresponse().read().decode("utf-8"))
+        except Exception as e:
+            logger.error(f"Failed to get snapshots for {len(symbols)} symbols: {e}")
             return None
 
     def get_current_price(self, symbol: str) -> Optional[float]:

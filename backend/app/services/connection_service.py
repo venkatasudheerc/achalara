@@ -34,7 +34,7 @@ from app.models.trade import Trade
 from app.services.cash_activity_service import CashActivityService
 from app.services.ingestion_service import IngestionService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.corporate_actions import record_splits
+from app.services.corporate_actions import carry_exchange_costs, record_splits
 from app.services.performance_build_service import rebuild_for_sleeves
 
 logger = logging.getLogger(__name__)
@@ -444,14 +444,18 @@ class ConnectionService:
             )
         ]
         try:
-            if record_splits(self.db, ba.id):
+            changed = bool(record_splits(self.db, ba.id))
+            changed = bool(carry_exchange_costs(self.db, ba.account_id)) or changed
+            if changed:
                 self.db.commit()
                 positions = PortfolioCalculationService(self.db)
                 for sleeve_id in sleeve_ids:
                     positions.persist_all_positions(sleeve_id)
         except Exception as exc:  # noqa: BLE001
             self.db.rollback()
-            logger.error("Recording splits failed for account %s: %s", ba.id, exc)
+            logger.error(
+                "Recording corporate actions failed for account %s: %s", ba.id, exc
+            )
         rebuild_for_sleeves(self.db, sleeve_ids)
 
     def rederive(self, brokerage_account_id: str) -> Dict:
@@ -460,8 +464,8 @@ class ConnectionService:
         For when the mapping changes — a new kind of activity is understood, a
         route is added — and the rows already fetched should be read again.
         Makes no call to the source, so it is not subject to the sync limit.
-        Trades already on file are recognised as duplicates and left alone, so
-        this only ever adds; it does not move or remove existing trades.
+        Trades already on file are recognised as duplicates: none is moved or
+        removed, and only their fees are brought up to date.
         """
         ba = self.get_brokerage_account(brokerage_account_id)
         if ba.status != "mapped" or not ba.default_sleeve_id:
@@ -489,9 +493,30 @@ class ConnectionService:
             "skipped_rows": dict(batch.skipped),
         }
         self._ingest(ba, batch, result)
+        result["fees_corrected"] = self._restate_fees(ba, batch)
         self.db.commit()
         self._after_trades_changed(ba)
         return result
+
+    def _restate_fees(self, ba: BrokerageAccount, batch) -> int:
+        """Bring the fees of trades already on file to the current reading.
+
+        A fee is not part of what identifies a trade, so a change in how it is
+        read leaves the trade a duplicate and would otherwise never reach it.
+        """
+        read = {t.external_id: t.commission for t in batch.trades if t.external_id}
+        corrected = 0
+        for trade in self.db.query(Trade).filter(
+            Trade.sleeve_id.in_(
+                self.db.query(Sleeve.id).filter(Sleeve.account_id == ba.account_id)
+            ),
+            Trade.external_id.in_(list(read)),
+        ):
+            fee = read[trade.external_id]
+            if Decimal(str(trade.commission or 0)) != fee:
+                trade.commission = fee
+                corrected += 1
+        return corrected
 
     def _refresh_cash_balance(self, ba: BrokerageAccount) -> None:
         """Record the cash the source reports for the account now.

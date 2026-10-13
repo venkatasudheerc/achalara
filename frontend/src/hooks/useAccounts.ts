@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { accountsApi } from '@/api/endpoints/accounts'
-import type { AccountCreate } from '@/api/types'
+import type { AccountCreate, CostBasisMethod } from '@/api/types'
 
 export const accountKeys = {
   list: (clientId: string) => ['accounts', clientId] as const,
@@ -68,6 +68,15 @@ export function useAccountPositions(clientId: string, accountId: string) {
     queryKey: accountKeys.positions(clientId, accountId),
     queryFn: () => accountsApi.getPositions(clientId, accountId),
     enabled: !!clientId && !!accountId,
+  })
+}
+
+/** Changes which lots a sale closes, so everything read from the account's lots is refetched. */
+export function useSetCostBasisMethod(clientId: string, accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (method: CostBasisMethod) => accountsApi.setCostBasisMethod(clientId, accountId, method),
+    onSuccess: () => qc.invalidateQueries(),
   })
 }
 

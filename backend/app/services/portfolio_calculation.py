@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from decimal import Decimal
 from typing import Dict, List
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
 import logging
 
 from app.models.trade import Trade
 from app.models.position import Position
+from app.models.account import Account
+from app.models.perf import MANUAL_SOURCE, DailyPrice
 from app.models.sleeve import Sleeve
-from app.services.corporate_actions import adjusted_trades
+from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
+from app.services.tax_lots import FIFO, carried_lots, is_index_option, match_lots
 
 
 def _as_sleeve_ids(sleeve_ids) -> List[str]:
@@ -60,9 +63,14 @@ class PortfolioCalculationService:
 
         open_by_symbol: Dict[str, Dict] = {}
         closed: List[Dict] = []
+        marked: List[Dict] = []
+        lots: Dict[str, List[Dict]] = {}
         unmatched = 0
         for result in results:
             closed.extend(result["closed"])
+            marked.extend(result.get("marked", []))
+            for symbol, held in result.get("lots", {}).items():
+                lots.setdefault(symbol, []).extend(held)
             unmatched += result["unmatched_sells"]
             for pos in result["open"]:
                 agg = open_by_symbol.get(pos["symbol"])
@@ -71,6 +79,8 @@ class PortfolioCalculationService:
                     continue
                 agg["quantity"] += pos["quantity"]
                 agg["cost_basis"] += pos["cost_basis"]
+                if "tax_cost" in agg or "tax_cost" in pos:
+                    agg["tax_cost"] = agg.get("tax_cost", 0) + pos.get("tax_cost", 0)
                 agg["trades_count"] += pos["trades_count"]
                 if agg["quantity"] != 0:
                     agg["avg_cost"] = agg["cost_basis"] / agg["quantity"]
@@ -80,18 +90,23 @@ class PortfolioCalculationService:
             # A long in one sleeve and an equal short in another net to nothing.
             "open": [p for p in open_by_symbol.values() if p["quantity"] != 0],
             "closed": closed,
+            # Year-end entries of index options: reported gains, not closes.
+            "marked": marked,
+            # Open long lots by symbol, for sleeves matched by lots.
+            "lots": lots,
             "unmatched_sells": unmatched,
         }
 
     def _fifo_positions(self, sleeve_id: str, as_of_date: date) -> Dict:
         """
-        Positions for one sleeve using first-in-first-out lots, long and short.
+        Positions for one sleeve by lots, long and short (see ``tax_lots``).
 
-        A SELL consumes the oldest long lots of its symbol; whatever it cannot
-        cover opens a short lot. A BUY covers the oldest short lots first, and
-        the rest opens a long lot. Lots are split when only partly consumed,
-        and every lot (or part of one) closed is one closed entry, with both
-        commissions apportioned by quantity.
+        A SELL consumes long lots of its symbol, in the order the account's
+        ``cost_basis_method`` gives; whatever it cannot cover opens a short
+        lot. A BUY covers the oldest short lots first, and the rest opens a
+        long lot. Lots are split when only partly consumed, and every lot (or
+        part of one) closed is one closed entry, with both commissions
+        apportioned by quantity.
 
         An open short is reported as an open position with negative quantity
         and negative cost basis (the proceeds received). ``unmatched_sells``
@@ -105,129 +120,110 @@ class PortfolioCalculationService:
             .order_by(Trade.trade_date, Trade.id)
             .all()
         )
-        trades = adjusted_trades(self.db, trades)
+        given_up, received = self._share_exchanges(sleeve_id, as_of_date)
+        views = adjusted_trades(self.db, trades)
         # Buys before sells within a day: the source reports dates, not times,
         # so a same-day round trip must not see its sell first.
-        trades.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
+        views.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
+        method = (
+            self.db.query(Account.cost_basis_method)
+            .join(Sleeve, Sleeve.account_id == Account.id)
+            .filter(Sleeve.id == sleeve_id)
+            .scalar()
+        )
+        return match_lots(
+            views,
+            as_of=as_of_date,
+            method=method or FIFO,
+            given_up=given_up,
+            received=received,
+            marks=self._year_end_marks({t.symbol for t in views}),
+        )
 
-        # Per symbol, oldest first, as [qty_left, unit_value, opened_at]:
-        # unit cost for a long lot, unit proceeds for a short one.
-        longs: Dict[str, List[list]] = {}
-        shorts: Dict[str, List[list]] = {}
-        closed_positions: List[Dict] = []
-        trades_count: Dict[str, int] = {}
+    def _share_exchanges(self, sleeve_id: str, as_of_date: date):
+        """Share-for-share merger legs that touch this sleeve.
 
-        def close(symbol, qty, entry, exit_price, opened_at, closed_at, realized):
-            basis = qty * entry
-            rg_pct = (realized / basis * 100) if basis > 0 else Decimal(0)
-            closed_positions.append(
-                {
-                    "symbol": symbol,
-                    "status": "CLOSED",
-                    "quantity": Decimal(0),
-                    "cost_basis": Decimal(0),
-                    "avg_cost": Decimal(0),
-                    "entry_price": float(entry),
-                    "exit_price": float(exit_price),
-                    "matched_quantity": float(qty),
-                    "realized_gain": realized,
-                    "realized_gain_pct": float(rg_pct),
-                    "opened_at": opened_at,
-                    "closed_at": closed_at,
-                    "trades_count": 2,
-                }
+        The shares given up and the shares received usually sit in different
+        sleeves of the account, so the pairing is made across all of them: a
+        day on which merger legs both leave and arrive is an exchange. Returns
+        the ids of this sleeve's legs that gave shares up, and for each of its
+        legs that received shares, the lots those shares carry.
+        """
+        account_sleeves = (
+            self.db.query(Sleeve.id)
+            .filter(
+                Sleeve.account_id
+                == self.db.query(Sleeve.account_id)
+                .filter(Sleeve.id == sleeve_id)
+                .scalar_subquery()
             )
-
-        for trade in trades:
-            symbol = trade.symbol
-            trades_count[symbol] = trades_count.get(symbol, 0) + 1
-            qty = Decimal(str(trade.quantity))
-            price = Decimal(str(trade.price))
-            per_share_comm = Decimal(str(trade.commission or 0)) / qty
-            remaining = qty
-
-            if trade.action == "BUY":
-                unit_cost = price + per_share_comm
-                open_shorts = shorts.get(symbol, [])
-                while remaining > 0 and open_shorts:
-                    lot = open_shorts[0]
-                    matched = min(remaining, lot[0])
-                    # Sold first at lot[1], bought back now at unit_cost.
-                    close(
-                        symbol,
-                        matched,
-                        lot[1],
-                        price,
-                        lot[2],
-                        trade.trade_date,
-                        matched * (lot[1] - unit_cost),
-                    )
-                    lot[0] -= matched
-                    remaining -= matched
-                    if lot[0] <= 0:
-                        open_shorts.pop(0)
-                if remaining > 0:
-                    longs.setdefault(symbol, []).append(
-                        [remaining, unit_cost, trade.trade_date]
-                    )
-                continue
-
-            unit_proceeds = price - per_share_comm
-            open_longs = longs.get(symbol, [])
-            while remaining > 0 and open_longs:
-                lot = open_longs[0]
-                matched = min(remaining, lot[0])
-                close(
-                    symbol,
-                    matched,
-                    lot[1],
-                    price,
-                    lot[2],
-                    trade.trade_date,
-                    matched * (unit_proceeds - lot[1]),
-                )
-                lot[0] -= matched
-                remaining -= matched
-                if lot[0] <= 0:
-                    open_longs.pop(0)
-            if remaining > 0:
-                shorts.setdefault(symbol, []).append(
-                    [remaining, unit_proceeds, trade.trade_date]
-                )
-
-        open_positions = []
-        net_short_symbols = 0
-        for symbol in sorted(set(longs) | set(shorts)):
-            # A symbol never holds long and short lots at once: each side is
-            # only opened after the other is exhausted.
-            long_lots = longs.get(symbol, [])
-            short_lots = shorts.get(symbol, [])
-            total_qty = sum((lot[0] for lot in long_lots), Decimal(0)) - sum(
-                (lot[0] for lot in short_lots), Decimal(0)
+            .all()
+        )
+        stored = (
+            self.db.query(Trade)
+            .filter(
+                Trade.sleeve_id.in_([row[0] for row in account_sleeves]),
+                Trade.notes.like(f"{MERGER_NOTE}%"),
+                Trade.trade_date <= as_of_date,
             )
-            if total_qty == 0:
-                continue
-            total_cost = sum((lot[0] * lot[1] for lot in long_lots), Decimal(0)) - sum(
-                (lot[0] * lot[1] for lot in short_lots), Decimal(0)
-            )
-            if total_qty < 0:
-                net_short_symbols += 1
-            open_positions.append(
-                {
-                    "symbol": symbol,
-                    "status": "OPEN",
-                    "quantity": total_qty,
-                    "cost_basis": total_cost,
-                    "avg_cost": total_cost / total_qty,
-                    "trades_count": trades_count.get(symbol, 0),
-                }
-            )
-
-        return {
-            "open": open_positions,
-            "closed": closed_positions,
-            "unmatched_sells": net_short_symbols,
+            .order_by(Trade.trade_date, Trade.id)
+            .all()
+        )
+        # An exchange needs a leg out and a leg in on one day, one of them here.
+        days = {
+            day
+            for day in {t.trade_date for t in stored}
+            if {t.action for t in stored if t.trade_date == day} == {"BUY", "SELL"}
+            and any(t.sleeve_id == sleeve_id for t in stored if t.trade_date == day)
         }
+        if not days:
+            return set(), {}
+        legs = adjusted_trades(self.db, [t for t in stored if t.trade_date in days])
+        by_day: Dict[date, List] = {}
+        for leg in legs:
+            by_day.setdefault(leg.trade_date, []).append(leg)
+
+        given_up, received = set(), {}
+        for day, day_legs in by_day.items():
+            out = [t for t in day_legs if t.action == "SELL"]
+            arriving = [t for t in day_legs if t.action == "BUY"]
+            shares_in = sum((t.quantity for t in arriving), Decimal(0))
+            carried: Dict[str, List[Dict]] = {t.id: [] for t in arriving}
+            for leg in out:
+                before = self._fifo_positions(leg.sleeve_id, day - timedelta(days=1))
+                lots = before["lots"].get(leg.symbol, [])
+                for arrival in arriving:
+                    carried[arrival.id].extend(
+                        carried_lots(
+                            lots,
+                            leg.quantity,
+                            arrival.quantity / shares_in,
+                            arrival.quantity / len(out),
+                        )
+                    )
+            if not any(carried.values()):
+                continue  # nothing on file to carry: the legs read as trades
+            given_up.update(t.id for t in out if t.sleeve_id == sleeve_id)
+            received.update(
+                (t.id, carried[t.id]) for t in arriving if t.sleeve_id == sleeve_id
+            )
+        return given_up, received
+
+    def _year_end_marks(self, symbols) -> Dict:
+        """Prices entered by hand for the index options among ``symbols``."""
+        wanted = [s for s in symbols if is_index_option(s)]
+        marks: Dict[str, List] = {}
+        if not wanted:
+            return marks
+        for row in (
+            self.db.query(DailyPrice)
+            .filter(DailyPrice.symbol.in_(wanted), DailyPrice.source == MANUAL_SOURCE)
+            .order_by(DailyPrice.price_date)
+        ):
+            marks.setdefault(row.symbol, []).append(
+                (row.price_date, Decimal(str(row.close)))
+            )
+        return marks
 
     def _round_trip_positions(self, sleeve_ids: List[str], as_of_date: date) -> Dict:
         """

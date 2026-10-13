@@ -1,0 +1,32 @@
+meta {
+  name: Stock Snapshot
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{webullBaseUrl}}/openapi/market-data/stock/snapshot?symbols=SPY&category=US_STOCK&extend_hour_required=false&overnight_required=false
+  body: none
+  auth: none
+}
+
+params:query {
+  symbols: SPY
+  category: US_STOCK
+  extend_hour_required: false
+  overnight_required: false
+}
+
+assert {
+  res.status: eq 200
+  res.body[0].symbol: isDefined
+  res.body[0].price: isDefined
+}
+
+docs {
+  The current quote for the symbol in the `symbols` query parameter (edit it on the
+  Params tab): last price, open, high, low, volume, bid and
+  ask. This is the call behind the backend's live price fetch.
+
+  `symbols` takes a comma-separated list. ETFs use `category=US_STOCK` too.
+}

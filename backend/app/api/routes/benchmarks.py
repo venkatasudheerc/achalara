@@ -4,10 +4,13 @@ import re
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from app.api.schemas.benchmark import BenchmarkPoint, BenchmarkResponse
 from app.connectors.webull_connector import WebullConnector
+from app.db.database import get_db
+from app.services import benchmarks
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -20,6 +23,7 @@ def get_benchmark_performance(
     ticker: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
 ) -> BenchmarkResponse:
     ticker = ticker.upper().strip()
     if not _TICKER_RE.match(ticker):
@@ -28,6 +32,19 @@ def get_benchmark_performance(
     if start_date and end_date and start_date > end_date:
         raise HTTPException(
             status_code=422, detail="start_date must be on or before end_date"
+        )
+
+    listed = benchmarks.find(ticker)
+    if listed and listed["kind"] == benchmarks.INDEX:
+        # An index is not served by the price source; its closes are on file.
+        return BenchmarkResponse(
+            ticker=ticker,
+            timeseries=[
+                BenchmarkPoint(date=day, close=close)
+                for day, close in benchmarks.closes(db, ticker)
+                if not (start_date and day < start_date)
+                and not (end_date and day > end_date)
+            ],
         )
 
     try:

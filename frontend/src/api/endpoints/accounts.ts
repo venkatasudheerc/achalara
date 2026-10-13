@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 import { PERIOD_BASIS } from './performance'
 import type {
-  AccountCreate, AccountResponse,
+  AccountCreate, AccountResponse, CostBasisMethod,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse, AccountPositionsResponse,
 } from '../types'
 
@@ -11,11 +11,19 @@ export const accountsApi = {
   create: (clientId: string, body: AccountCreate) =>
     apiClient.post<AccountResponse>(`${base(clientId)}`, body).then((r) => r.data),
 
+  /** The accounts the client owns. Accounts shared with them come from the account-access endpoint. */
   list: (clientId: string) =>
-    apiClient.get<AccountResponse[]>(`${base(clientId)}`).then((r) => r.data),
+    apiClient
+      .get<AccountResponse[]>(`${base(clientId)}`, { params: { include_shared: false } })
+      .then((r) => r.data),
 
   get: (clientId: string, accountId: string) =>
     apiClient.get<AccountResponse>(`${base(clientId)}/${accountId}`).then((r) => r.data),
+
+  setCostBasisMethod: (clientId: string, accountId: string, cost_basis_method: CostBasisMethod) =>
+    apiClient
+      .patch<AccountResponse>(`${base(clientId)}/${accountId}`, { cost_basis_method })
+      .then((r) => r.data),
 
   getPerformance: (
     clientId: string, accountId: string,

@@ -23,6 +23,13 @@ security:
 tags:
   - name: root
     description: Health and service info
+  - name: portal
+    description: >-
+      The client portal. Each route answers for the signed-in client across every account they
+      may view (their own and any shared with them), narrowed by `account_id` and `strategy_id`.
+      An advisor may preview a client's portal by passing `as_client`; from a client user that
+      parameter is ignored. Percentages are decimal fractions. `format=csv` on positions,
+      trades and realised gains returns the matching rows as a download.
   - name: auth
     description: >-
       Sign-in, one-time invite and reset links, and sharing an account with another client.
@@ -237,7 +244,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LinkResponse"
+                $ref: "#/components/schemas/OneTimeLink"
         "401":
           description: Not signed in
           content:
@@ -282,7 +289,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LinkResponse"
+                $ref: "#/components/schemas/OneTimeLink"
         "401":
           description: Not signed in
           content:
@@ -297,6 +304,65 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/users/{user_id}/email:
+    patch:
+      tags: [auth]
+      summary: Change the email a client signs in with (advisor only)
+      operationId: changeSignInEmail
+      description: >-
+        The old address stops working at once and the client is signed out everywhere. A password
+        already set is kept. Returns a one-time link to send them: a password reset, or a fresh
+        invite if they never set a password. Does not change the client's contact email.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmailRequest"
+      responses:
+        "200":
+          description: Email changed; the link to pass on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OneTimeLink"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Another login already uses that email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Not a valid email, or the user is not a client login
           content:
             application/json:
               schema:
@@ -709,10 +775,20 @@ paths:
           $ref: "#/components/responses/ValidationError"
     get:
       tags: [accounts]
-      summary: List all accounts for a client
+      summary: List the accounts a client owns and those shared with them
+      description: >-
+        The client's own accounts first, then accounts of other clients they have been allowed to
+        view, marked `shared`. Totals and performance for a client still cover only the accounts
+        they own.
       operationId: listAccounts
       parameters:
         - $ref: "#/components/parameters/client_id"
+        - name: include_shared
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: False lists only the accounts the client owns.
       responses:
         "200":
           description: List of accounts
@@ -736,6 +812,31 @@ paths:
       responses:
         "200":
           description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [accounts]
+      summary: Set the account's cost basis method
+      description: >-
+        Which lots a sale closes first, as set at the brokerage. Realised gains and open
+        cost are re-read under the new method. Advisor only.
+      operationId: updateAccount
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUpdate"
+      responses:
+        "200":
+          description: The account as it now stands
           content:
             application/json:
               schema:
@@ -2127,6 +2228,725 @@ paths:
 
 # ─── Components ───────────────────────────────────────────────────────────────
 
+  # ─── Client portal ──────────────────────────────────────────────────────────
+
+  /api/v1/portal/accounts:
+    get:
+      tags:
+      - portal
+      summary: Portal Accounts
+      description: Whose portal this is, the accounts in view, and each one's strategies.
+      operationId: portal_accounts_api_v1_portal_accounts_get
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountsResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/home:
+    get:
+      tags:
+      - portal
+      summary: Portal Home
+      description: 'The home page: value and the day''s change at live prices, this year''s
+  
+        return against the benchmark, where the money is, the largest holdings,
+  
+        and what is worth knowing (options about to expire, losses still carried,
+  
+        holdings about to become long-term, a holding that dominates).'
+      operationId: portal_home_api_v1_portal_home_get
+      parameters:
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalHomeResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/overview:
+    get:
+      tags:
+      - portal
+      summary: Portal Overview
+      description: 'Home: value, this year''s return and gain, each account by strategy,
+
+        the value over time, and recent activity.'
+      operationId: portal_overview_api_v1_portal_overview_get
+      parameters:
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalOverviewResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/positions:
+    get:
+      tags:
+      - portal
+      summary: Portal Positions
+      description: Open positions, one row per holding per strategy.
+      operationId: portal_positions_api_v1_portal_positions_get
+      parameters:
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one strategy
+          type: string
+          nullable: true
+        description: Limit to one strategy
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(stock|etf|option|other)$
+          nullable: true
+      - name: q
+        in: query
+        required: false
+        schema:
+          description: Symbol contains
+          type: string
+          maxLength: 50
+          nullable: true
+        description: Symbol contains
+      - name: live
+        in: query
+        schema:
+          type: boolean
+          default: true
+        description: Show holdings at the market's current price where one can be had. False shows the custodian's last reported prices.
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(json|csv)$
+          default: json
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalPositionsResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/activity:
+    get:
+      tags:
+      - portal
+      summary: Portal Activity
+      description: 'Trades and the cash that moved (deposits, withdrawals, transfers,
+  
+        dividends, interest, charges), newest first, with totals for everything
+  
+        the filters match.'
+      operationId: portal_activity_api_v1_portal_activity_get
+      parameters:
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Limit to one account in view
+          nullable: true
+        description: Limit to one account in view
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Limit to one strategy
+          nullable: true
+        description: Limit to one strategy
+      - name: show
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(all|trades|money|income|charges)$
+          default: all
+      - name: action
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(?i:buy|sell)$
+          nullable: true
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(stock|etf|option|other)$
+          nullable: true
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 50
+          description: Symbol contains
+          nullable: true
+        description: Symbol contains
+      - name: skip
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(json|csv)$
+          default: json
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalActivityResponse'
+        '401':
+          description: Not signed in
+          content: &id001
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: An account that is not in view
+          content: *id001
+  /api/v1/portal/trades:
+    get:
+      tags:
+      - portal
+      summary: Portal Trades
+      description: Trades, newest first, with totals for everything the filters match.
+      operationId: portal_trades_api_v1_portal_trades_get
+      parameters:
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one strategy
+          type: string
+          nullable: true
+        description: Limit to one strategy
+      - name: action
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(?i:buy|sell)$
+          nullable: true
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(stock|etf|option|other)$
+          nullable: true
+      - name: q
+        in: query
+        required: false
+        schema:
+          description: Symbol contains
+          type: string
+          maxLength: 50
+          nullable: true
+        description: Symbol contains
+      - name: skip
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(json|csv)$
+          default: json
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalTradesResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/realized:
+    get:
+      tags:
+      - portal
+      summary: Portal Realized
+      description: Closed positions and their realised gains, newest first.
+      operationId: portal_realized_api_v1_portal_realized_get
+      parameters:
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          description: Closed on or after
+          type: string
+          format: date
+          nullable: true
+        description: Closed on or after
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          description: Closed on or before
+          type: string
+          format: date
+          nullable: true
+        description: Closed on or before
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one strategy
+          type: string
+          nullable: true
+        description: Limit to one strategy
+      - name: term
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(short|long)$
+          nullable: true
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(stock|etf|option|other)$
+          nullable: true
+      - name: result
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(gain|loss)$
+          nullable: true
+      - name: q
+        in: query
+        required: false
+        schema:
+          description: Symbol contains
+          type: string
+          maxLength: 50
+          nullable: true
+        description: Symbol contains
+      - name: grain
+        in: query
+        schema:
+          type: string
+          enum: [month, quarter]
+          default: month
+        description: How `periods` is cut.
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(json|csv)$
+          default: json
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalRealizedResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/performance:
+    get:
+      tags:
+      - portal
+      summary: Portal Performance
+      description: 'Returns for a window: a summary, the cumulative lines against the
+
+        benchmark, every month of the record, and rows by period.'
+      operationId: portal_performance_api_v1_portal_performance_get
+      parameters:
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one account in view
+          type: string
+          nullable: true
+        description: Limit to one account in view
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          description: Limit to one strategy
+          type: string
+          nullable: true
+        description: Limit to one strategy
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+      - name: grain
+        in: query
+        required: false
+        schema:
+          type: string
+          description: day | week | month | quarter | year
+          default: month
+        description: day | week | month | quarter | year
+      - name: benchmark
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: A code from the response's `benchmarks`; SPX (the S&P 500 index) when left out. 422 for any other.
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          description: 'Advisor only: the client whose portal to preview'
+          type: string
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalPerformanceResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not in view, or (advisor) client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid parameter, or an advisor did not name a client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     sessionCookie:
@@ -2291,6 +3111,19 @@ components:
       properties:
         client_id:
           type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: The address the client will sign in with. Defaults to the client's own email.
+
+    ChangeEmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
 
     AccountAccessRequest:
       type: object
@@ -2365,7 +3198,7 @@ components:
           format: date-time
           nullable: true
 
-    LinkResponse:
+    OneTimeLink:
       type: object
       required: [token, path, purpose, email, expires_at]
       properties:
@@ -2565,6 +3398,30 @@ components:
         account_number:
           type: string
           nullable: true
+        cost_basis_method:
+          $ref: "#/components/schemas/CostBasisMethod"
+        shared:
+          type: boolean
+          default: false
+          description: True for an account another client owns that this client may view. `client_id` is always the owner.
+        owner_name:
+          type: string
+          nullable: true
+
+    AccountUpdate:
+      type: object
+      required: [cost_basis_method]
+      properties:
+        cost_basis_method:
+          $ref: "#/components/schemas/CostBasisMethod"
+
+    CostBasisMethod:
+      type: string
+      enum: [FIFO, MIN_TAX]
+      default: FIFO
+      description: >-
+        Which lots a sale closes first. FIFO: oldest first. MIN_TAX: losses before gains,
+        short-term losses first, then long-term losses, long-term gains, short-term gains.
 
     AccountPositionsResponse:
       type: object
@@ -2766,6 +3623,36 @@ components:
           nullable: true
         trades_count:
           type: integer
+        cost:
+          type: number
+          nullable: true
+          description: What the lot cost, including any earlier loss a wash sale carried into it.
+        proceeds:
+          type: number
+          nullable: true
+        disallowed_loss:
+          type: number
+          nullable: true
+          description: The part of this lot's loss a wash sale disallowed and carried into the shares that replaced it.
+        reported_gain:
+          type: number
+          nullable: true
+          description: Proceeds less cost, plus the disallowed loss — the gain a brokerage reports.
+        short_term_gain:
+          type: number
+          nullable: true
+        long_term_gain:
+          type: number
+          nullable: true
+        term:
+          type: string
+          nullable: true
+          description: short | long | mixed (an index option, 60% long-term and 40% short-term)
+        adjustments:
+          type: array
+          items:
+            type: string
+            enum: [wash, mark, unmarked, index_option, written_option]
 
     PortfolioSummary:
       type: object
@@ -2801,6 +3688,13 @@ components:
       properties:
         total_realized_gain:
           type: number
+        total_reported_gain:
+          type: number
+          nullable: true
+          description: After wash-sale disallowances; null where the sleeve is not matched by lots.
+        total_disallowed_loss:
+          type: number
+          nullable: true
         positions:
           type: array
           items:
@@ -3649,3 +4543,1272 @@ components:
             provisional_days: {type: integer}
             unpriced_pct: {type: number}
             unpriced_value: {type: number}
+
+    # ── Client portal ────────────────────────────────────────────────────────
+
+    ActivityItem:
+      properties:
+        date:
+          type: string
+          format: date
+        kind:
+          type: string
+        symbol:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+          nullable: true
+        amount:
+          type: number
+        account_name:
+          type: string
+      type: object
+      required:
+      - date
+      - kind
+      - amount
+      - account_name
+    CumulativePoint:
+      properties:
+        date:
+          type: string
+          format: date
+        twr:
+          type: number
+          nullable: true
+        mwr:
+          type: number
+          nullable: true
+        benchmark:
+          type: number
+          nullable: true
+        value:
+          type: number
+          nullable: true
+          description: What it was worth that day.
+      type: object
+      required:
+      - date
+    MonthFigure:
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        twr_pct:
+          type: number
+          nullable: true
+      type: object
+      required:
+      - year
+      - month
+    OverviewAccount:
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+        name:
+          type: string
+        number_last4:
+          type: string
+          nullable: true
+        shared:
+          type: boolean
+        value:
+          type: number
+          nullable: true
+        cash:
+          type: number
+          nullable: true
+        twr_pct:
+          type: number
+          nullable: true
+        gain:
+          type: number
+          nullable: true
+        sleeves:
+          items:
+            $ref: '#/components/schemas/OverviewSleeve'
+          type: array
+      type: object
+      required:
+      - id
+      - client_id
+      - name
+      - shared
+      - sleeves
+    OverviewSleeve:
+      properties:
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+        value:
+          type: number
+          nullable: true
+        twr_pct:
+          type: number
+          nullable: true
+        gain:
+          type: number
+          nullable: true
+      type: object
+      required:
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+    PortalAccount:
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+        name:
+          type: string
+        number_last4:
+          type: string
+          nullable: true
+        shared:
+          type: boolean
+        sleeves:
+          items:
+            $ref: '#/components/schemas/PortalSleeve'
+          type: array
+          default: []
+      type: object
+      required:
+      - id
+      - client_id
+      - name
+      - shared
+    PortalAccountsResponse:
+      properties:
+        viewer:
+          $ref: '#/components/schemas/PortalViewerResponse'
+        accounts:
+          items:
+            $ref: '#/components/schemas/PortalAccount'
+          type: array
+      type: object
+      required:
+      - viewer
+      - accounts
+    PortalClosedLot:
+      properties:
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+        symbol:
+          type: string
+        security_type:
+          type: string
+        event:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        closed_at:
+          type: string
+          format: date
+        days_held:
+          type: integer
+          nullable: true
+        term:
+          type: string
+        quantity:
+          type: number
+          nullable: true
+        multiplier:
+          type: integer
+          default: 1
+        entry_price:
+          type: number
+          nullable: true
+        exit_price:
+          type: number
+          nullable: true
+        cost:
+          type: number
+          description: What the lot cost, including any earlier loss a wash sale carried into it.
+        proceeds:
+          type: number
+        disallowed_loss:
+          type: number
+          default: 0
+          description: The part of this lot's loss a wash sale disallowed and carried into the shares that replaced it.
+        short_term_gain:
+          type: number
+          default: 0
+        long_term_gain:
+          type: number
+          default: 0
+        realized_gain:
+          type: number
+          description: Proceeds less cost, plus the disallowed loss — the gain a brokerage reports.
+        realized_gain_pct:
+          type: number
+          nullable: true
+        adjustments:
+          type: array
+          items:
+            type: string
+            enum: [wash, mark, unmarked, index_option, written_option]
+      type: object
+      required:
+      - account_id
+      - account_name
+      - shared
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+      - symbol
+      - security_type
+      - closed_at
+      - term
+      - realized_gain
+    PortalMonth:
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        twr_pct:
+          type: number
+          nullable: true
+        is_provisional:
+          type: boolean
+      type: object
+      required:
+      - year
+      - month
+      - is_provisional
+    PortalHomeResponse:
+      properties:
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        live_prices_at:
+          type: string
+          format: date-time
+          nullable: true
+        record_through:
+          type: string
+          format: date
+          nullable: true
+        is_provisional:
+          type: boolean
+        total_value:
+          type: number
+        day_change:
+          type: number
+          nullable: true
+        day_change_pct:
+          type: number
+          nullable: true
+        ytd_twr_pct:
+          type: number
+          nullable: true
+        benchmark:
+          type: string
+        benchmark_ytd_pct:
+          type: number
+          nullable: true
+        excess_ytd_pct:
+          type: number
+          nullable: true
+        first_date:
+          type: string
+          format: date
+          nullable: true
+          description: When the record these figures are drawn from starts.
+        since_start_twr_pct:
+          type: number
+          nullable: true
+        max_drawdown_pct:
+          type: number
+          nullable: true
+          description: The largest fall from a high over the whole record, as a negative fraction.
+        allocation:
+          items:
+            $ref: '#/components/schemas/HomeAllocation'
+          type: array
+        cash_value:
+          type: number
+          nullable: true
+        income_ytd:
+          type: number
+        realized_ytd:
+          type: number
+        realized_short_ytd:
+          type: number
+        realized_long_ytd:
+          type: number
+        added_ytd:
+          type: number
+          nullable: true
+        holdings_count:
+          type: integer
+        top_holdings:
+          items:
+            $ref: '#/components/schemas/HomeHolding'
+          type: array
+        movers_up:
+          items:
+            $ref: '#/components/schemas/HomeHolding'
+          type: array
+        movers_down:
+          items:
+            $ref: '#/components/schemas/HomeHolding'
+          type: array
+        expiring_options:
+          items:
+            $ref: '#/components/schemas/ExpiringOption'
+          type: array
+        carried_losses:
+          type: number
+        turning_long_term:
+          items:
+            $ref: '#/components/schemas/TurningLongTerm'
+          type: array
+        concentrated:
+          items:
+            $ref: '#/components/schemas/HomeHolding'
+          type: array
+      type: object
+      required:
+      - is_provisional
+      - total_value
+      - benchmark
+      - allocation
+      - income_ytd
+      - realized_ytd
+      - realized_short_ytd
+      - realized_long_ytd
+      - holdings_count
+      - top_holdings
+      - expiring_options
+      - carried_losses
+      - turning_long_term
+      - concentrated
+      description: 'The home page. Value and the day''s change are at live prices; the
+    
+        year''s figures run through ``record_through``, the custodian''s last day.'
+    HomeHolding:
+      properties:
+        symbol:
+          type: string
+        value:
+          type: number
+        day_change:
+          type: number
+          nullable: true
+          description: Today's move in dollars.
+        day_change_pct:
+          type: number
+          nullable: true
+        share:
+          type: number
+          nullable: true
+      type: object
+      required:
+      - symbol
+      - value
+    HomeAllocation:
+      properties:
+        kind:
+          type: string
+        value:
+          type: number
+        share:
+          type: number
+          nullable: true
+      type: object
+      required:
+      - kind
+      - value
+    ExpiringOption:
+      properties:
+        symbol:
+          type: string
+        account_name:
+          type: string
+        underlying:
+          type: string
+        kind:
+          type: string
+        strike:
+          type: number
+        expiry:
+          type: string
+          format: date
+        days:
+          type: integer
+        contracts:
+          type: number
+        written:
+          type: boolean
+        underlying_price:
+          type: number
+          nullable: true
+        above_strike_pct:
+          type: number
+          nullable: true
+      type: object
+      required:
+      - symbol
+      - account_name
+      - underlying
+      - kind
+      - strike
+      - expiry
+      - days
+      - contracts
+      - written
+    TurningLongTerm:
+      properties:
+        symbol:
+          type: string
+        date:
+          type: string
+          format: date
+      type: object
+      required:
+      - symbol
+      - date
+    PortalOverviewResponse:
+      properties:
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        includes_cash:
+          type: boolean
+        total_value:
+          type: number
+          nullable: true
+        cash_value:
+          type: number
+          nullable: true
+        ytd_twr_pct:
+          type: number
+          nullable: true
+        ytd_gain:
+          type: number
+          nullable: true
+        ytd_realized:
+          type: number
+        is_provisional:
+          type: boolean
+        accounts:
+          items:
+            $ref: '#/components/schemas/OverviewAccount'
+          type: array
+        timeseries:
+          items:
+            $ref: '#/components/schemas/ValuePoint'
+          type: array
+        recent:
+          items:
+            $ref: '#/components/schemas/ActivityItem'
+          type: array
+      type: object
+      required:
+      - includes_cash
+      - ytd_realized
+      - is_provisional
+      - accounts
+      - timeseries
+      - recent
+    BenchmarkChoice:
+      type: object
+      required: [code, name, includes_dividends]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        includes_dividends:
+          type: boolean
+          description: True for a fund, whose closes include its dividends; false for an index level.
+    PortalPerformanceResponse:
+      properties:
+        first_date:
+          type: string
+          format: date
+          nullable: true
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        includes_cash:
+          type: boolean
+        benchmark:
+          type: string
+        benchmarks:
+          type: array
+          description: What the return may be compared with.
+          items:
+            $ref: '#/components/schemas/BenchmarkChoice'
+        grain:
+          type: string
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/PortalSummary'
+          nullable: true
+        series:
+          items:
+            $ref: '#/components/schemas/CumulativePoint'
+          type: array
+        months:
+          items:
+            $ref: '#/components/schemas/PortalMonth'
+          type: array
+        years:
+          items:
+            $ref: '#/components/schemas/PortalYear'
+          type: array
+        periods:
+          items:
+            $ref: '#/components/schemas/PortalPeriod'
+          type: array
+      type: object
+      required:
+      - includes_cash
+      - benchmark
+      - grain
+      - series
+      - months
+      - years
+      - periods
+    PortalPeriod:
+      properties:
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        opening_value:
+          type: number
+        closing_value:
+          type: number
+        net_flow:
+          type: number
+        gain:
+          type: number
+        twr_pct:
+          type: number
+          nullable: true
+        twr_ytd_pct:
+          type: number
+          nullable: true
+        benchmark_return_pct:
+          type: number
+          nullable: true
+        excess_return_pct:
+          type: number
+          nullable: true
+        is_provisional:
+          type: boolean
+      type: object
+      required:
+      - period_start
+      - period_end
+      - opening_value
+      - closing_value
+      - net_flow
+      - gain
+      - is_provisional
+    PortalPosition:
+      properties:
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+        symbol:
+          type: string
+        security_type:
+          type: string
+        quantity:
+          type: number
+        avg_cost:
+          type: number
+          nullable: true
+        multiplier:
+          type: integer
+          default: 1
+        price:
+          type: number
+          nullable: true
+        price_source:
+          type: string
+          nullable: true
+          enum: [live, custodian]
+          description: live is the market's current price; custodian is its last reported price, kept where there is no live quote.
+        day_change:
+          type: number
+          nullable: true
+          description: Change in value since the previous close, when the price is live.
+        day_change_pct:
+          type: number
+          nullable: true
+        cost_basis:
+          type: number
+          nullable: true
+        market_value:
+          type: number
+          nullable: true
+        unrealized_gain:
+          type: number
+          nullable: true
+        unrealized_gain_pct:
+          type: number
+          nullable: true
+        is_short:
+          type: boolean
+      type: object
+      required:
+      - account_id
+      - account_name
+      - shared
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+      - symbol
+      - security_type
+      - quantity
+      - is_short
+    PortalPositionsResponse:
+      properties:
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        live_prices_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the live prices shown were fetched; null when none are live.
+        count:
+          type: integer
+        unpriced_count:
+          type: integer
+        total_market_value:
+          type: number
+        total_cost_basis:
+          type: number
+        total_unrealized_gain:
+          type: number
+        total_unrealized_gain_pct:
+          type: number
+          nullable: true
+        options:
+          allOf:
+          - $ref: '#/components/schemas/OptionsCombined'
+          nullable: true
+        account_balances:
+          type: array
+          description: Cash and the custodian's combined options value by account, as last reported. Not part of the totals.
+          items:
+            type: object
+            required: [account_id, as_of]
+            properties:
+              account_id:
+                type: string
+              as_of:
+                type: string
+                format: date
+              cash_value:
+                type: number
+                nullable: true
+                description: Negative when money is borrowed.
+              options_value:
+                type: number
+                nullable: true
+              options_cost:
+                type: number
+                nullable: true
+                description: What those options cost, negative for premiums received; value less this is their unrealised gain.
+        positions:
+          items:
+            $ref: '#/components/schemas/PortalPosition'
+          type: array
+      type: object
+      required:
+      - count
+      - unpriced_count
+      - total_market_value
+      - total_cost_basis
+      - total_unrealized_gain
+      - positions
+    GainPeriod:
+      properties:
+        count:
+          type: integer
+        short_term:
+          type: number
+        long_term:
+          type: number
+        realized:
+          type: number
+        disallowed_loss:
+          type: number
+        dividends:
+          type: number
+        interest:
+          type: number
+        margin_interest:
+          type: number
+          description: Interest paid on money borrowed over the same dates; negative.
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+      type: object
+      required:
+      - count
+      - short_term
+      - long_term
+      - realized
+      - disallowed_loss
+      - dividends
+      - interest
+      - period_start
+      - period_end
+    GainSleeve:
+      properties:
+        count:
+          type: integer
+        short_term:
+          type: number
+        long_term:
+          type: number
+        realized:
+          type: number
+        disallowed_loss:
+          type: number
+        dividends:
+          type: number
+        interest:
+          type: number
+        margin_interest:
+          type: number
+          description: Interest paid on money borrowed over the same dates; negative.
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+      type: object
+      required:
+      - count
+      - short_term
+      - long_term
+      - realized
+      - disallowed_loss
+      - dividends
+      - interest
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+    GainAccount:
+      properties:
+        count:
+          type: integer
+        short_term:
+          type: number
+        long_term:
+          type: number
+        realized:
+          type: number
+        disallowed_loss:
+          type: number
+        dividends:
+          type: number
+        interest:
+          type: number
+        margin_interest:
+          type: number
+          description: Interest paid on money borrowed over the same dates; negative.
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+        sleeves:
+          items:
+            $ref: '#/components/schemas/GainSleeve'
+          type: array
+      type: object
+      required:
+      - count
+      - short_term
+      - long_term
+      - realized
+      - disallowed_loss
+      - dividends
+      - interest
+      - account_id
+      - account_name
+      - shared
+      - sleeves
+    PortalRealizedResponse:
+      properties:
+        count:
+          type: integer
+        net_realized:
+          type: number
+        short_term:
+          type: number
+        long_term:
+          type: number
+        gains:
+          type: number
+        losses:
+          type: number
+        cost:
+          type: number
+        proceeds:
+          type: number
+        disallowed_loss:
+          type: number
+        dividends:
+          type: number
+          description: Received over the same dates. Follows the dates, account and strategy filters only, and is not part of net_realized.
+        interest:
+          type: number
+        margin_interest:
+          type: number
+          description: Interest paid on money borrowed over the same dates; negative.
+        years:
+          items:
+            type: integer
+          type: array
+        periods:
+          type: array
+          description: Gains and income by month or quarter (see `grain`), newest first.
+          items:
+            $ref: '#/components/schemas/GainPeriod'
+        accounts:
+          type: array
+          description: The same figures by account, and by strategy within each.
+          items:
+            $ref: '#/components/schemas/GainAccount'
+        positions:
+          items:
+            $ref: '#/components/schemas/PortalClosedLot'
+          type: array
+      type: object
+      required:
+      - count
+      - net_realized
+      - short_term
+      - long_term
+      - gains
+      - losses
+      - years
+      - positions
+    PortalSleeve:
+      properties:
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+      type: object
+      required:
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+    PortalSummary:
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        opening_value:
+          type: number
+        closing_value:
+          type: number
+        cash_value:
+          type: number
+          nullable: true
+        net_flow:
+          type: number
+        gain:
+          type: number
+        twr_pct:
+          type: number
+          nullable: true
+        mwr_pct:
+          type: number
+          nullable: true
+        benchmark_return_pct:
+          type: number
+          nullable: true
+        benchmark_from:
+          type: string
+          format: date
+          nullable: true
+        excess_return_pct:
+          type: number
+          nullable: true
+        is_provisional:
+          type: boolean
+        best_month:
+          allOf:
+          - $ref: '#/components/schemas/MonthFigure'
+          nullable: true
+        worst_month:
+          allOf:
+          - $ref: '#/components/schemas/MonthFigure'
+          nullable: true
+        months_up:
+          type: integer
+          default: 0
+        months_total:
+          type: integer
+          default: 0
+      type: object
+      required:
+      - start
+      - end
+      - opening_value
+      - closing_value
+      - net_flow
+      - gain
+      - is_provisional
+    PortalTrade:
+      properties:
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+        id:
+          type: string
+        trade_date:
+          type: string
+          format: date
+        symbol:
+          type: string
+        action:
+          type: string
+        event:
+          type: string
+          nullable: true
+        security_type:
+          type: string
+        quantity:
+          type: number
+        price:
+          type: number
+        multiplier:
+          type: integer
+          default: 1
+        amount:
+          type: number
+        commission:
+          type: number
+      type: object
+      required:
+      - account_id
+      - account_name
+      - shared
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+      - id
+      - trade_date
+      - symbol
+      - action
+      - security_type
+      - quantity
+      - price
+      - amount
+      - commission
+    ActivityRow:
+      properties:
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+        sleeve_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        kind:
+          type: string
+        label:
+          type: string
+        detail:
+          type: string
+          nullable: true
+        symbol:
+          type: string
+          nullable: true
+        action:
+          type: string
+          nullable: true
+        event:
+          type: string
+          nullable: true
+        security_type:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        multiplier:
+          type: integer
+          nullable: true
+        amount:
+          type: number
+      type: object
+      required:
+      - account_id
+      - account_name
+      - shared
+      - sleeve_id
+      - strategy_id
+      - strategy_name
+      - id
+      - date
+      - kind
+      - label
+      - amount
+      description: 'One thing that happened: a trade, or cash that moved.'
+    ActivityAccount:
+      properties:
+        total:
+          type: integer
+        trades:
+          type: integer
+        bought:
+          type: number
+        sold:
+          type: number
+        money_in:
+          type: number
+        money_out:
+          type: number
+        income:
+          type: number
+        charges:
+          type: number
+        account_id:
+          type: string
+        account_name:
+          type: string
+        shared:
+          type: boolean
+      type: object
+      required:
+      - total
+      - trades
+      - bought
+      - sold
+      - money_in
+      - money_out
+      - income
+      - charges
+      - account_id
+      - account_name
+      - shared
+    PortalActivityResponse:
+      properties:
+        total:
+          type: integer
+        trades:
+          type: integer
+        bought:
+          type: number
+        sold:
+          type: number
+        money_in:
+          type: number
+        money_out:
+          type: number
+        income:
+          type: number
+        charges:
+          type: number
+        skip:
+          type: integer
+        limit:
+          type: integer
+        net_invested:
+          type: number
+        accounts:
+          items:
+            $ref: '#/components/schemas/ActivityAccount'
+          type: array
+          default: []
+        rows:
+          items:
+            $ref: '#/components/schemas/ActivityRow'
+          type: array
+      type: object
+      required:
+      - total
+      - trades
+      - bought
+      - sold
+      - money_in
+      - money_out
+      - income
+      - charges
+      - skip
+      - limit
+      - net_invested
+      - rows
+    PortalTradesResponse:
+      properties:
+        total:
+          type: integer
+        skip:
+          type: integer
+        limit:
+          type: integer
+        bought:
+          type: number
+        sold:
+          type: number
+        net_invested:
+          type: number
+        accounts:
+          type: array
+          description: Each account with a matching trade and its totals, whatever page `trades` is on.
+          items:
+            type: object
+            required: [account_id, account_name, shared, total, bought, sold]
+            properties:
+              account_id:
+                type: string
+              account_name:
+                type: string
+              shared:
+                type: boolean
+              total:
+                type: integer
+              bought:
+                type: number
+              sold:
+                type: number
+        trades:
+          items:
+            $ref: '#/components/schemas/PortalTrade'
+          type: array
+      type: object
+      required:
+      - total
+      - skip
+      - limit
+      - bought
+      - sold
+      - net_invested
+      - trades
+    PortalViewerResponse:
+      properties:
+        client_id:
+          type: string
+        name:
+          type: string
+        preview:
+          type: boolean
+      type: object
+      required:
+      - client_id
+      - name
+      - preview
+    PortalYear:
+      properties:
+        year:
+          type: integer
+        twr_pct:
+          type: number
+          nullable: true
+        is_provisional:
+          type: boolean
+      type: object
+      required:
+      - year
+      - is_provisional
+    ValuePoint:
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+      type: object
+      required:
+      - date
+      - value
+    OptionsCombined:
+      properties:
+        count:
+          type: integer
+        market_value:
+          type: number
+        cost_basis:
+          type: number
+        unrealized_gain:
+          type: number
+      type: object
+      required:
+      - count
+      - market_value
+      - cost_basis
+      - unrealized_gain
+      description: The custodian's value for the options listed without a price, together.

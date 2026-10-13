@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.connectors.models import NormalizedCashActivity
-from app.models.cash_activity import INCOME_TYPES, CashActivity
+from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.trade import Trade
 
 logger = logging.getLogger(__name__)
@@ -189,4 +189,6 @@ def _counts(activity: CashActivity, traded_symbols: set) -> bool:
     """Whether an activity is investment income or cost for its sleeve set."""
     if activity.type not in INCOME_TYPES:
         return False
-    return activity.type == "FEE" or activity.symbol in traded_symbols
+    return (
+        activity.type in ("FEE", MARGIN_INTEREST) or activity.symbol in traded_symbols
+    )

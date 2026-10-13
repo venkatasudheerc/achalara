@@ -20,11 +20,12 @@ import calendar
 import math
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.models.perf import DailyPrice, DailyValuation
+from app.models.perf import DailyValuation
+from app.services import benchmarks
 from app.services.mwr_calculation import MWRCalculationService
 from app.services.performance_build_service import (
     ZERO,
@@ -343,12 +344,7 @@ class PerformanceStatsService:
     # ------------------------------------------------------------------
 
     def _benchmark_closes(self, ticker: str):
-        return [
-            (day, float(close))
-            for day, close in self.db.query(DailyPrice.price_date, DailyPrice.close)
-            .filter(DailyPrice.symbol == ticker.upper(), DailyPrice.source == "webull")
-            .order_by(DailyPrice.price_date)
-        ]
+        return benchmarks.closes(self.db, ticker)
 
     @staticmethod
     def _close_on(closes, day: date) -> Optional[float]:
@@ -369,6 +365,143 @@ class PerformanceStatsService:
         if not before or not after:
             return None
         return after / before - 1
+
+    # ------------------------------------------------------------------
+    # A chosen window
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _within(
+        series: Sequence[Day], start: Optional[date], end: Optional[date]
+    ) -> List[Day]:
+        return [
+            d
+            for d in series
+            if (start is None or d.date >= start) and (end is None or d.date <= end)
+        ]
+
+    def _benchmark_base(
+        self, closes, first: date, last: date
+    ) -> Tuple[Optional[float], Optional[date]]:
+        """The benchmark close a window's return is measured from.
+
+        Normally the close before the window opens. When the benchmark's
+        history begins inside the window, its first close there is used, and
+        that date is returned so the reader can be told.
+        """
+        before = self._close_on(closes, first - timedelta(days=1))
+        if before:
+            return before, None
+        for day, close in closes:
+            if first <= day <= last:
+                return close, day
+        return None, None
+
+    def window_summary(
+        self,
+        series: Sequence[Day],
+        start: Optional[date] = None,
+        end: Optional[date] = None,
+        benchmark: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Values, flows and returns for the days of ``series`` in a window.
+
+        Returns are for the window as a whole (not annualised). None when the
+        window holds no days.
+        """
+        days = self._within(series, start, end)
+        if not days:
+            return None
+        before = [d for d in series if d.date < days[0].date]
+        opening = before[-1].total if before else ZERO
+        closing = days[-1].total
+        net_flow = sum((d.net_flow for d in days), ZERO)
+        twr = self._twr(days)
+        benchmark_return = None
+        benchmark_from = None
+        if benchmark:
+            closes = self._benchmark_closes(benchmark)
+            base, benchmark_from = self._benchmark_base(
+                closes, days[0].date, days[-1].date
+            )
+            last = self._close_on(closes, days[-1].date)
+            if base and last:
+                benchmark_return = last / base - 1
+        return {
+            "start": days[0].date,
+            "end": days[-1].date,
+            "opening_value": float(opening),
+            "closing_value": float(closing),
+            "cash_value": float(days[-1].cash) if days[-1].cash is not None else None,
+            "net_flow": float(net_flow),
+            "gain": float(closing - opening - net_flow),
+            "twr_pct": twr,
+            "mwr_pct": self._mwr(opening, days),
+            "benchmark_return_pct": benchmark_return,
+            # Set when the benchmark's history starts after the window does.
+            "benchmark_from": benchmark_from,
+            "excess_return_pct": (
+                twr - benchmark_return
+                if twr is not None and benchmark_return is not None
+                else None
+            ),
+            "is_provisional": any(d.provisional for d in days),
+        }
+
+    def cumulative_series(
+        self,
+        series: Sequence[Day],
+        start: Optional[date] = None,
+        end: Optional[date] = None,
+        benchmark: Optional[str] = None,
+        max_points: int = 160,
+    ) -> List[Dict]:
+        """Cumulative returns through a window, every line starting at zero,
+        and the value on each day.
+
+        One point per day for a short window; a longer one is thinned to about
+        ``max_points`` evenly spaced days, always keeping the last.
+        """
+        days = self._within(series, start, end)
+        if not days:
+            return []
+        before = [d for d in series if d.date < days[0].date]
+        opening = before[-1].total if before else ZERO
+        origin = days[0].date - timedelta(days=1)
+        closes = self._benchmark_closes(benchmark) if benchmark else []
+        base, _ = self._benchmark_base(closes, days[0].date, days[-1].date)
+
+        step = max(1, -(-len(days) // max_points))
+        keep = set(range(step - 1, len(days), step)) | {len(days) - 1}
+        points = [
+            {
+                "date": origin,
+                "twr": 0.0,
+                "mwr": 0.0,
+                "benchmark": 0.0 if base else None,
+                "value": float(opening) if before else None,
+            }
+        ]
+        growth, measured = 1.0, True
+        for index, day in enumerate(days):
+            if day.factor is not None:
+                growth *= float(day.factor)
+            elif day.total != 0 or day.flow_in != 0 or day.flow_out != 0:
+                measured = False
+            if index not in keep:
+                continue
+            close = self._close_on(closes, day.date) if base else None
+            points.append(
+                {
+                    "date": day.date,
+                    "twr": growth - 1 if measured else None,
+                    "mwr": self._mwr(opening, days[: index + 1]),
+                    "benchmark": close / base - 1 if close and base else None,
+                    # What it was worth that day, deposits and all.
+                    "value": float(day.total),
+                }
+            )
+        return points
 
     # ------------------------------------------------------------------
     # The report's figures
@@ -513,6 +646,13 @@ class PerformanceStatsService:
                 "unpriced_value": float(series[-1].unpriced),
             },
         }
+
+    def deepest_fall(self, series: Sequence[Day]) -> Optional[float]:
+        """The largest fall from a high over ``series``, as a negative
+        fraction; None when the series never fell (or is empty)."""
+        falls = [p["drawdown"] for p in self._drawdowns(self._cumulative(series))]
+        deepest = min(falls, default=0)
+        return deepest if deepest < 0 else None
 
     @staticmethod
     def _cumulative(series: Sequence[Day]) -> List[Dict]:
