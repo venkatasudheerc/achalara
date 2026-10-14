@@ -174,9 +174,12 @@ CSS variables in `src/index.css` (`:root` for light, `:root.dark` for dark). Bra
 
 ### Light and dark
 
-The viewer chooses with `<ThemeToggle>` (in the advisor sidebar, the portal header and the
-sign-in panel). `ThemeContext` keeps the choice in `localStorage`, defaults to the system
-setting, and puts `dark` on `<html>`; a script in `index.html` does the same before first paint.
+**For now the app is dark for everyone**: `THEME_CHOICE_OFFERED` in `ThemeContext` is false,
+so the theme is always dark whatever was saved or the system prefers, `<ThemeToggle>` renders
+nothing, and the script in `index.html` puts `dark` on `<html>` before first paint. Keep the
+light values below working: to offer the choice again, set the flag to true and restore the
+saved-choice lines kept as a comment in `index.html`. The toggle then shows in the advisor
+sidebar, the portal header and the sign-in panel, and the choice is kept in `localStorage`.
 
 | Token | Use | Light | Dark |
 |---|---|---|---|
