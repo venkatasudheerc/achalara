@@ -375,7 +375,7 @@ years of an index were published as a close only; those days have no `open`, `hi
 and none is filled in. Webull does not serve indices, so the rows come from Yahoo's chart feed
 (`IndexHistoryService`): free and unofficial. Its terms have not been cleared for figures
 shown to clients, which is an open item before go-live. Loaded from downloaded files with
-`python -m app.cli load-index-file --symbol SPX --file <csv> --source <name> --replace`; the scheduler adds each day's bar at 23:45 UTC
+`python -m app.cli load-index-file --symbol SPX --file <csv> --source <name> --replace`; the scheduler reads each session twice, at 10pm US Eastern that evening and again at 6am the next morning, once the source has finished the day's record
 on weekdays and reads the last week again, so a figure the source corrects is taken.
 
 ### `perf.daily_price`

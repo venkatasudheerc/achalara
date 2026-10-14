@@ -1,5 +1,5 @@
 """Daily bars of the market indices: reading the source's answer, loading, topping up."""
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.models.index_bar import IndexBar
@@ -156,3 +156,19 @@ def test_a_downloaded_file_is_read_and_replaces_what_was_on_file(db, tmp_path):
         2,
     )
     assert {row.source for row in db.query(IndexBar)} == {"a-file"}
+
+
+def test_the_indices_are_read_the_evening_of_a_session_and_again_the_next_morning():
+    from zoneinfo import ZoneInfo
+
+    from app.services.scheduler import index_history_trigger
+
+    eastern = ZoneInfo("America/New_York")
+    trigger = index_history_trigger()
+    # From a Friday afternoon: that evening, Saturday morning, then Monday evening.
+    moment = datetime(2026, 10, 9, 15, 0, tzinfo=eastern)
+    fires = []
+    for _ in range(3):
+        moment = trigger.get_next_fire_time(None, moment + timedelta(seconds=1))
+        fires.append(moment.astimezone(eastern).strftime("%a %H:%M"))
+    assert fires == ["Fri 22:00", "Sat 06:00", "Mon 22:00"]
