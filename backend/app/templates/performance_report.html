@@ -51,7 +51,7 @@
   <div class="tile"><div class="label">Year to date</div><div class="value">{{ r.ytd }}</div></div>
   <div class="tile"><div class="label">Since inception{% if annualised %} (annualized){% endif %}</div><div class="value">{{ r.inception }}</div></div>
 </div>
-<div class="note">Returns shown are time-weighted. No advisory fees are recorded for this account, so net and gross returns are the same.</div>
+<div class="note">Returns shown are time-weighted. No management fees are recorded for this account, so net and gross returns are the same.</div>
 
 <h2>Performance Summary</h2>
 {% for paragraph in summary %}<p>{{ paragraph }}</p>{% endfor %}
@@ -107,8 +107,8 @@
 </table>
 <div class="note">Green shading marks gains and clay marks losses; darker means a larger move. The first month may be partial.</div>
 
-<h2>Your Financial Advisor</h2>
-<div class="block">{{ advisor_block }}</div>
+<h2>Your Achalara Contact</h2>
+<div class="block">{{ contact_block }}</div>
 
 <h2>Methodology and Disclosures</h2>
 <ul class="method">

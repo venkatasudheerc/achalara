@@ -27,9 +27,7 @@ LOSS = "#C2703D"
 STONE = "#8A968F"
 GOLD = "#C9A24B"
 
-ADVISOR_PLACEHOLDER = (
-    "Advisor and firm details have not been set up yet. They will appear here."
-)
+CONTACT_PLACEHOLDER = "Contact details have not been set up yet. They will appear here."
 FIRM_DISCLOSURES_PLACEHOLDER = "Firm disclosures have not been set up yet."
 
 
@@ -126,7 +124,7 @@ class ReportService:
             "account_number": number,
             "as_of_long": _long(end),
             "inception_long": _long(inception),
-            "prepared_by": "— (advisor details not yet set up)",
+            "prepared_by": "Achalara",
             "footer_left": f"{client.name} · As of {_long(end)} · "
             "Past performance does not guarantee future results.",
             "ending_value": _money(figures["ending_value"]),
@@ -186,7 +184,7 @@ class ReportService:
             ],
             "month_names": list(calendar.month_abbr)[1:],
             "month_grid": self._month_grid(figures),
-            "advisor_block": ADVISOR_PLACEHOLDER,
+            "contact_block": CONTACT_PLACEHOLDER,
             "firm_disclosures": FIRM_DISCLOSURES_PLACEHOLDER,
             "methodology": self._methodology(figures, quality),
         }
@@ -327,7 +325,7 @@ class ReportService:
             ),
             (
                 "Fees",
-                "No advisory fees are recorded for this account, so returns are shown on one "
+                "No management fees are recorded for this account, so returns are shown on one "
                 "basis only. Trading commissions are included in returns.",
             ),
             (

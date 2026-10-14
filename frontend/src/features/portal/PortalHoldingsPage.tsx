@@ -239,7 +239,7 @@ export function PortalHoldingsPage() {
   if (isLoading) return <div className="grid gap-[20px]"><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
   if (isError || !data) return <ErrorState message={error?.message ?? 'Could not load your holdings.'} onRetry={() => refetch()} />
   if (portal && accounts.length === 0) {
-    return <EmptyState title="No accounts yet" message="Your advisor has not set up any accounts for you to view." />
+    return <EmptyState title="No accounts yet" message="Achalara has not set up any accounts for you to view yet." />
   }
 
   // A search or a type opens everything it matched, so the matches are in view.

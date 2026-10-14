@@ -66,7 +66,7 @@ const THEMES = [
 
 const WHY = [
   'Most people have no idea how their portfolio is actually performing vs benchmarks',
-  'Wealth managers rarely have cross-broker consolidated views',
+  'Few investors ever see all their accounts, across every broker, in one view',
   'Risk profiling is usually a one-time form, not a living intelligence layer',
   'Being broker-agnostic makes you a platform — far higher valuation potential',
 ]
@@ -100,7 +100,7 @@ export function HomePage() {
       {/* Hero */}
       <section className="relative flex flex-col items-center justify-center min-h-screen px-6 text-center pt-24">
         <p className="text-xs font-mono tracking-widest text-gold uppercase mb-6">
-          Portfolio intelligence for advisory firms
+          Portfolio intelligence for investors and their families
         </p>
         <h1 className="font-display text-5xl md:text-7xl font-light leading-tight max-w-4xl mb-8">
           Know what your
@@ -211,7 +211,7 @@ export function HomePage() {
           Ready to see your<br />portfolio clearly?
         </h2>
         <p className="text-on-dark/60 text-lg max-w-lg mx-auto mb-12">
-          Built for advisory firms who want the truth about performance — not a pretty dashboard that hides it.
+          Built for investors who want the truth about performance — not a pretty dashboard that hides it.
         </p>
         <button
           onClick={() => navigate('/app/performance')}
