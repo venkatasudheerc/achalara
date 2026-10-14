@@ -131,7 +131,7 @@ The headline card, returns chart, monthly grid and period table are all at marke
 
 Each feature directory contains its page component(s). Implemented:
 - `performance/PerformancePage` — hero MWR/TWR cards, portfolio value chart, TWR vs MWR returns-series chart, monthly heatmap, level breakdown; 1M/3M/6M/1Y/3Y/MAX quick-filter presets
-- `clients/ClientsPage`, `clients/ClientDetailPage`
+- `clients/ClientsPage`, `clients/ClientDetailPage` (the header's "Edit name or email" corrects the client record; the contact email there is separate from the sign-in email under Client login)
 - `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
