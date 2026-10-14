@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db.database import SessionLocal
@@ -118,6 +119,26 @@ def _catch_up_wrapper() -> None:
         _capture_job_wrapper()
 
 
+def index_history_trigger() -> OrTrigger:
+    """When the indices' own bars are read: twice for each session.
+
+    At 10pm US Eastern the session's close is in, so a comparison made that
+    evening has the day. The source goes on completing the day's record (its
+    volume, and now and then one index's bar) for hours after that, so the
+    6am run the next morning reads it again once it is final.
+    """
+    return OrTrigger(
+        [
+            CronTrigger(
+                day_of_week="mon-fri", hour=22, minute=0, timezone=MARKET_TIMEZONE
+            ),
+            CronTrigger(
+                day_of_week="tue-sat", hour=6, minute=0, timezone=MARKET_TIMEZONE
+            ),
+        ]
+    )
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -164,10 +185,9 @@ def start_scheduler() -> None:
         id="daily_capture",
         replace_existing=True,
     )
-    # The indices' own bars, once the session's figures are final.
     _scheduler.add_job(
         _index_history_wrapper,
-        CronTrigger(day_of_week="mon-fri", hour=23, minute=45),
+        index_history_trigger(),
         id="index_history",
         replace_existing=True,
     )
@@ -182,7 +202,7 @@ def start_scheduler() -> None:
     _scheduler.start()
     logger.info(
         "APScheduler started — sheets sync 16:00 UTC, brokerage sync 08:00 US Eastern, "
-        "daily capture 23:30 UTC and index history 23:45 UTC on weekdays"
+        "daily capture 23:30 UTC on weekdays, index history 22:00 and 06:00 US Eastern"
     )
 
 
