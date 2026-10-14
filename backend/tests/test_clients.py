@@ -127,3 +127,58 @@ class TestClientEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "trades" in data
+
+
+class TestClientDetailsCanBeCorrected:
+    def _client(self, client, name="Asha Rao", email="asha@example.com"):
+        return client.post("/api/v1/clients/", json={"name": name, "email": email}).json()
+
+    def test_name_and_contact_email_are_changed_and_a_field_left_out_is_kept(self, client):
+        made = self._client(client)
+        url = f"/api/v1/clients/{made['id']}"
+
+        resp = client.patch(url, json={"email": "asha.new@example.com"})
+        assert resp.status_code == 200
+        assert (resp.json()["name"], resp.json()["email"]) == (
+            "Asha Rao",
+            "asha.new@example.com",
+        )
+
+        resp = client.patch(url, json={"name": "  Asha R. Rao "})
+        assert resp.json()["name"] == "Asha R. Rao"
+        assert client.get(url).json()["email"] == "asha.new@example.com"
+
+    def test_an_email_another_client_has_is_refused(self, client):
+        first = self._client(client)
+        self._client(client, "Bina Shah", "bina@example.com")
+        resp = client.patch(
+            f"/api/v1/clients/{first['id']}", json={"email": "bina@example.com"}
+        )
+        assert resp.status_code == 400
+        assert client.get(f"/api/v1/clients/{first['id']}").json()["email"] == (
+            "asha@example.com"
+        )
+
+    def test_a_blank_name_a_bad_email_and_an_unknown_client_are_refused(self, client):
+        made = self._client(client)
+        url = f"/api/v1/clients/{made['id']}"
+        assert client.patch(url, json={"name": "   "}).status_code == 422
+        assert client.patch(url, json={"email": "not-an-email"}).status_code == 422
+        assert client.patch("/api/v1/clients/nobody", json={"name": "X"}).status_code == 404
+
+    def test_a_new_name_reaches_the_login_and_the_sign_in_email_is_left_alone(
+        self, client, db
+    ):
+        from app.models.user import User
+
+        made = self._client(client)
+        client.post(
+            "/api/v1/auth/invites",
+            json={"client_id": made["id"], "email": "asha.signin@example.com"},
+        )
+        client.patch(
+            f"/api/v1/clients/{made['id']}",
+            json={"name": "Asha Rao-Shah", "email": "asha.contact@example.com"},
+        )
+        login = db.query(User).filter(User.client_id == made["id"]).one()
+        assert (login.name, login.email) == ("Asha Rao-Shah", "asha.signin@example.com")

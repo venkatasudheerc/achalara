@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 import { PERIOD_BASIS } from './performance'
 import type {
-  ClientCreate, ClientResponse,
+  ClientCreate, ClientResponse, ClientUpdate,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse,
   ClientPositionsResponse, ClientTradesResponse,
 } from '../types'
@@ -17,6 +17,9 @@ export const clientsApi = {
 
   get: (clientId: string) =>
     apiClient.get<ClientResponse>(`${base}/${clientId}`).then((r) => r.data),
+
+  update: (clientId: string, body: ClientUpdate) =>
+    apiClient.patch<ClientResponse>(`${base}/${clientId}`, body).then((r) => r.data),
 
   getPerformance: (clientId: string, params?: { start_date?: string; end_date?: string }) =>
     apiClient

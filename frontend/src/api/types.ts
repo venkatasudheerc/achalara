@@ -43,6 +43,8 @@ export interface AccountAccessResponse {
   owner_client_id: string; owner_name: string
 }
 export interface ClientCreate { name: string; email: string }
+/** Only what is changing; `email` is the contact email, not the sign-in one */
+export interface ClientUpdate { name?: string; email?: string }
 export interface ClientResponse {
   id: string; name: string; email: string
   created_at: string; updated_at: string

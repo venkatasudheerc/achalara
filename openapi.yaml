@@ -661,6 +661,38 @@ paths:
                 $ref: "#/components/schemas/ClientResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [clients]
+      summary: Correct a client's name or contact email (advisor only)
+      description: >-
+        A field left out is kept. A new name is carried to the client's login, where the portal reads
+        it. The email a client signs in with belongs to their login and is not changed here.
+      operationId: updateClient
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdate"
+      responses:
+        "200":
+          description: The client as it now stands
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          description: Another client already has that email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: A blank name or an address that is not an email
 
   /api/v1/clients/{client_id}/performance:
     get:
@@ -3441,6 +3473,18 @@ components:
           type: string
           format: email
           example: contact@acme.com
+
+    ClientUpdate:
+      type: object
+      description: Send only what is changing.
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          description: The client record's contact email, not the sign-in email.
 
     ClientResponse:
       type: object

@@ -9,7 +9,8 @@ from app.models.client import Client
 from app.models.account import Account
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.api.schemas.client import ClientCreate, ClientResponse
+from app.models.user import User
+from app.api.schemas.client import ClientCreate, ClientResponse, ClientUpdate
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -50,6 +51,38 @@ def get_client(client_id: str, db: Session = Depends(get_db)):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@router.patch("/{client_id}", response_model=ClientResponse)
+def update_client(client_id: str, body: ClientUpdate, db: Session = Depends(get_db)):
+    """Correct a client's name or contact email.
+
+    A new name is carried to the client's login, which is where the portal
+    reads it. The sign-in email is not touched.
+    """
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if body.email is not None and body.email != client.email:
+        taken = (
+            db.query(Client)
+            .filter(Client.email == body.email, Client.id != client_id)
+            .first()
+        )
+        if taken:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        client.email = body.email
+    if body.name is not None and body.name.strip() != client.name:
+        if not body.name.strip():
+            raise HTTPException(status_code=422, detail="A name is needed")
+        client.name = body.name.strip()
+        db.query(User).filter(User.client_id == client_id).update(
+            {User.name: client.name}
+        )
+    db.commit()
+    db.refresh(client)
     return client
 
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { clientsApi } from '@/api/endpoints/clients'
-import type { ClientCreate } from '@/api/types'
+import type { ClientCreate, ClientUpdate } from '@/api/types'
 
 export const clientKeys = {
   list: (skip?: number, limit?: number) => ['clients', 'list', skip, limit] as const,
@@ -81,5 +81,14 @@ export function useCreateClient() {
   return useMutation({
     mutationFn: (body: ClientCreate) => clientsApi.create(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  })
+}
+
+export function useUpdateClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clientId, body }: { clientId: string; body: ClientUpdate }) => clientsApi.update(clientId, body),
+    // The name also shows on the client list and, through the login, in the portal.
+    onSuccess: () => qc.invalidateQueries(),
   })
 }

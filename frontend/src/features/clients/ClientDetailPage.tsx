@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useClient, useClientPositions, useClientTrades } from '@/hooks/useClients'
+import { useClient, useClientPositions, useClientTrades, useUpdateClient } from '@/hooks/useClients'
 import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
 import { useAccountAccess } from '@/hooks/useAuth'
 import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
@@ -34,10 +34,33 @@ export function ClientDetailPage() {
   const [accNum, setAccNum] = useState('')
   const [formError, setFormError] = useState('')
   const createAccount = useCreateAccount()
+  const updateClient = useUpdateClient()
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editError, setEditError] = useState('')
   useScopeFollowsPage(client && { id: client.id, name: client.name })
 
   if (isLoading) return <SkeletonCard />
   if (isError || !client) return <ErrorState message="Client not found." onRetry={() => refetch()} />
+
+  const startEditing = () => {
+    setEditName(client.name); setEditEmail(client.email); setEditError('')
+    setEditing(true)
+  }
+  const handleUpdateClient = async (e: FormEvent) => {
+    e.preventDefault()
+    setEditError('')
+    try {
+      await updateClient.mutateAsync({
+        clientId: client.id, body: { name: editName.trim(), email: editEmail.trim().toLowerCase() },
+      })
+      setEditing(false)
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+      setEditError(typeof detail === 'string' ? detail : 'Could not save. Check the name and the email address.')
+    }
+  }
 
   const handleCreateAccount = async (e: FormEvent) => {
     e.preventDefault()
@@ -83,11 +106,46 @@ export function ClientDetailPage() {
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-stone font-mono mb-1">CLIENT</p>
-          <h1 className="font-display text-3xl text-summit-ink">{client.name}</h1>
-          <p className="text-stone text-sm mt-1">{client.email}</p>
-        </div>
+        {editing ? (
+          <form onSubmit={handleUpdateClient} className="flex-1 max-w-md mr-6 space-y-3">
+            <p className="text-xs text-stone font-mono">CLIENT</p>
+            <div>
+              <label htmlFor="client-name" className="text-xs text-stone block mb-1">Name</label>
+              <input id="client-name" required value={editName} onChange={(e) => setEditName(e.target.value)}
+                className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm bg-surface focus:outline-none focus:border-pine" />
+            </div>
+            <div>
+              <label htmlFor="client-email" className="text-xs text-stone block mb-1">Contact email</label>
+              <input id="client-email" type="email" required value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
+                className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm font-mono bg-surface focus:outline-none focus:border-pine" />
+              <p className="text-xs text-stone mt-1">
+                For your records. The address the client signs in with is set under Client login below.
+              </p>
+            </div>
+            {editError && <p className="text-loss text-xs">{editError}</p>}
+            <div className="flex gap-2">
+              <button type="submit" disabled={updateClient.isPending}
+                className="px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50">
+                {updateClient.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={() => setEditing(false)}
+                className="px-3 py-1.5 text-xs text-stone hover:text-summit-ink">
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div>
+            <p className="text-xs text-stone font-mono mb-1">CLIENT</p>
+            <h1 className="font-display text-3xl text-summit-ink">{client.name}</h1>
+            <p className="text-stone text-sm mt-1">
+              {client.email}
+              <button onClick={startEditing} className="ml-3 text-xs text-pine underline underline-offset-2 hover:text-pine-deep">
+                Edit name or email
+              </button>
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Link
             to={`/portal?as=${client.id}`}
