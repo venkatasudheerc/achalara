@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _TIMEOUT_SECONDS = 15
 _ENDPOINT = "https://api.resend.com/emails"
 _ZONE = ZoneInfo("America/New_York")
+_USER_AGENT = "achalara-mailer/1.0"
 
 
 def site() -> str:
@@ -33,17 +34,25 @@ def configured() -> bool:
     return bool(settings.resend_api_key and settings.mail_from and site())
 
 
-def _post(api_key: str, message: dict) -> None:
-    """Hand one message to Resend. Raises when it is not accepted."""
-    request = urllib.request.Request(
+def _request(api_key: str, message: dict) -> urllib.request.Request:
+    return urllib.request.Request(
         _ENDPOINT,
         data=json.dumps(message).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            # The service turns away a request that does not say what is
+            # calling, which is what Python's own default amounts to.
+            "User-Agent": _USER_AGENT,
         },
     )
-    with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+
+
+def _post(api_key: str, message: dict) -> None:
+    """Hand one message to Resend. Raises when it is not accepted."""
+    with urllib.request.urlopen(
+        _request(api_key, message), timeout=_TIMEOUT_SECONDS
+    ) as response:
         response.read()
 
 
@@ -82,6 +91,18 @@ def link_message(
     }
 
 
+def _refusal(error: urllib.error.HTTPError) -> str:
+    """The service's own name for why it refused, e.g. ``validation_error``.
+
+    Only the name: its longer message can repeat the recipient's address.
+    """
+    try:
+        name = json.loads(error.read()).get("name")
+    except Exception:  # noqa: BLE001
+        return "no reason given"
+    return name if isinstance(name, str) and name.isidentifier() else "no reason given"
+
+
 def send(message: dict) -> bool:
     """Send a message if email is configured; whether it was accepted.
 
@@ -94,7 +115,11 @@ def send(message: dict) -> bool:
         _post(settings.resend_api_key, message)
         return True
     except urllib.error.HTTPError as exc:
-        logger.warning("The mail service did not accept a message (HTTP %s)", exc.code)
+        logger.warning(
+            "The mail service did not accept a message (HTTP %s, %s)",
+            exc.code,
+            _refusal(exc),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("A message could not be sent: %s", type(exc).__name__)
     return False
