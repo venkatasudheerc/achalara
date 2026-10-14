@@ -23,6 +23,7 @@ from app.models.trade import Trade
 from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.connection_service import MIN_SYNC_INTERVAL
+from app.services.invitation_service import InvitationService
 from app.services.performance_build_service import last_market_day
 
 JOBS = (
@@ -78,6 +79,12 @@ class StatusService:
         capture = self._capture(now.date(), accounts, attention)
         backup = self._backup(now, attention)
         disk = self._disk(attention)
+        waiting = InvitationService(self.db).waiting()
+        if waiting:
+            attention.append(
+                f"{waiting} invitation request{'' if waiting == 1 else 's'} "
+                "waiting for a reply."
+            )
         if settings.python_env == "production" and not settings.scheduler_enabled:
             attention.append("The daily jobs are switched off on this server.")
         return {

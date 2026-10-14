@@ -182,6 +182,14 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   client's accounts, and a failure is logged without the key, the address or the link. Tests
   cannot send mail: the autouse `no_real_mail` fixture leaves it unconfigured and fails any
   test that reaches `mailer._post`.
+- **The invitation form is the one public write** (`invitations.public_router`,
+  `services/invitation_service.py`): a visitor leaves name, email, phone and a note, all
+  required. It guards itself: a per-sender and a per-day limit kept in memory, a hidden field
+  (`website`) that marks a script, and no second row for an email still waiting. It always
+  answers `202 {"received": true}`, so the reply says nothing about limits or what is on file,
+  and it never sends anything to the email given. The adviser's list is under
+  `/api/v1/admin/invitation-requests`. A waiting request is a "needs a look" line on System
+  status, and so an alert, with no name in it.
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
   log or return a stored hash.
 - **The portal (`/api/v1/portal`) is the exception to the path rule.** Its routes carry no

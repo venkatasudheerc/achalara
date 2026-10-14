@@ -45,6 +45,17 @@ export interface AccountAccessResponse {
 export interface ClientCreate { name: string; email: string }
 /** Only what is changing; `email` is the contact email, not the sign-in one */
 export interface ClientUpdate { name?: string; email?: string }
+export type InvitationStatus = 'new' | 'contacted' | 'dismissed'
+/** What the public page's form sends; `website` is the hidden field a person leaves empty */
+export interface InvitationRequestCreate {
+  name: string; email: string; phone: string; note: string; website?: string
+}
+export interface InvitationRequest {
+  id: string; name: string; email: string; phone: string
+  /** Why they are interested and how they heard of Achalara */
+  note: string
+  status: InvitationStatus; created_at: string; handled_at: string | null
+}
 export interface ClientResponse {
   id: string; name: string; email: string
   created_at: string; updated_at: string

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { RequestInvitationForm } from '@/features/invitations/RequestInvitationForm'
 
 const THEMES = [
   {
@@ -90,10 +91,10 @@ export function HomePage() {
           ))}
         </nav>
         <button
-          onClick={() => navigate('/app/performance')}
+          onClick={() => navigate('/login')}
           className="text-sm font-medium px-4 py-2 rounded-btn bg-gold text-on-gold hover:bg-gold/90 transition-colors"
         >
-          Open platform →
+          Sign in
         </button>
       </header>
 
@@ -113,12 +114,12 @@ export function HomePage() {
           Achalara connects every broker, measures true performance with TWR and MWR, surfaces living risk intelligence, and lets you act — all in one platform.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
-          <button
-            onClick={() => navigate('/app/performance')}
+          <a
+            href="#request-invitation"
             className="px-8 py-3.5 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
           >
-            Open the platform
-          </button>
+            Request an invitation
+          </a>
           <a
             href="#connect"
             className="px-8 py-3.5 rounded-btn border border-on-dark/20 text-on-dark/80 text-sm hover:border-on-dark/40 hover:text-on-dark transition-colors"
@@ -204,21 +205,22 @@ export function HomePage() {
         </section>
       ))}
 
-      {/* CTA */}
-      <section className="px-6 py-32 bg-pine text-center">
+      {/* The way in for someone new: ask for an invitation. Clients sign in from the bar above. */}
+      <section id="request-invitation" className="px-6 py-32 bg-pine text-center scroll-mt-16">
         <p className="text-xs font-mono tracking-widest text-gold uppercase mb-6">Get started</p>
         <h2 className="font-display text-4xl md:text-6xl font-light text-on-dark mb-8 leading-tight">
           Ready to see your<br />portfolio clearly?
         </h2>
         <p className="text-on-dark/60 text-lg max-w-lg mx-auto mb-12">
-          Built for investors who want the truth about performance — not a pretty dashboard that hides it.
+          Achalara is by invitation. Tell us a little about yourself and we will be in touch.
         </p>
-        <button
-          onClick={() => navigate('/app/performance')}
-          className="px-10 py-4 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
-        >
-          Open Achalara →
-        </button>
+        <RequestInvitationForm />
+        <p className="text-sm text-on-dark/60 mt-10">
+          Already invited?{' '}
+          <button onClick={() => navigate('/login')} className="text-on-dark underline underline-offset-2 hover:text-gold">
+            Sign in
+          </button>
+        </p>
       </section>
 
       {/* Footer */}

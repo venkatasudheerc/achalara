@@ -18,6 +18,7 @@ Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sle
 
 SyncLog                                            (standalone import/sync audit trail)
 index_bars                                         (market indices, per day; research and benchmarks)
+invitation_requests                                (a visitor asking for an invitation; linked to nothing)
 
 perf.daily_valuation  (per sleeve and per account, per day)     perf.daily_price
 perf.daily_holding    (per account, per security, per day)      perf.corporate_action
@@ -131,6 +132,20 @@ erDiagram
 | brokerage_link_started_at | DateTime(tz) | nullable — set when a brokerage link is started from this client's page, cleared when the new link is first seen; files the link under the right client |
 
 Relationships: `accounts` (1→N, cascade delete).
+
+### `invitation_requests`
+What a visitor leaves on the public page's form. Written by anyone, so it holds only the form's
+fields within length limits and has no foreign keys; becoming a client is done by hand.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| name | String(120) | not null |
+| email | String(255) | not null, indexed, stored lower-case |
+| phone | String(40) | not null |
+| note | String(1000) | not null: why they are interested and how they heard of Achalara |
+| status | String(20) | `new` \| `contacted` \| `dismissed` |
+| handled_at | DateTime(tz) | when it left `new`; null while waiting |
 
 ### `accounts`
 | Column | Type | Notes |

@@ -31,6 +31,7 @@ from app.api.routes import (
     admin,
     benchmarks,
     connections,
+    invitations,
     performance,
     portal,
 )
@@ -87,6 +88,8 @@ app.add_middleware(
 _guarded = [Depends(require_access)]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections.public_router, prefix="/api/v1", tags=["connections"])
+# The public page's "request an invitation" form; it guards itself.
+app.include_router(invitations.public_router, prefix="/api/v1", tags=["invitations"])
 # The portal answers only for its viewer (see deps.portal_viewer).
 app.include_router(portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(
@@ -112,6 +115,12 @@ app.include_router(
 )
 app.include_router(
     admin.router, prefix="/api/v1/admin", tags=["admin"], dependencies=_guarded
+)
+app.include_router(
+    invitations.router,
+    prefix="/api/v1/admin",
+    tags=["invitations"],
+    dependencies=_guarded,
 )
 app.include_router(
     benchmarks.router,
