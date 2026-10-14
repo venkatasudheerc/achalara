@@ -10,6 +10,7 @@ import { StrategiesPage } from '@/features/strategies/StrategiesPage'
 import { ImportsPage } from '@/features/imports/ImportsPage'
 import { SettingsPage } from '@/features/SettingsPage'
 import { StatusPage } from '@/features/status/StatusPage'
+import { RequestsPage } from '@/features/invitations/RequestsPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
 import { RiskPage } from '@/features/RiskPage'
 import { GrowPage } from '@/features/GrowPage'
@@ -40,6 +41,7 @@ export function AppRoutes() {
           <Route path="clients/:clientId/accounts/:accountId/sleeves/:sleeveId" element={<SleeveDetailPage />} />
           <Route path="strategies" element={<StrategiesPage />} />
           <Route path="imports" element={<ImportsPage />} />
+          <Route path="requests" element={<RequestsPage />} />
           <Route path="status" element={<StatusPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />

@@ -48,6 +48,8 @@ tags:
     description: CSV import, Google Sheets sync, sync configs, and logs
   - name: performance
     description: Period performance, statistics and the account report, read from the daily valuation record
+  - name: invitations
+    description: A visitor's request for an invitation, and the advisor's list of them
   - name: connections
     description: Linked brokerage logins — discovery, account mapping, sync, reconciliation
 
@@ -2084,6 +2086,85 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: Sleeves are in different accounts, or use different lot matching
+
+  /api/v1/invitation-requests:
+    post:
+      tags: [invitations]
+      summary: Leave a request for an invitation (public)
+      operationId: requestInvitation
+      security: []
+      description: |
+        The form on the public page. Open to anyone, so it guards itself: a limit
+        on how often one sender may ask and on how many requests a day are kept,
+        a hidden field (`website`) that only a script fills in, and no second row
+        for an email whose request is still waiting. The answer is the same
+        whatever became of the request, and nothing is sent to the email given.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationRequestCreate"
+      responses:
+        "202":
+          description: Received
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+        "422":
+          description: A field is missing, too long, or not an email or phone number
+
+  /api/v1/admin/invitation-requests:
+    get:
+      tags: [invitations]
+      summary: Requests for an invitation, those still waiting first (advisor only)
+      operationId: listInvitationRequests
+      responses:
+        "200":
+          description: Every request on file
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvitationRequest"
+
+  /api/v1/admin/invitation-requests/{request_id}:
+    patch:
+      tags: [invitations]
+      summary: Mark a request as contacted or dismissed, or put it back as new (advisor only)
+      operationId: updateInvitationRequest
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [new, contacted, dismissed]
+      responses:
+        "200":
+          description: The request as it now stands
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/webhooks/snaptrade:
     post:
@@ -6214,6 +6295,54 @@ components:
       - level
       - source
       - message
+    InvitationRequestCreate:
+      type: object
+      required: [name, email, phone, note]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          maxLength: 40
+          description: 7 to 15 digits, with the usual punctuation.
+        note:
+          type: string
+          maxLength: 1000
+          description: Why they are interested and how they came to hear of Achalara.
+        website:
+          type: string
+          nullable: true
+          description: Hidden on the page. A person leaves it empty; anything in it marks a script.
+
+    InvitationRequest:
+      type: object
+      required: [id, name, email, phone, note, status, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        note:
+          type: string
+        status:
+          type: string
+          enum: [new, contacted, dismissed]
+        created_at:
+          type: string
+          format: date-time
+        handled_at:
+          type: string
+          format: date-time
+          nullable: true
+
     StatusWebhook:
       description: An event the brokerage source sent, and what was done about it.
       properties:
