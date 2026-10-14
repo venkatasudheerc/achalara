@@ -5,7 +5,16 @@ export type Theme = 'light' | 'dark'
 /** Where the viewer's choice is kept; index.html reads it before first paint. */
 const STORAGE_KEY = 'achalara-theme'
 
+/**
+ * Whether viewers may choose light or dark. While false the app is dark for
+ * everyone, whatever they chose before or their system prefers, and the
+ * switch is not shown. The light theme stays defined so it can come back:
+ * set this to true and restore the saved-choice line in index.html.
+ */
+export const THEME_CHOICE_OFFERED = false
+
 function initialTheme(): Theme {
+  if (!THEME_CHOICE_OFFERED) return 'dark'
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved === 'light' || saved === 'dark') return saved

@@ -12,13 +12,14 @@
       rel="stylesheet"
     />
     <script>
-      // Apply the saved (or system) theme before first paint, so a dark-theme
-      // viewer never sees a flash of the light one. Mirrors ThemeContext.
-      try {
-        var t = localStorage.getItem('achalara-theme')
-        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-        if (t === 'dark') document.documentElement.classList.add('dark')
-      } catch (e) {}
+      // Dark before first paint, so no one sees a flash of the light theme.
+      // Mirrors ThemeContext: the app is dark for everyone while
+      // THEME_CHOICE_OFFERED is false. To offer the choice again, read the
+      // saved choice here as before:
+      //   var t = localStorage.getItem('achalara-theme')
+      //   if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      //   if (t === 'dark') document.documentElement.classList.add('dark')
+      document.documentElement.classList.add('dark')
     </script>
   </head>
   <body>
