@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Both empty: no alerts are sent.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Email to clients (their invite and reset links), sent through Resend.
+    # Either empty: no email is sent and links are passed on by hand.
+    resend_api_key: str = ""
+    mail_from: str = ""  # e.g. Achalara <no-reply@mail.example.com>
 
     @field_validator("database_url")
     @classmethod

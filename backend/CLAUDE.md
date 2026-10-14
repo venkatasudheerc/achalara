@@ -176,6 +176,12 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   client data must carry those path parameters** or it is advisor-only.
 - Never return a full account number to a client user; use `auth_service.display_name` and
   `last_four`.
+- **A link may be emailed** (`services/mailer.py`, Resend, when `RESEND_API_KEY` and `MAIL_FROM`
+  are set): `AuthService.email_link` sends an unused link to the login's own sign-in email,
+  never to an address in the request. The message carries the link and nothing about the
+  client's accounts, and a failure is logged without the key, the address or the link. Tests
+  cannot send mail: the autouse `no_real_mail` fixture leaves it unconfigured and fails any
+  test that reaches `mailer._post`.
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
   log or return a stored hash.
 - **The portal (`/api/v1/portal`) is the exception to the path rule.** Its routes carry no

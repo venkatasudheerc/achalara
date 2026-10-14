@@ -71,6 +71,17 @@ class LinkResponse(BaseModel):
     purpose: str  # invite | reset
     email: str
     expires_at: datetime
+    # Whether the app can email the link itself (a mail service is configured).
+    can_email: bool = False
+
+
+class EmailLinkRequest(BaseModel):
+    token: str
+
+
+class EmailLinkResponse(BaseModel):
+    sent: bool
+    email: str  # the sign-in email the link was sent to
 
 
 class LinkPreview(BaseModel):

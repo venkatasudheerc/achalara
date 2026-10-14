@@ -1,5 +1,6 @@
 import { apiClient } from '../client'
 import type {
+  EmailLinkResponse,
   AccountAccessResponse, LinkPreview, LinkResponse, LoginRequest, MeResponse, UserResponse,
 } from '../types'
 
@@ -25,6 +26,10 @@ export const authApi = {
 
   passwordReset: (userId: string) =>
     apiClient.post<LinkResponse>(`${base}/users/${userId}/password-reset`).then((r) => r.data),
+
+  /** Emails an unused link to the sign-in address it was made for. */
+  emailLink: (token: string) =>
+    apiClient.post<EmailLinkResponse>(`${base}/link-emails`, { token }).then((r) => r.data),
 
   previewLink: (token: string) =>
     apiClient.get<LinkPreview>(`${base}/links/${token}`).then((r) => r.data),

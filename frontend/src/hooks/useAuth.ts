@@ -63,6 +63,10 @@ export function usePasswordReset() {
   return useMutation({ mutationFn: (userId: string) => authApi.passwordReset(userId) })
 }
 
+export function useEmailLink() {
+  return useMutation({ mutationFn: (token: string) => authApi.emailLink(token) })
+}
+
 export function useLinkPreview(token: string) {
   return useQuery({
     queryKey: authKeys.link(token),

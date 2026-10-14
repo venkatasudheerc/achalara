@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services import mailer
 from app.models.account import Account
 from app.models.client import Client
 from app.models.user import (
@@ -333,6 +334,24 @@ class AuthService:
             # One answer for unknown, used and expired: the link reveals nothing.
             raise AuthError(404, "This link is no longer valid. Ask for a new one.")
         return record
+
+    def email_link(self, token: str) -> Tuple[bool, str]:
+        """Email an unused link to the person it is for; (whether sent, the address).
+
+        The link goes only to the login's own sign-in email, never to an
+        address given with the request.
+        """
+        record = self._open_link(token)
+        user = record.user
+        route = "invite" if record.purpose == PURPOSE_INVITE else "reset"
+        message = mailer.link_message(
+            user.name,
+            user.email,
+            record.purpose,
+            f"/{route}/{token}",
+            record.expires_at,
+        )
+        return mailer.send(message), user.email
 
     def link_user(self, token: str) -> Tuple[AuthToken, User]:
         record = self._open_link(token)

@@ -55,6 +55,22 @@ def no_live_quotes(monkeypatch):
     live_quotes.forget()
 
 
+@pytest.fixture(autouse=True)
+def no_real_mail(monkeypatch):
+    """No test sends email: the mail service is unconfigured, and a message
+    that reaches it anyway fails the test. A test that wants mail configures
+    it and replaces ``mailer._post``."""
+    from app.config import settings
+    from app.services import mailer
+
+    def refuse(api_key, message):
+        raise AssertionError("A test tried to send real email")
+
+    monkeypatch.setattr(settings, "resend_api_key", "")
+    monkeypatch.setattr(settings, "mail_from", "")
+    monkeypatch.setattr(mailer, "_post", refuse)
+
+
 @pytest.fixture
 def client(db):
     """Test client signed in as an advisor, who may call every route.

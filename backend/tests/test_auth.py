@@ -512,3 +512,117 @@ def test_webhook_is_judged_by_its_signature_not_by_a_session(anon_client):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid signature"
+
+
+# ---------------------------------------------------------------------------
+# Emailing a link
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def outbox(monkeypatch):
+    """A configured mail service that keeps what it is handed."""
+    from app.config import settings
+    from app.services import mailer
+
+    sent = []
+    monkeypatch.setattr(settings, "resend_api_key", "test-mail-key")
+    monkeypatch.setattr(settings, "mail_from", "Achalara <no-reply@mail.example.com>")
+    monkeypatch.setattr(mailer, "_post", lambda key, message: sent.append(message))
+    return sent
+
+
+def test_without_a_mail_service_a_link_is_passed_on_by_hand(as_advisor, household):
+    link = as_advisor.post(
+        "/api/v1/auth/invites", json={"client_id": household["maya"].id}
+    ).json()
+    assert link["can_email"] is False
+
+    resp = as_advisor.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+    assert resp.json() == {"sent": False, "email": "maya@example.com"}
+    # The link still works.
+    assert TestClient(app).get(f"/api/v1/auth/links/{link['token']}").status_code == 200
+
+
+def test_an_invite_is_emailed_to_the_sign_in_address_and_still_works(
+    as_advisor, household, outbox
+):
+    link = as_advisor.post(
+        "/api/v1/auth/invites", json={"client_id": household["maya"].id}
+    ).json()
+    assert link["can_email"] is True
+
+    resp = as_advisor.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+    assert resp.json() == {"sent": True, "email": "maya@example.com"}
+
+    (message,) = outbox
+    assert message["to"] == ["maya@example.com"]
+    assert message["from"] == "Achalara <no-reply@mail.example.com>"
+    assert message["subject"] == "Set up your Achalara sign-in"
+    assert f"/invite/{link['token']}" in message["text"]
+    assert "Hello Maya," in message["text"]
+    # Nothing about what the client holds travels in the message.
+    for word in ("Brokerage", "IRA", "12345678"):
+        assert word not in message["text"] + message["html"]
+
+    browser = TestClient(app)
+    accepted = browser.post(
+        f"/api/v1/auth/links/{link['token']}/accept",
+        json={"password": "a long enough passphrase 42"},
+    )
+    assert accepted.status_code == 200
+
+
+def test_a_reset_link_is_emailed_with_its_own_wording(as_advisor, as_maya, outbox):
+    maya = next(
+        u for u in as_advisor.get("/api/v1/auth/users").json() if u["role"] == "client"
+    )
+    link = as_advisor.post(f"/api/v1/auth/users/{maya['id']}/password-reset").json()
+    as_advisor.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+
+    (message,) = outbox
+    assert message["subject"] == "Choose a new Achalara password"
+    assert f"/reset/{link['token']}" in message["text"]
+
+
+def test_a_used_or_unknown_link_is_not_emailed(as_advisor, household, outbox):
+    link = as_advisor.post(
+        "/api/v1/auth/invites", json={"client_id": household["maya"].id}
+    ).json()
+    TestClient(app).post(
+        f"/api/v1/auth/links/{link['token']}/accept",
+        json={"password": "a long enough passphrase 42"},
+    )
+    for token in (link["token"], "not-a-link"):
+        resp = as_advisor.post("/api/v1/auth/link-emails", json={"token": token})
+        assert resp.status_code == 404
+    assert outbox == []
+
+
+def test_a_refused_message_is_reported_and_keeps_the_link_out_of_the_log(
+    as_advisor, household, outbox, monkeypatch, caplog
+):
+    from app.services import mailer
+
+    def refuse(api_key, message):
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(mailer, "_post", refuse)
+    link = as_advisor.post(
+        "/api/v1/auth/invites", json={"client_id": household["maya"].id}
+    ).json()
+    resp = as_advisor.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+    assert resp.json()["sent"] is False
+    assert link["token"] not in caplog.text
+    assert "test-mail-key" not in caplog.text
+    assert "maya@example.com" not in caplog.text
+
+
+def test_only_an_advisor_can_email_a_link(as_advisor, as_maya, outbox):
+    maya = next(
+        u for u in as_advisor.get("/api/v1/auth/users").json() if u["role"] == "client"
+    )
+    link = as_advisor.post(f"/api/v1/auth/users/{maya['id']}/password-reset").json()
+    resp = as_maya.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+    assert resp.status_code == 403
+    assert outbox == []

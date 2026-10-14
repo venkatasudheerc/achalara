@@ -141,6 +141,35 @@ The app looks every ten minutes, and at once when the brokerage source reports a
 or mending. It cannot tell you that the server itself is down; use an outside uptime monitor
 for that.
 
+## Emailing a client their link (optional)
+
+With a mail service set up, the "Client login" section on a client's page gains **Email it**
+beside **Copy**: the invite or reset link is sent to the client's sign-in address. Without one
+nothing changes and links are passed on by hand. The message carries the link and nothing
+about the client's accounts.
+
+1. Create an account at **resend.com** and add a domain. A subdomain kept for this, such as
+   `mail.<your domain>`, leaves the main name free for ordinary mailboxes later.
+2. Resend lists the DNS records it needs (for SPF and DKIM). Add each one at Cloudflare exactly
+   as shown, with the proxy **off** ("DNS only"), then press **Verify** in Resend.
+3. Add a DMARC record at Cloudflare if there is none: type `TXT`, name `_dmarc`, content
+   `v=DMARC1; p=none;`. Tighten it to `p=quarantine` once mail is arriving as it should.
+4. In Resend, create an **API key** with sending access only. Treat it as a password.
+5. On the server, add to `deploy/.env`:
+
+   ```
+   RESEND_API_KEY=<the key>
+   MAIL_FROM=Achalara <no-reply@mail.<your domain>>
+   ```
+
+   then `docker compose up -d` in `deploy/`.
+6. Test with a login of your own: on a client's page create a link, press **Email it**, and
+   confirm the address. Check it arrives, is not in spam, and that the link opens.
+
+A link is a way in: the app shows the address and asks before sending, and sends only to the
+login's own sign-in email. If a send fails the page says so and the link can still be copied;
+the reason is under **System status → Recent warnings**.
+
 ## Notices from the brokerage source (webhook)
 
 Without this the app learns of changes only when it asks: the 8am sync, the evening capture

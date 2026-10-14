@@ -268,6 +268,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/auth/link-emails:
+    post:
+      tags: [auth]
+      summary: Email a one-time link to the client it was made for (advisor only)
+      operationId: emailLink
+      description: >-
+        Sends an unused invite or reset link to the login's own sign-in email, never to an address
+        given with the request. The message carries the link and nothing about the client's accounts.
+        The link is unaffected and can still be passed on by hand.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailLinkRequest"
+      responses:
+        "200":
+          description: Whether the message was accepted, and where it went
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailLinkResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Signed in, but not allowed (advisor only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The link is unknown, used or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/auth/users/{user_id}/password-reset:
     post:
       tags: [auth]
@@ -3333,6 +3374,29 @@ components:
         expires_at:
           type: string
           format: date-time
+        can_email:
+          type: boolean
+          default: false
+          description: Whether the app can email the link itself (a mail service is configured).
+
+    EmailLinkRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: The one-time link's token, as returned when it was created.
+
+    EmailLinkResponse:
+      type: object
+      required: [sent, email]
+      properties:
+        sent:
+          type: boolean
+          description: False when no mail service is configured or it did not accept the message.
+        email:
+          type: string
+          description: The sign-in email the link was sent to.
 
     LinkPreview:
       type: object
