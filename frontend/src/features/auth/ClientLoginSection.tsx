@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useChangeSignInEmail, useInviteClient, usePasswordReset, useUsers } from '@/hooks/useAuth'
+import { useChangeSignInEmail, useEmailLink, useInviteClient, usePasswordReset, useUsers } from '@/hooks/useAuth'
 import { formatDate } from '@/lib/formatters'
 import type { LinkResponse } from '@/api/types'
 
@@ -14,6 +14,9 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
   const changeEmail = useChangeSignInEmail()
   const [link, setLink] = useState<LinkResponse | null>(null)
   const [copied, setCopied] = useState(false)
+  const emailLink = useEmailLink()
+  // What became of emailing the link on screen: nothing yet, sent, or not accepted.
+  const [emailed, setEmailed] = useState<'sent' | 'failed' | null>(null)
 
   const user = users?.find((u) => u.client_id === clientId)
   const current = user?.email ?? clientEmail
@@ -29,6 +32,7 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
 
   const run = async (make: () => Promise<LinkResponse>) => {
     setCopied(false)
+    setEmailed(null)
     invite.reset(); reset.reset(); changeEmail.reset()
     try {
       setLink(await make())
@@ -48,6 +52,17 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
   const copy = async () => {
     await navigator.clipboard.writeText(url)
     setCopied(true)
+  }
+
+  // A link is a way in, so the address is put in front of the advisor before it goes.
+  const send = async () => {
+    if (!link) return
+    if (!window.confirm(`Email this link to ${link.email}?\n\nWhoever opens it can set the password for this client's login.`)) return
+    try {
+      setEmailed((await emailLink.mutateAsync(link.token)).sent ? 'sent' : 'failed')
+    } catch {
+      setEmailed('failed')
+    }
   }
 
   let status = 'No login yet. Create an invite link and send it to the client.'
@@ -99,7 +114,17 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
             <button onClick={copy} className="shrink-0 px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep">
               {copied ? 'Copied' : 'Copy'}
             </button>
+            {link.can_email && (
+              <button onClick={send} disabled={emailLink.isPending || emailed === 'sent'}
+                className="shrink-0 px-3 py-1.5 border border-pine text-pine text-xs rounded-btn hover:bg-pine hover:text-on-dark transition-colors disabled:opacity-50">
+                {emailLink.isPending ? 'Sending…' : emailed === 'sent' ? 'Emailed' : 'Email it'}
+              </button>
+            )}
           </div>
+          {emailed === 'sent' && <p className="text-xs text-gain">Sent to {link.email}.</p>}
+          {emailed === 'failed' && (
+            <p className="text-xs text-loss">The email could not be sent. Copy the link and pass it on yourself.</p>
+          )}
         </div>
       )}
     </section>

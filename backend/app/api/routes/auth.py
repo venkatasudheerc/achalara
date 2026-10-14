@@ -11,6 +11,8 @@ from app.api.schemas.auth import (
     AccountAccessResponse,
     ChangeEmailRequest,
     ChangePasswordRequest,
+    EmailLinkRequest,
+    EmailLinkResponse,
     InviteRequest,
     LinkPreview,
     LinkResponse,
@@ -23,6 +25,7 @@ from app.api.schemas.auth import (
 from app.config import settings
 from app.db.database import get_db
 from app.models.user import PURPOSE_INVITE, AccountAccess, AuthToken, User
+from app.services import mailer
 from app.services.auth_service import (
     SESSION_COOKIE,
     AuthError,
@@ -88,6 +91,7 @@ def _link(token: str, record: AuthToken) -> LinkResponse:
         purpose=record.purpose,
         email=record.user.email,
         expires_at=record.expires_at,
+        can_email=mailer.configured(),
     )
 
 
@@ -188,6 +192,23 @@ def change_sign_in_email(
     with _http_errors():
         token, record = AuthService(db).change_email(user_id, body.email)
     return _link(token, record)
+
+
+@router.post("/link-emails", response_model=EmailLinkResponse)
+def email_link(
+    body: EmailLinkRequest,
+    _: User = Depends(require_advisor),
+    db: Session = Depends(get_db),
+):
+    """Email a one-time link to the client it was made for.
+
+    It goes to the login's own sign-in email. ``sent`` is false when no mail
+    service is configured or it did not accept the message; the link itself
+    is unaffected and can still be passed on by hand.
+    """
+    with _http_errors():
+        sent, email = AuthService(db).email_link(body.token)
+    return EmailLinkResponse(sent=sent, email=email)
 
 
 @router.get("/links/{token}", response_model=LinkPreview)

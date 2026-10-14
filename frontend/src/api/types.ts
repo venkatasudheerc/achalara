@@ -30,7 +30,10 @@ export interface LinkResponse {
   /** Frontend route that accepts the link */
   path: string
   purpose: 'invite' | 'reset'; email: string; expires_at: string
+  /** Whether the app can email the link itself */
+  can_email?: boolean
 }
+export interface EmailLinkResponse { sent: boolean; email: string }
 export interface LinkPreview {
   purpose: 'invite' | 'reset'; email: string; name: string
   accounts: VisibleAccount[]
