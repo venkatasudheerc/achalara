@@ -89,7 +89,7 @@ export function PortalHomePage() {
   if (isError || !data) return <ErrorState message={error?.message ?? 'Could not load your accounts.'} onRetry={() => refetch()} />
   const accounts = portal?.accounts ?? []
   if (portal && accounts.length === 0) {
-    return <EmptyState title="No accounts yet" message="Your advisor has not set up any accounts for you to view." />
+    return <EmptyState title="No accounts yet" message="Achalara has not set up any accounts for you to view yet." />
   }
 
   const firstName = (portal?.viewer.name ?? '').split(/\s+/)[0]
