@@ -2098,7 +2098,8 @@ paths:
         on how often one sender may ask and on how many requests a day are kept,
         a hidden field (`website`) that only a script fills in, and no second row
         for an email whose request is still waiting. The answer is the same
-        whatever became of the request, and nothing is sent to the email given.
+        whatever became of the request. Where email is set up, the only thing ever
+        sent to the email given is one message with a link to confirm the request.
       requestBody:
         required: true
         content:
@@ -2112,12 +2113,60 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [received]
+                required: [received, confirm_by_email]
                 properties:
                   received:
                     type: boolean
+                  confirm_by_email:
+                    type: boolean
+                    description: >-
+                      Whether the visitor should look for an email to confirm the request. The same for
+                      every request on a server (true when email is set up), so it says nothing about
+                      this one.
         "422":
-          description: A field is missing, too long, or not an email or phone number
+          description: >-
+            A field is missing or does not pass: a name of letters, an email whose domain receives
+            mail, a phone number of 10 to 15 digits that is not one digit repeated or a plain run, and
+            comments of at least 50 characters made of words
+
+  /api/v1/invitation-requests/confirm:
+    post:
+      tags: [invitations]
+      summary: Confirm a request with the link emailed to the visitor (public)
+      operationId: confirmInvitationRequest
+      security: []
+      description: >-
+        Where email is set up, a request is shown to the advisor and alerted only once the visitor
+        follows the link emailed to them, proving the address is theirs. Called when the visitor
+        presses the button on the page the link opens, so a mail scanner fetching the link cannot
+        confirm it. The link works once and expires after 48 hours.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [confirmed]
+                properties:
+                  confirmed:
+                    type: boolean
+        "404":
+          description: The link is unknown, already used or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/admin/invitation-requests:
     get:
@@ -6308,11 +6357,12 @@ components:
         phone:
           type: string
           maxLength: 40
-          description: 7 to 15 digits, with the usual punctuation.
+          description: 10 to 15 digits with the usual punctuation; not one digit repeated or a plain run.
         note:
           type: string
+          minLength: 50
           maxLength: 1000
-          description: Why they are interested and how they came to hear of Achalara.
+          description: Why they are interested and how they came to hear of Achalara; at least 50 characters, in words.
         website:
           type: string
           nullable: true

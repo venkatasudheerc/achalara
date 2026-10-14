@@ -56,6 +56,15 @@ def no_live_quotes(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_dns(monkeypatch):
+    """Email domains are not looked up in tests: every one receives mail unless
+    a test says otherwise through ``email_domains.receives_mail``."""
+    from app.services import email_domains
+
+    monkeypatch.setattr(email_domains, "receives_mail", lambda email: True)
+
+
+@pytest.fixture(autouse=True)
 def no_real_mail(monkeypatch):
     """No test sends email: the mail service is unconfigured, and a message
     that reaches it anyway fails the test. A test that wants mail configures

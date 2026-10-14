@@ -8,6 +8,10 @@ export function useRequestInvitation() {
   return useMutation({ mutationFn: (body: InvitationRequestCreate) => invitationsApi.request(body) })
 }
 
+export function useConfirmInvitation() {
+  return useMutation({ mutationFn: (token: string) => invitationsApi.confirm(token) })
+}
+
 export function useInvitationRequests() {
   return useQuery({ queryKey: listKey, queryFn: () => invitationsApi.list(), refetchInterval: 60_000 })
 }

@@ -27,6 +27,11 @@ class InvitationRequest(BaseModel):
     note = Column(String(1000), nullable=False)
     status = Column(String(20), nullable=False, default=STATUS_NEW)
     handled_at = Column(DateTime(timezone=True))
+    # A request counts once the visitor has followed the link emailed to them,
+    # which proves the address is theirs. Until then it is not shown or
+    # alerted, and only a digest of the link's token is kept.
+    confirmed_at = Column(DateTime(timezone=True))
+    confirm_token_hash = Column(String(64), index=True)
 
     def __repr__(self):
         return f"<InvitationRequest(id={self.id}, status={self.status})>"
