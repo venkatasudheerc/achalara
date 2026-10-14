@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAcceptLink, useLinkPreview } from '@/hooks/useAuth'
 import { homeFor } from '@/features/auth/RequireAuth'
-import { AuthFrame, authInput, authLabel, authSubmit } from '@/features/auth/AuthFrame'
+import { AuthFrame, authLabel, authSubmit } from '@/features/auth/AuthFrame'
+import { PasswordInput } from '@/features/auth/PasswordInput'
 
 const MIN_LENGTH = 12
 
@@ -90,8 +91,8 @@ export function AcceptLinkPage() {
         )}
         <div>
           <label htmlFor="new-password" className={authLabel}>New password</label>
-          <input id="new-password" type="password" required autoFocus autoComplete="new-password"
-            value={password} onChange={(e) => setPassword(e.target.value)} className={authInput} />
+          <PasswordInput id="new-password" required autoFocus autoComplete="new-password"
+            value={password} onChange={(e) => setPassword(e.target.value)} />
           <ul className="mt-2 space-y-1 text-[13px]">
             {rules.map((r) => (
               <li key={r.label} className={r.ok ? 'text-gain' : 'text-stone'}>
@@ -102,8 +103,8 @@ export function AcceptLinkPage() {
         </div>
         <div>
           <label htmlFor="confirm-password" className={authLabel}>Confirm password</label>
-          <input id="confirm-password" type="password" required autoComplete="new-password"
-            value={confirm} onChange={(e) => setConfirm(e.target.value)} className={authInput} />
+          <PasswordInput id="confirm-password" required autoComplete="new-password"
+            value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           {confirm && !matches && <p className="mt-2 text-[13px] text-loss">The two passwords differ.</p>}
         </div>
         <button type="submit" disabled={!ready || accept.isPending} className={authSubmit}>
