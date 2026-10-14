@@ -626,3 +626,34 @@ def test_only_an_advisor_can_email_a_link(as_advisor, as_maya, outbox):
     resp = as_maya.post("/api/v1/auth/link-emails", json={"token": link["token"]})
     assert resp.status_code == 403
     assert outbox == []
+
+
+def test_a_message_says_who_is_calling():
+    from app.services import mailer
+
+    request = mailer._request("test-mail-key", {"subject": "x"})
+    assert request.get_header("User-agent") == "achalara-mailer/1.0"
+    assert request.get_header("Authorization") == "Bearer test-mail-key"
+
+
+def test_a_refusal_is_named_in_the_log_without_the_address(
+    as_advisor, household, outbox, monkeypatch, caplog
+):
+    import io
+    import urllib.error
+
+    from app.services import mailer
+
+    def refuse(api_key, message):
+        body = b'{"name": "validation_error", "message": "not allowed for maya@example.com"}'
+        raise urllib.error.HTTPError("https://mail.invalid", 403, "", {}, io.BytesIO(body))
+
+    monkeypatch.setattr(mailer, "_post", refuse)
+    link = as_advisor.post(
+        "/api/v1/auth/invites", json={"client_id": household["maya"].id}
+    ).json()
+    resp = as_advisor.post("/api/v1/auth/link-emails", json={"token": link["token"]})
+
+    assert resp.json()["sent"] is False
+    assert "HTTP 403, validation_error" in caplog.text
+    assert "maya@example.com" not in caplog.text
