@@ -90,10 +90,10 @@ export function HomePage() {
           ))}
         </nav>
         <button
-          onClick={() => navigate('/app/performance')}
+          onClick={() => navigate('/login')}
           className="text-sm font-medium px-4 py-2 rounded-btn bg-gold text-on-gold hover:bg-gold/90 transition-colors"
         >
-          Open platform →
+          Sign in
         </button>
       </header>
 
@@ -114,10 +114,10 @@ export function HomePage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
           <button
-            onClick={() => navigate('/app/performance')}
+            onClick={() => navigate('/login')}
             className="px-8 py-3.5 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
           >
-            Open the platform
+            Sign in →
           </button>
           <a
             href="#connect"
@@ -214,10 +214,10 @@ export function HomePage() {
           Built for investors who want the truth about performance — not a pretty dashboard that hides it.
         </p>
         <button
-          onClick={() => navigate('/app/performance')}
+          onClick={() => navigate('/login')}
           className="px-10 py-4 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors"
         >
-          Open Achalara →
+          Sign in →
         </button>
       </section>
 
