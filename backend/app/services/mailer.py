@@ -103,6 +103,40 @@ def _refusal(error: urllib.error.HTTPError) -> str:
     return name if isinstance(name, str) and name.isidentifier() else "no reason given"
 
 
+def confirmation_message(
+    name: str, email: str, path: str, expires_at: datetime
+) -> dict:
+    """The message asking a visitor to confirm a request for an invitation.
+
+    Goes to an address a stranger typed, so it says only that a request was
+    made with it, and that nothing happens if it is ignored.
+    """
+    url = f"{site()}{path}"
+    until = expires_at.astimezone(_ZONE).strftime("%B %-d at %-I:%M %p US Eastern")
+    first = (name or "").split(" ")[0] or "there"
+    opening = (
+        "Someone, we hope you, asked for an invitation to Achalara with this "
+        "email address. Please confirm it was you:"
+    )
+    closing = (
+        f"The link works once and expires on {until}. If you did not ask, "
+        "ignore this email and nothing more will happen."
+    )
+    text = f"Hello {first},\n\n{opening}\n\n{url}\n\n{closing}\n"
+    markup = (
+        f"<p>Hello {html.escape(first)},</p><p>{html.escape(opening)}</p>"
+        f'<p><a href="{html.escape(url)}">{html.escape(url)}</a></p>'
+        f"<p>{html.escape(closing)}</p>"
+    )
+    return {
+        "from": settings.mail_from,
+        "to": [email],
+        "subject": "Confirm your request to Achalara",
+        "text": text,
+        "html": markup,
+    }
+
+
 def send(message: dict) -> bool:
     """Send a message if email is configured; whether it was accepted.
 

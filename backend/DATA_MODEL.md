@@ -146,6 +146,8 @@ fields within length limits and has no foreign keys; becoming a client is done b
 | note | String(1000) | not null: why they are interested and how they heard of Achalara |
 | status | String(20) | `new` \| `contacted` \| `dismissed` |
 | handled_at | DateTime(tz) | when it left `new`; null while waiting |
+| confirmed_at | DateTime(tz) | when the visitor followed the emailed link; only confirmed requests are listed or alerted. Set at once where email is not set up |
+| confirm_token_hash | String(64) | indexed; SHA-256 of the emailed link's token, cleared once used. Unconfirmed rows are dropped after 48 hours |
 
 ### `accounts`
 | Column | Type | Notes |

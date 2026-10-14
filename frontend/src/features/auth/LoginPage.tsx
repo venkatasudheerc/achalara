@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useLogin, useMe } from '@/hooks/useAuth'
 import { homeFor } from '@/features/auth/RequireAuth'
 import { AuthFrame, authInput, authLabel, authSubmit } from '@/features/auth/AuthFrame'
+import { PasswordInput } from '@/features/auth/PasswordInput'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -61,8 +62,8 @@ export function LoginPage() {
         </div>
         <div>
           <label htmlFor="password" className={authLabel}>Password</label>
-          <input id="password" type="password" required autoComplete="current-password"
-            value={password} onChange={(e) => setPassword(e.target.value)} className={authInput} />
+          <PasswordInput id="password" required autoComplete="current-password"
+            value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <button type="submit" disabled={login.isPending} className={authSubmit}>
           {login.isPending ? 'Signing in…' : 'Sign in'}

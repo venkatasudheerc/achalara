@@ -5,12 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas.invitation import (
+    InvitationConfirm,
+    InvitationConfirmed,
     InvitationRequestCreate,
     InvitationRequestReceived,
     InvitationRequestResponse,
     InvitationRequestUpdate,
 )
 from app.db.database import get_db
+from app.services import mailer
 from app.services.invitation_service import InvitationService
 
 # Not behind sign-in: this is the form a visitor fills in.
@@ -34,7 +37,21 @@ def request_invitation(
     InvitationService(db).submit(
         body.name, body.email, body.phone, body.note, sender, trap=body.website
     )
-    return InvitationRequestReceived()
+    return InvitationRequestReceived(confirm_by_email=mailer.configured())
+
+
+@public_router.post("/invitation-requests/confirm", response_model=InvitationConfirmed)
+def confirm_invitation_request(body: InvitationConfirm, db: Session = Depends(get_db)):
+    """Confirm a request with the link emailed to the visitor.
+
+    A POST, made when the visitor presses the button on the page the link
+    opens, so a mail scanner that fetches the link cannot confirm it.
+    """
+    try:
+        InvitationService(db).confirm(body.token)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    return InvitationConfirmed()
 
 
 @router.get("/invitation-requests", response_model=List[InvitationRequestResponse])

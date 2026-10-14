@@ -184,10 +184,15 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   test that reaches `mailer._post`.
 - **The invitation form is the one public write** (`invitations.public_router`,
   `services/invitation_service.py`): a visitor leaves name, email, phone and a note, all
-  required. It guards itself: a per-sender and a per-day limit kept in memory, a hidden field
-  (`website`) that marks a script, and no second row for an email still waiting. It always
-  answers `202 {"received": true}`, so the reply says nothing about limits or what is on file,
-  and it never sends anything to the email given. The adviser's list is under
+  required, checked in `api/schemas/invitation.py` (a name of letters; an email whose domain
+  receives mail, `services/email_domains.py`, which tests replace through the autouse `no_dns`
+  fixture; 10 to 15 phone digits, not one digit repeated or a plain run; a note of at least 50
+  characters in words). It guards itself: a per-sender and a per-day limit kept in memory, a
+  hidden field (`website`) that marks a script, and no second row for an email still waiting.
+  It always answers `202` the same way, so the reply says nothing about limits or what is on
+  file. Where email is set up, a request counts only once the visitor confirms it through the
+  one email sent to the address given (`POST /invitation-requests/confirm`, by a button press so
+  a mail scanner cannot confirm it; 48 hours; only a digest of the token is kept). The adviser's list is under
   `/api/v1/admin/invitation-requests`. A waiting request is a "needs a look" line on System
   status, and so an alert, with no name in it.
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never

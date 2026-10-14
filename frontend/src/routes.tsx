@@ -11,6 +11,7 @@ import { ImportsPage } from '@/features/imports/ImportsPage'
 import { SettingsPage } from '@/features/SettingsPage'
 import { StatusPage } from '@/features/status/StatusPage'
 import { RequestsPage } from '@/features/invitations/RequestsPage'
+import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
 import { RiskPage } from '@/features/RiskPage'
 import { GrowPage } from '@/features/GrowPage'
@@ -31,6 +32,7 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<AcceptLinkPage />} />
       <Route path="/reset/:token" element={<AcceptLinkPage />} />
+      <Route path="/request-invitation/confirm/:token" element={<ConfirmInvitationPage />} />
       <Route element={<RequireAuth role="advisor" />}>
         <Route path="/app" element={<AppShell />}>
           <Route index element={<Navigate to="performance" replace />} />
