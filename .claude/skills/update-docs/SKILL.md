@@ -7,7 +7,8 @@ description: Bring Achalara's documentation up to date with the code. Use after 
 
 The docs are part of the change. A pull request that changes behaviour without changing the docs
 that describe it is not done. Every doc below is in a **public** repository, except those marked
-*(local)*: they are git-excluded, so update them when present and never `git add` them.
+*(local)*: everything in `docs/` is git-excluded, so update those files when present and never
+`git add` them.
 
 ## 1. Find what changed
 
@@ -33,6 +34,8 @@ limits, user-visible screens.
 | A brokerage connector | `backend/app/connectors/CONNECTORS.md`, `backend/CLAUDE.md` § Brokerage Sync Rules |
 | A frontend page, hook, route or design token | `frontend/CLAUDE.md` (Routing, Features, Shared components, Design Tokens) |
 | A gap the frontend works around | `frontend/BACKEND_GAPS.md` |
+| A table, relation or index anywhere | `docs/DATABASE_MODEL.md` *(local)* as well as `backend/DATA_MODEL.md` |
+| An item done, found or deferred | `docs/OPEN_ITEMS.md` *(local)*: tick it off or add it, and its "Last updated" date |
 | A phase finished or a plan changed | `ROADMAP.md`; for market data, the status table in `docs/MARKET_DATA.md` § 1 *(local)* |
 | Start-up or developer commands | `CLAUDE.md` (root), `backend/CLAUDE.md` § Commands, `backend/GETTING_STARTED.md`, `README.md` |
 | A new doc | Add it to this table, and point to it from the nearest `CLAUDE.md` |
@@ -63,8 +66,8 @@ Before saving any doc:
 - Counts of public things are fine (index sizes, number of sectors). Counts derived from client
   data are not (how many securities clients hold).
 - Action items, private notes and anything about specific people go in the local-only
-  `OPEN_ITEMS.md` or `DATABASE_MODEL.md`. These and `docs/MARKET_DATA.md` are listed in
-  `.git/info/exclude` and never committed; check `git status` shows none of them staged.
+  `docs/OPEN_ITEMS.md` or `docs/DATABASE_MODEL.md`. The whole `docs/` folder is listed in
+  `.git/info/exclude` and never committed; check `git status` shows nothing under `docs/` staged.
 
 Then scan the changed docs:
 

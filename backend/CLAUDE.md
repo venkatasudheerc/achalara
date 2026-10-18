@@ -348,7 +348,7 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 
 Reference data about securities and indices (`app/md/`, `DATA_MODEL.md` § "The `md` schema"),
 separate from client data in `public` and `perf`. Plan, design, operation and limitations:
-`../docs/MARKET_DATA.md`, kept locally and not in the repository. Rules:
+`../docs/MARKET_DATA.md` (the `docs/` folder is local only, not in the repository). Rules:
 
 - **Current vs history.** A current table has one row per thing; a `_hist` table holds dated rows.
   Write both in the same transaction; a current table must always be rebuildable from its history.

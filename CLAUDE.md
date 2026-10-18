@@ -34,8 +34,11 @@ Achalara/
 ├── README.md              # project overview and quick start
 ├── ROADMAP.md             # phased delivery plan
 ├── idea.md                # original vision
-├── docs/
-│   └── MARKET_DATA.md     # local only (git-excluded): market data plan, design, running it, limitations
+├── docs/                  # local only, never in GitHub (the folder is git-excluded)
+│   ├── OPEN_ITEMS.md      # action items
+│   ├── DATABASE_MODEL.md  # the full database model, indexes, performance concerns
+│   ├── MARKET_DATA.md     # market data plan, design, running it, limitations
+│   └── ARCHITECTURE_REVIEW.md
 ├── backend/
 │   ├── CLAUDE.md          # backend-specific guidance (read before touching backend code)
 │   ├── app/               # FastAPI application
