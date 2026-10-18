@@ -18,13 +18,13 @@ from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.client import Client
 from app.models.index_bar import IndexBar
-from app.models.perf import DailyPrice, DailyValuation
+from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.trade import Trade
 from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.invitation_service import InvitationService
-from app.md.models import JobRun
+from app.md.models import JobRun, Security, SecurityClassification, SecuritySymbol
 from app.md.schedule import MD_JOBS
 from app.services.performance_build_service import last_market_day
 
@@ -81,6 +81,7 @@ class StatusService:
         capture = self._capture(now.date(), accounts, attention)
         backup = self._backup(now, attention)
         disk = self._disk(attention)
+        self._held_without_sector(attention)
         waiting = InvitationService(self.db).waiting()
         if waiting:
             attention.append(
@@ -148,6 +149,38 @@ class StatusService:
                 }
             )
         return jobs + self._md_jobs(attention)
+
+    def _held_without_sector(self, attention: List[str]) -> None:
+        """Held stocks the market-data jobs could not give a sector (names stay off alerts)."""
+        if (
+            not self.db.query(JobRun.id)
+            .filter(JobRun.job == "md_classification")
+            .first()
+        ):
+            return  # classification has not run yet
+        held = {
+            symbol
+            for (symbol,) in self.db.query(DailyHolding.symbol).distinct()
+            if symbol
+        }
+        missing = (
+            self.db.query(func.count(SecuritySymbol.symbol))
+            .join(Security, Security.id == SecuritySymbol.security_id)
+            .outerjoin(
+                SecurityClassification,
+                SecurityClassification.security_id == Security.id,
+            )
+            .filter(
+                SecuritySymbol.symbol.in_(held),
+                Security.kind.in_(("stock", "adr", "preferred")),
+                SecurityClassification.sector_code.is_(None),
+            )
+            .scalar()
+        )
+        if missing:
+            attention.append(
+                f"{missing} held stock{'' if missing == 1 else 's'} without a sector."
+            )
 
     def _md_jobs(self, attention: List[str]) -> List[Dict]:
         """Market-data jobs run in their own worker; their record is ``md.job_run``."""

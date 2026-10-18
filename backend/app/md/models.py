@@ -48,6 +48,7 @@ class Company(BaseModel):
     name = Column(String(255), nullable=False)
     cik = Column(String(10), unique=True)  # SEC id; empty for issuers without one
     sic_code = Column(String(4))
+    sic_description = Column(String(120))
     fiscal_year_end = Column(String(4))  # MMDD
     country = Column(String(60))
 
@@ -69,6 +70,8 @@ class Security(BaseModel):
     status = Column(String(12), nullable=False, default="active")  # active | delisted
     listed_from = Column(Date)
     delisted_on = Column(Date)
+    # When Webull's company profile (industry) was last asked for.
+    profile_checked_at = Column(DateTime(timezone=True))
 
 
 class SecuritySymbol(BaseModel):
@@ -83,6 +86,58 @@ class SecuritySymbol(BaseModel):
         primary_key=True,
     )
     symbol = Column(String(30), nullable=False, unique=True)  # in the app's spelling
+
+
+class Sector(BaseModel):
+    """One of the 11 GICS sectors."""
+
+    __tablename__ = "sector"
+    __table_args__ = {"schema": SCHEMA}
+
+    code = Column(String(4), primary_key=True)  # IT, HC, FIN, …
+    name = Column(String(40), nullable=False)
+    sort = Column(Integer, nullable=False)
+
+
+class Industry(BaseModel):
+    """An industry as a source names it, placed under one of the 11 sectors."""
+
+    __tablename__ = "industry"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    scheme = Column(String(12), nullable=False)  # webull | sec
+    name = Column(String(120), nullable=False)
+    industry_group = Column(
+        String(120)
+    )  # Webull's first level, e.g. "Banking Services"
+    source_code = Column(String(10))  # SIC code for scheme sec
+    sector_code = Column(String(4), ForeignKey(f"{SCHEMA}.sector.code"))
+    # How the sector was decided: ishares_majority (most index members in this
+    # industry carry that GICS sector), sic_map, or manual (never recomputed).
+    sector_basis = Column(String(20))
+
+    __table_args__ = (
+        UniqueConstraint("scheme", "name", name="uq_md_industry_scheme_name"),
+        {"schema": SCHEMA},
+    )
+
+
+class SecurityClassification(BaseModel):
+    """The sector and industry a security has now, and which source set each."""
+
+    __tablename__ = "security_classification"
+    __table_args__ = {"schema": SCHEMA}
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    sector_code = Column(String(4), ForeignKey(f"{SCHEMA}.sector.code"))
+    industry_id = Column(String(36), ForeignKey(f"{SCHEMA}.industry.id"))
+    sector_source = Column(String(12))
+    industry_source = Column(String(12))
+    as_of = Column(Date, nullable=False)
 
 
 class IndexDef(BaseModel):
@@ -139,6 +194,28 @@ class SecuritySymbolHist(BaseModel):
     valid_from = Column(Date, primary_key=True)
     valid_to = Column(Date)  # empty while current
     source = Column(String(30), nullable=False)
+
+    __table_args__ = ({"schema": SCHEMA},)
+
+
+class SecurityClassificationHist(BaseModel):
+    """What one source said a security's sector and industry were, over a span."""
+
+    __tablename__ = "security_classification_hist"
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source = Column(String(12), primary_key=True)  # ishares | webull | sec | manual
+    valid_from = Column(Date, primary_key=True)
+    valid_to = Column(Date)  # empty while current
+    sector_code = Column(String(4), ForeignKey(f"{SCHEMA}.sector.code"))
+    industry_id = Column(String(36), ForeignKey(f"{SCHEMA}.industry.id"))
+    raw_sector = Column(String(120))  # the source's own words
+    raw_industry = Column(String(240))
+    raw_code = Column(String(10))
 
     __table_args__ = ({"schema": SCHEMA},)
 

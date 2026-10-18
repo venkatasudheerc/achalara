@@ -34,6 +34,8 @@ Achalara/
 ├── README.md              # project overview and quick start
 ├── ROADMAP.md             # phased delivery plan
 ├── idea.md                # original vision
+├── docs/
+│   └── MARKET_DATA.md     # local only (git-excluded): market data plan, design, running it, limitations
 ├── backend/
 │   ├── CLAUDE.md          # backend-specific guidance (read before touching backend code)
 │   ├── app/               # FastAPI application
@@ -71,3 +73,5 @@ This hierarchy must be reflected consistently in both the backend API routes and
 - **All IDs are UUIDs** (string, 36 chars). Never assume numeric IDs.
 - **Timestamps are tz-aware** ISO-8601 strings in API responses.
 - **`openapi.yaml` is the single source of truth** for request/response shapes. If you add or change an endpoint, update `openapi.yaml` too.
+- **Docs move with the code.** Before committing a change in behaviour, run the `update-docs` skill
+  (`.claude/skills/update-docs/SKILL.md`): it maps each kind of change to the docs that describe it.

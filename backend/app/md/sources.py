@@ -1,7 +1,10 @@
 """Where index membership files come from, and how they are fetched."""
+import json
 import urllib.request
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, List
+
+from app.config import settings
 
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -53,3 +56,34 @@ def download(url: str) -> bytes:
 # Replaced in tests; nothing in the test suite reaches the network.
 Fetch = Callable[[str], bytes]
 fetch: Fetch = download
+
+
+def sec_get(url: str):
+    """A file from SEC EDGAR, as JSON. The SEC asks each request to name a contact."""
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": f"Achalara personal research {settings.sec_contact_email}"
+        },
+    )
+    with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+        return json.loads(response.read())
+
+
+def figi_map(jobs: List[dict]) -> List[dict]:
+    """OpenFIGI's answer for a batch of identifiers (10 without a key, 100 with one)."""
+    headers = {"Content-Type": "application/json"}
+    if settings.openfigi_api_key:
+        headers["X-OPENFIGI-APIKEY"] = settings.openfigi_api_key
+    request = urllib.request.Request(
+        "https://api.openfigi.com/v3/mapping",
+        data=json.dumps(jobs).encode(),
+        headers=headers,
+    )
+    with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+        return json.loads(response.read())
+
+
+# Replaced in tests, like ``fetch``.
+sec: Callable = sec_get
+figi: Callable = figi_map

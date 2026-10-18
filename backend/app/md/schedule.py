@@ -23,7 +23,23 @@ def _seed_trigger() -> CronTrigger:
     return CronTrigger(hour=6, minute=45, timezone=TIMEZONE)
 
 
+def _identifiers_trigger() -> CronTrigger:
+    # Before the market opens: new listings and ticker changes are in by then.
+    return CronTrigger(hour=5, minute=0, timezone=TIMEZONE)
+
+
+def _classification_trigger() -> CronTrigger:
+    # After the evening jobs; Saturday's run also refreshes older profiles.
+    return CronTrigger(hour=22, minute=30, timezone=TIMEZONE)
+
+
 MD_JOBS: List[MdJob] = [
     MdJob("md_seed_holdings", "Market data: held securities", _seed_trigger),
     MdJob("md_index_membership", "Market data: index membership", _membership_trigger),
+    MdJob("md_identifiers", "Market data: identifiers", _identifiers_trigger),
+    MdJob(
+        "md_classification",
+        "Market data: sectors and industries",
+        _classification_trigger,
+    ),
 ]

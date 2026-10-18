@@ -347,7 +347,8 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 ## Market data: the `md` schema
 
 Reference data about securities and indices (`app/md/`, `DATA_MODEL.md` § "The `md` schema"),
-separate from client data in `public` and `perf`. Rules:
+separate from client data in `public` and `perf`. Plan, design, operation and limitations:
+`../docs/MARKET_DATA.md`, kept locally and not in the repository. Rules:
 
 - **Current vs history.** A current table has one row per thing; a `_hist` table holds dated rows.
   Write both in the same transaction; a current table must always be rebuildable from its history.
@@ -364,7 +365,17 @@ separate from client data in `public` and `perf`. Rules:
 - **Tests never reach the network**: replace `md.sources.fetch` with the test's files. In SQLite
   the `md` schema maps to the default one (`tests/conftest.py`), so `md` table names must not
   repeat a `public` or `perf` table name.
-- Run membership by hand: `python -m app.cli md-index-membership`.
+- **Webull from market-data jobs goes through `md.webull.WebullClient`**: paced per endpoint at
+  about half the lowest documented limit (fundamentals 30 a minute, others 120), outside 8:30 AM to
+  6:00 PM Eastern on weekdays. A 429 raises `WebullRefused`: stop that part of the job for the run;
+  never retry in a loop. Requests are counted into `md.job_run.requests`.
+- **The SEC needs a contact email** (`SEC_CONTACT_EMAIL`); without it SEC lookups are skipped.
+  Never write that address into a tracked file.
+- Sectors are the 11 GICS sectors (`md.sector`). Precedence for sector: manual > iShares > Webull
+  industry's sector > SEC code; for industry: manual > Webull > SEC. A Webull industry's sector is
+  worked out from its index members (`ishares_majority`), not written by hand.
+- By hand: `python -m app.cli md-index-membership`, `md-identifiers`, `md-classification
+  [--refresh]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
 
 ## System status
 

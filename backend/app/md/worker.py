@@ -11,6 +11,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.config import settings
 from app.db.database import SessionLocal
+from app.md.classification import run_classification
+from app.md.identifiers import run_identifiers
 from app.md.jobs import JobAlreadyRunning, tracked_run
 from app.md.membership import JOB as MEMBERSHIP_JOB, run_index_membership
 from app.md.models import JobRun
@@ -50,7 +52,39 @@ def _membership() -> None:
         db.close()
 
 
-JOBS = {"md_seed_holdings": _seed, MEMBERSHIP_JOB: _membership}
+def _identifiers() -> None:
+    db = SessionLocal()
+    try:
+        logger.info("Identifiers: %s", run_identifiers(db, date.today()))
+    except JobAlreadyRunning:
+        logger.info("Identifiers job is already running")
+    except Exception:  # noqa: BLE001
+        logger.exception("Identifiers job failed")
+    finally:
+        db.close()
+
+
+def _classification() -> None:
+    db = SessionLocal()
+    try:
+        saturday = date.today().weekday() == 5
+        logger.info(
+            "Classification: %s", run_classification(db, date.today(), refresh=saturday)
+        )
+    except JobAlreadyRunning:
+        logger.info("Classification job is already running")
+    except Exception:  # noqa: BLE001
+        logger.exception("Classification job failed")
+    finally:
+        db.close()
+
+
+JOBS = {
+    "md_seed_holdings": _seed,
+    MEMBERSHIP_JOB: _membership,
+    "md_identifiers": _identifiers,
+    "md_classification": _classification,
+}
 
 
 def _missed_today() -> bool:

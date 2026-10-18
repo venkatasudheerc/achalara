@@ -533,7 +533,7 @@ Two kinds of table: **current** tables hold one row per thing and are what scree
 writes both in one transaction, and every current table can be rebuilt from its history.
 Nothing in `perf` reads `md` yet. Its jobs run only in the `md-worker` process.
 
-Built so far (index membership); prices, classification and fundamentals follow.
+Built so far: index membership, identifiers, sector and industry; prices and fundamentals follow.
 
 | Table | Kind | One row per | Notes |
 |---|---|---|---|
@@ -544,8 +544,27 @@ Built so far (index membership); prices, classification and fundamentals follow.
 | `md.index_def` | current | index | `code` (`SP500`, `R1000`, `R2000`, `R3000`), `owner`, `method` (`fund_file`, `official_list`, `union`), `source` (e.g. `ishares:IVV`), `parts` (for a union), the member-count range a file must fall in to be applied, `level_symbol` |
 | `md.index_member` | current | index × member today | `since`: the date of the file that first showed it |
 | `md.index_member_hist` | history | index × security × span | `valid_from`, `valid_to` (the first date it is no longer a member; empty while a member), the `source_file` that showed the joining |
+| `md.sector` | current | GICS sector (11, seeded) | `code` (`IT`, `HC`, `FIN`, `CD`, `CS`, `COM`, `EN`, `IND`, `MAT`, `RE`, `UT`), `name`, `sort` |
+| `md.industry` | current | industry as a source names it | `scheme` (`webull`, `sec`, `manual`), `name` (unique per scheme), Webull's `industry_group`, SIC `source_code`, the `sector_code` it sits under and `sector_basis` (`ishares_majority`: the GICS sector most of its index members carry; `sic_map`; `manual`, never recomputed) |
+| `md.security_classification` | current | security | the sector and industry in force, `sector_source` and `industry_source` (`manual`, `ishares`, `webull`, `sec`), `as_of` |
+| `md.security_classification_hist` | history | security × source × span | what each source said: `sector_code`, `industry_id`, and its own words (`raw_sector`, `raw_industry`, `raw_code`) |
 | `md.source_file` | operations | downloaded file | the file exactly as received (gzip), `sha256`, `as_of`, `rows`; unique `(source, name, as_of)` |
 | `md.job_run` | operations | job run | `job`, start and finish, `outcome` (`ok`, `failed`), `requests`, `rows_written`, `note`; System status reads it |
+
+`md.company` also carries `sic_description`; `md.security` carries `profile_checked_at` (when
+Webull's company profile was last asked for).
+
+**Identifiers** (daily, 5:00 Eastern): Webull's instrument list gives each security its
+`webull_id` (and marks ETFs); the same Webull id under a new symbol is a ticker change, recorded as
+a new `security_symbol_hist` span. The SEC's tickers file links securities to `md.company` by CIK,
+and each company's submissions give its SIC code and fiscal year end (a few hundred a run).
+OpenFIGI gives the composite FIGI. Spellings differ by source (`BRK B` at Webull and iShares,
+`BRK-B` at the SEC, `BRK/B` at OpenFIGI); all are stored as `BRK.B`.
+
+**Classification** (nightly, 10:30 Eastern; Saturdays also refresh profiles older than 30 days).
+Sector: manual, then iShares (GICS, for index members), then the sector of the security's Webull
+industry, then the SEC code mapped to a sector. Industry: manual, then Webull, then the SEC's
+description. Each source's view is kept with dates; only a change opens a new span.
 
 **Membership rules.** The S&P 500, Russell 1000 and Russell 2000 come from iShares' daily
 holdings of IVV, IWB and IWM: equity lines only, tickers in the app's spelling, warrants and
