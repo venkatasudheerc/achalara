@@ -4,6 +4,7 @@
     python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
+    python -m app.cli md-index-membership
     python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
 """
 import argparse
@@ -161,6 +162,21 @@ def send_test_webhook(url: str) -> int:
     return 1
 
 
+def md_index_membership() -> int:
+    """Fetch the index funds' holdings now and bring membership up to date."""
+    from app.md.membership import run_index_membership
+    from app.md.seed import seed_from_holdings
+
+    db = SessionLocal()
+    try:
+        added = seed_from_holdings(db, date.today())
+        print(f"Held securities added to the security master: {added}")
+        print(run_index_membership(db).summary())
+    finally:
+        db.close()
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -199,7 +215,13 @@ def main(argv=None) -> int:
     webhook.add_argument(
         "--url", required=True, help="https://<domain>/api/v1/webhooks/snaptrade"
     )
+    commands.add_parser(
+        "md-index-membership",
+        help="market data: fetch index holdings now and update membership",
+    )
     args = parser.parse_args(argv)
+    if args.command == "md-index-membership":
+        return md_index_membership()
     if args.command == "send-test-webhook":
         return send_test_webhook(args.url)
     if args.command == "create-advisor":

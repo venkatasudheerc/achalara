@@ -21,6 +21,10 @@ Files here:
 
 ## Rules that must hold
 
+- **Two app containers, two job sets.** `backend` runs the website and the client-data jobs
+  (brokerage sync, capture, alerts). `md-worker` runs only the market-data jobs (index membership;
+  later prices and fundamentals) and never runs migrations. Run one of each.
+
 - **Run one backend, never two.** The daily jobs run inside it; a second copy runs each twice.
 - **Only one place may run the daily jobs against the brokerage.** Once the server is live, set
   `SCHEDULER_ENABLED=false` in the `.env` of any development machine that holds the same
@@ -211,6 +215,17 @@ starts empty at each restart.
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
 The app's own daily jobs keep their UTC times.
+
+**Market data (the `md` worker)**
+
+`md-worker` fetches the index funds' daily holdings each morning (Tuesday to Saturday, 7:00
+Eastern) and keeps index membership up to date; System status lists its runs as "Market data: …".
+To run it by hand, for example right after the first deploy:
+
+```sh
+docker compose exec backend python -m app.cli md-index-membership
+docker compose logs --tail 50 md-worker
+```
 
 **Update to the latest code**
 

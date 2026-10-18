@@ -24,6 +24,8 @@ from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.invitation_service import InvitationService
+from app.md.models import JobRun
+from app.md.schedule import MD_JOBS
 from app.services.performance_build_service import last_market_day
 
 JOBS = (
@@ -145,7 +147,36 @@ class StatusService:
                     "last_error": run.get("error"),
                 }
             )
-        return jobs
+        return jobs + self._md_jobs(attention)
+
+    def _md_jobs(self, attention: List[str]) -> List[Dict]:
+        """Market-data jobs run in their own worker; their record is ``md.job_run``."""
+        now = datetime.now(timezone.utc)
+        rows = []
+        for job in MD_JOBS:
+            last = (
+                self.db.query(JobRun)
+                .filter(JobRun.job == job.id, JobRun.outcome != "running")
+                .order_by(JobRun.started_at.desc())
+                .first()
+            )
+            if last is not None and last.outcome == "failed":
+                attention.append(f"{job.label} failed on its last run.")
+            next_run = job.trigger().get_next_fire_time(None, now)
+            rows.append(
+                {
+                    "id": job.id,
+                    "label": job.label,
+                    "next_run_at": next_run,
+                    "last_started_at": _aware(last.started_at) if last else None,
+                    "last_finished_at": _aware(last.finished_at) if last else None,
+                    "last_ok": (last.outcome == "ok") if last else None,
+                    "last_error": last.note
+                    if last is not None and last.outcome == "failed"
+                    else None,
+                }
+            )
+        return rows
 
     def _brokerage_links(self, attention: List[str]) -> List[Dict]:
         """Each brokerage login on file, and whether the source still shares it."""

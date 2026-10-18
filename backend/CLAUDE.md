@@ -112,6 +112,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
+| `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
 | `app/services/status_service.py`        | The advisor's system status: jobs, brokerage accounts, data freshness, backup, warnings |
 | `app/services/run_log.py`               | In-memory record of job runs and recent warnings since the app started                  |
 | `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
@@ -342,6 +343,28 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   at the source, so `discover` sees them all whichever client it is run for; `start_link`
   stamps `clients.brokerage_link_started_at` and `discover` files a link seen for the first
   time under that client, falling back to the client asked about only when none started one.
+
+## Market data: the `md` schema
+
+Reference data about securities and indices (`app/md/`, `DATA_MODEL.md` § "The `md` schema"),
+separate from client data in `public` and `perf`. Rules:
+
+- **Current vs history.** A current table has one row per thing; a `_hist` table holds dated rows.
+  Write both in the same transaction; a current table must always be rebuildable from its history.
+- **Its jobs run only in the market-data worker** (`python -m app.md.worker`, the `md-worker`
+  container), never in the web process or its scheduler. Each run goes through
+  `md.jobs.tracked_run` (a Postgres advisory lock and a `md.job_run` row) and is listed in
+  `md.schedule.MD_JOBS`, which System status reads. The worker never runs migrations.
+- **Keep every fetched file** in `md.source_file` before reading it, so a reader can be fixed and
+  the files read again.
+- **Never apply a file that looks wrong**: outside the index's member range, or older than what is
+  on file. Report it and leave membership as it was.
+- **Nothing in `perf` reads `md`** until the planned consolidation; returns and valuations are
+  untouched by market data.
+- **Tests never reach the network**: replace `md.sources.fetch` with the test's files. In SQLite
+  the `md` schema maps to the default one (`tests/conftest.py`), so `md` table names must not
+  repeat a `public` or `perf` table name.
+- Run membership by hand: `python -m app.cli md-index-membership`.
 
 ## System status
 
