@@ -360,8 +360,18 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   the files read again.
 - **Never apply a file that looks wrong**: outside the index's member range, or older than what is
   on file. Report it and leave membership as it was.
-- **Nothing in `perf` reads `md`** until the planned consolidation; returns and valuations are
-  untouched by market data.
+- **Nothing in `perf` reads `md`, now or later**; returns and valuations are untouched by market
+  data. The app keeps its own prices in `perf.daily_price` and `md` will hold its own. Neither
+  reads the other, and the two are never mixed in one calculation.
+- **Keep `md` able to run on another machine.** No foreign keys or SQL joins between `md` and
+  `public` or `perf`, and the app never depends on a live call to `md`. A screen that needs `md`'s
+  data reads a small copy the app owns, refreshed by a job. `seed.py` reading holdings and
+  `status_service.py` reading `md` are the existing exceptions, due to be removed.
+- **Index data is never pruned.** A history limit may apply only to stock and ETF prices in `md`.
+- **The app and `md` spell tickers differently** (`BRK B`, `BRK.B`). Once `symbol_aliases` exists,
+  match them only through it, never by comparing the text. Its upkeep job scans every table that
+  stores symbols, so a new table that stores symbols must be added to the scan. Do not rewrite
+  stored trades to match.
 - **Tests never reach the network**: replace `md.sources.fetch` with the test's files. In SQLite
   the `md` schema maps to the default one (`tests/conftest.py`), so `md` table names must not
   repeat a `public` or `perf` table name.
