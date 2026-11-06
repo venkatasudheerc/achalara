@@ -63,6 +63,7 @@ containers_up() {
 migrate() {
   activate_venv
   warn "applying migrations (alembic upgrade head)…"
+  alembic -n md upgrade head >/dev/null 2>&1 && ok "md schema at head"
   alembic upgrade head >/dev/null 2>&1 && ok "schema at head ($(alembic current 2>/dev/null | awk '{print $1}'))"
 }
 

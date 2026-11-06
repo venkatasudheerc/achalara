@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     # Email to clients (their invite and reset links), sent through Resend.
     # Either empty: no email is sent and links are passed on by hand.
+    # Market data's own database. Empty: it shares the app's.
+    md_database_url: str = ""
     # Market data: the SEC asks every request to EDGAR to carry a contact email.
     # Empty: SEC lookups are skipped.
     sec_contact_email: str = ""

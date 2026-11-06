@@ -33,10 +33,16 @@ def _get_url() -> str:
 
 
 def _include_name(name, type_, parent_names):
-    """Limit autogenerate to the schemas this application owns."""
+    """Limit autogenerate to the schemas this history owns."""
     if type_ == "schema":
-        return name in (None, "public", "perf", "md")
+        return name in (None, "public", "perf")
     return True
+
+
+def _include_object(obj, name, type_, reflected, compare_to):
+    """Market data's tables share the metadata but have their own history
+    (``migrations_md``)."""
+    return not (type_ == "table" and obj.schema == "md")
 
 
 def run_migrations_offline() -> None:
@@ -72,6 +78,7 @@ def run_migrations_online() -> None:
             # autogenerate neither sees them nor compares them.
             include_schemas=True,
             include_name=_include_name,
+            include_object=_include_object,
         )
 
         with context.begin_transaction():

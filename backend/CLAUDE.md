@@ -58,6 +58,10 @@ python -m app.cli load-index-history
 alembic upgrade head
 alembic revision --autogenerate -m "description"
 
+# Market data's migrations are a separate history (migrations_md/)
+alembic -n md upgrade head
+alembic -n md revision --autogenerate -m "description"
+
 # Format / lint (from backend/)
 black app/
 flake8 app/
@@ -113,6 +117,10 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
 | `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
+| `app/md/read.py`                        | What the app may ask market data: the one way in from outside the package                |
+| `app/services/held_symbols.py`          | The symbols held, handed to market data so it never reads client data                     |
+| `app/utils/symbols.py`                  | Every source's spelling of a ticker (`app_symbol`, `webull_symbol`, `figi_symbol`)        |
+| `app/utils/webull_signing.py`           | Signing a Webull request, shared by the app's client and the market-data jobs            |
 | `app/services/status_service.py`        | The advisor's system status: jobs, brokerage accounts, data freshness, backup, warnings |
 | `app/services/run_log.py`               | In-memory record of job runs and recent warnings since the app started                  |
 | `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
@@ -364,11 +372,25 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   data. The app keeps its own prices in `perf.daily_price` and `md` will hold its own. Neither
   reads the other, and the two are never mixed in one calculation.
 - **Keep `md` able to run on another machine.** No foreign keys or SQL joins between `md` and
-  `public` or `perf`, and the app never depends on a live call to `md`. A screen that needs `md`'s
-  data reads a small copy the app owns, refreshed by a job. `seed.py` reading holdings and
-  `status_service.py` reading `md` are the existing exceptions, due to be removed.
+  `public` or `perf`. Outside the package, import only `app.md.read` and `app.md.schedule` (the CLI
+  and `models/__init__.py` are the exceptions); inside it, only `app.md`, `app.config`,
+  `app.models.base` and `app.utils`. `worker.py` alone also opens the app's database, to hand
+  `seed_securities` the list from `held_symbols`. `tests/test_md_separation.py` holds all this. A
+  client screen that needs `md`'s data reads a small copy the app owns, refreshed by a job; it never
+  depends on `md` being reachable. System status reads `md` through `read.py` and says so if it
+  cannot (`MdUnavailable`).
+- **`md` opens sessions through `md.database.MdSession`,** which uses `MD_DATABASE_URL` when it is
+  set and the app's database otherwise.
+- **`md` has its own migrations** (`migrations_md/`, run with `alembic -n md ...`). Its version
+  table is inside the schema, so a dump of `md` carries it. A new `md` table goes there, never in
+  `migrations/`. The backend applies both histories at start.
+- **The model holds any market (`md.market`); every feed is American.** A ticker is unique within a
+  market, so a lookup by ticker must name one: today's jobs filter on `US_MARKET`. A security belongs
+  to one market and has its own `currency`. Price tables key on the security and record the currency.
+  Returns and tax lots have no currency handling, so nothing foreign may reach `perf`.
 - **Index data is never pruned.** A history limit may apply only to stock and ETF prices in `md`.
-- **The app and `md` spell tickers differently** (`BRK B`, `BRK.B`). Once `symbol_aliases` exists,
+- **The app and `md` spell tickers differently** (`BRK B`, `BRK.B`). Convert through
+  `utils/symbols.py`; Webull answers `INVALID_SYMBOL` to `BRK.B`. Once `symbol_aliases` exists,
   match them only through it, never by comparing the text. Its upkeep job scans every table that
   stores symbols, so a new table that stores symbols must be added to the scan. Do not rewrite
   stored trades to match.
@@ -386,6 +408,11 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   worked out from its index members (`ishares_majority`), not written by hand.
 - By hand: `python -m app.cli md-index-membership`, `md-identifiers`, `md-classification
   [--refresh]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
+- **The Market data page (`/app/market-data`)** reads `GET /api/v1/admin/market-data/status`
+  (`app/md/status_report.py`, through `read.market_data_status`): jobs, indices, coverage, tables and
+  what is not built, with its own `attention` list. It is advisor-only, because the counts include
+  symbols from holdings. A planned table goes in `PLANNED_TABLES` and leaves the list by itself once
+  its model exists. A new `md` job only needs adding to `MD_JOBS` to appear there.
 
 ## System status
 

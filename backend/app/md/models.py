@@ -27,6 +27,9 @@ from sqlalchemy import (
 from app.models.base import BaseModel
 
 SCHEMA = "md"
+# Every feed so far is American. Other markets are rows in ``md.market``.
+US_MARKET = "US"
+US_CURRENCY = "USD"
 
 
 def _uuid() -> str:
@@ -36,6 +39,24 @@ def _uuid() -> str:
 # ---------------------------------------------------------------------------
 # Current
 # ---------------------------------------------------------------------------
+
+
+class Market(BaseModel):
+    """Where a ticker means one thing: the US as a whole, or one foreign exchange.
+
+    American exchanges share one set of tickers, so they are one market. Abroad
+    each exchange has its own, so each is a market, coded by its MIC (``XLON``).
+    """
+
+    __tablename__ = "market"
+    __table_args__ = {"schema": SCHEMA}
+
+    code = Column(String(12), primary_key=True)
+    name = Column(String(80), nullable=False)
+    country = Column(String(2), nullable=False)  # ISO 3166
+    currency = Column(String(3), nullable=False)  # ISO 4217, the usual one there
+    timezone = Column(String(40), nullable=False)  # IANA, e.g. America/New_York
+    mic = Column(String(4))  # ISO 10383; empty for a market of several exchanges
 
 
 class Company(BaseModel):
@@ -61,11 +82,23 @@ class Security(BaseModel):
 
     id = Column(String(36), primary_key=True, default=_uuid)
     company_id = Column(String(36), ForeignKey(f"{SCHEMA}.company.id"))
+    # One market: the same company listed elsewhere is another security.
+    market_code = Column(
+        String(12),
+        ForeignKey(f"{SCHEMA}.market.code"),
+        nullable=False,
+        default=US_MARKET,
+        index=True,
+    )
+    currency = Column(String(3), nullable=False, default=US_CURRENCY)  # as quoted
     name = Column(String(255), nullable=False)
     # stock | etf | adr | fund | preferred | other
     kind = Column(String(20), nullable=False, default="stock")
     exchange = Column(String(60))
     figi = Column(String(12), unique=True)  # composite FIGI, the permanent id
+    # These two follow a share class across markets, so neither is unique.
+    share_class_figi = Column(String(12), index=True)
+    isin = Column(String(12), index=True)
     webull_id = Column(String(30), unique=True)
     status = Column(String(12), nullable=False, default="active")  # active | delisted
     listed_from = Column(Date)
@@ -78,14 +111,25 @@ class SecuritySymbol(BaseModel):
     """The ticker a security uses today: the lookup from a symbol to its security."""
 
     __tablename__ = "security_symbol"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        UniqueConstraint(
+            "market_code", "symbol", name="uq_md_security_symbol_market_symbol"
+        ),
+        {"schema": SCHEMA},
+    )
 
     security_id = Column(
         String(36),
         ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    symbol = Column(String(30), nullable=False, unique=True)  # in the app's spelling
+    symbol = Column(String(30), nullable=False)  # in the app's spelling
+    market_code = Column(
+        String(12),
+        ForeignKey(f"{SCHEMA}.market.code"),
+        nullable=False,
+        default=US_MARKET,
+    )
 
 
 class Sector(BaseModel):
@@ -191,6 +235,12 @@ class SecuritySymbolHist(BaseModel):
         primary_key=True,
     )
     symbol = Column(String(30), nullable=False, index=True)
+    market_code = Column(
+        String(12),
+        ForeignKey(f"{SCHEMA}.market.code"),
+        nullable=False,
+        default=US_MARKET,
+    )
     valid_from = Column(Date, primary_key=True)
     valid_to = Column(Date)  # empty while current
     source = Column(String(30), nullable=False)

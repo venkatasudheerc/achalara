@@ -36,6 +36,7 @@ source venv/bin/activate
 colima start                       # 1. Docker runtime (no-op if already running)
 docker-compose up -d               # 2. Postgres + Redis (detached)
 alembic upgrade head               # 3. Apply migrations (idempotent — safe to re-run)
+alembic -n md upgrade head         #    and market data's, which are a separate history
 uvicorn app.main:app --reload --port 8000   # 4. App (foreground; Ctrl+C to stop)
 ```
 
@@ -104,6 +105,7 @@ alembic history              # list all migrations
 alembic upgrade head         # apply all pending migrations (idempotent)
 alembic downgrade -1         # roll back one migration
 alembic downgrade base       # roll back everything (drops all app tables)
+alembic -n md current        # the same commands with -n md act on market data's history
 ```
 
 Open a psql shell inside the container:

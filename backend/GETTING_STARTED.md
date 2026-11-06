@@ -123,6 +123,7 @@ flake8 app/         # lint
 # Database migrations
 alembic revision --autogenerate -m "description"
 alembic upgrade head
+alembic -n md upgrade head       # market data's own history (migrations_md/)
 ```
 
 ---

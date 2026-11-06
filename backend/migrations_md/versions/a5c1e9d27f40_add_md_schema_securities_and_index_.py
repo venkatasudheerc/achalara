@@ -1,7 +1,7 @@
 """add md schema: securities and index membership
 
 Revision ID: a5c1e9d27f40
-Revises: e7a2c9d41b53
+Revises:
 Create Date: 2026-10-18 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "a5c1e9d27f40"
-down_revision = "e7a2c9d41b53"
+down_revision = None
 branch_labels = None
 depends_on = None
 
@@ -245,4 +245,3 @@ def downgrade() -> None:
         "company",
     ):
         op.drop_table(table, schema=S)
-    op.execute("DROP SCHEMA IF EXISTS md")

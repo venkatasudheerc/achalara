@@ -39,6 +39,7 @@ limits, user-visible screens.
 | A phase finished or a plan changed | `ROADMAP.md`; for market data, the status table in `docs/MARKET_DATA.md` § 1 *(local)* |
 | Start-up or developer commands | `CLAUDE.md` (root), `backend/CLAUDE.md` § Commands, `backend/GETTING_STARTED.md`, `README.md` |
 | A new doc | Add it to this table, and point to it from the nearest `CLAUDE.md` |
+| A planned `md` table or column | `PLANNED_TABLES` in `backend/app/md/status_report.py`, which the Market data page lists as not built |
 
 ## 3. Edit
 

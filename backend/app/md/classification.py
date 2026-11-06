@@ -32,9 +32,11 @@ from app.md.models import (
     SecurityClassification,
     SecurityClassificationHist,
     SecuritySymbol,
+    US_MARKET,
     SourceFile,
 )
 from app.md.readers import read_ishares_csv
+from app.utils.symbols import webull_symbol
 from app.md.sectors import ishares_sector, sic_sector
 from app.md.webull import (
     WebullClient,
@@ -160,6 +162,7 @@ class ClassificationService:
         query = (
             self.db.query(Security, SecuritySymbol.symbol)
             .join(SecuritySymbol, SecuritySymbol.security_id == Security.id)
+            .filter(Security.market_code == US_MARKET)
             .filter(Security.kind.in_(("stock", "adr", "preferred")))
         )
         stale = datetime.now(timezone.utc) - REFRESH_AFTER
@@ -181,7 +184,7 @@ class ClassificationService:
             try:
                 profile = self.webull.get(
                     "/market-data/fundamentals/company-profiles/get",
-                    {"symbol": symbol.replace(".", " "), "category": "US_STOCK"},
+                    {"symbol": webull_symbol(symbol), "category": "US_STOCK"},
                 )
                 unreachable = 0
             except WebullUnreachable:
@@ -387,7 +390,9 @@ class ClassificationService:
     ) -> None:
         link = (
             self.db.query(SecuritySymbol)
-            .filter(SecuritySymbol.symbol == symbol)
+            .filter(
+                SecuritySymbol.market_code == US_MARKET, SecuritySymbol.symbol == symbol
+            )
             .first()
         )
         if link is None:

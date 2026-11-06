@@ -215,6 +215,7 @@ black app/                   # format
 flake8 app/                  # lint
 alembic revision --autogenerate -m "description"   # new migration
 alembic upgrade head         # apply migrations
+alembic -n md upgrade head   # apply market data's migrations (its own history)
 ```
 
 See [DATA_MODEL.md](DATA_MODEL.md) for the authoritative schema reference.

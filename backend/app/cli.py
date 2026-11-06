@@ -165,24 +165,29 @@ def send_test_webhook(url: str) -> int:
 
 def md_index_membership() -> int:
     """Fetch the index funds' holdings now and bring membership up to date."""
+    from app.md.database import MdSession
     from app.md.membership import run_index_membership
-    from app.md.seed import seed_from_holdings
+    from app.md.seed import seed_securities
+    from app.services.held_symbols import held_symbols
 
-    db = SessionLocal()
+    app_db = SessionLocal()
+    db = MdSession()
     try:
-        added = seed_from_holdings(db, date.today())
+        added = seed_securities(db, held_symbols(app_db), date.today())
         print(f"Held securities added to the security master: {added}")
         print(run_index_membership(db).summary())
     finally:
         db.close()
+        app_db.close()
     return 0
 
 
 def md_identifiers() -> int:
     """Fill in Webull ids, SEC companies and FIGIs now."""
+    from app.md.database import MdSession
     from app.md.identifiers import run_identifiers
 
-    db = SessionLocal()
+    db = MdSession()
     try:
         print(run_identifiers(db, date.today()))
     finally:
@@ -193,8 +198,9 @@ def md_identifiers() -> int:
 def md_classification(refresh: bool) -> int:
     """Work out sectors and industries now."""
     from app.md.classification import run_classification
+    from app.md.database import MdSession
 
-    db = SessionLocal()
+    db = MdSession()
     try:
         print(run_classification(db, date.today(), refresh=refresh))
     finally:
@@ -205,13 +211,14 @@ def md_classification(refresh: bool) -> int:
 def md_set_sector(symbol: str, sector: Optional[str], industry: Optional[str]) -> int:
     """Set a security's sector and/or industry by hand; never overwritten by a source."""
     from app.md.classification import ClassificationService
+    from app.md.database import MdSession
     from app.md.sectors import SECTORS
 
     codes = {code for code, _, _ in SECTORS}
     if sector and sector not in codes:
         print(f"Sector must be one of: {', '.join(sorted(codes))}", file=sys.stderr)
         return 1
-    db = SessionLocal()
+    db = MdSession()
     try:
         ClassificationService(db).set_manual(
             symbol.strip().upper(), sector, industry, date.today()

@@ -18,7 +18,8 @@ from app.md.models import (
     SourceFile,
 )
 from app.md.readers import read_ishares_csv, read_ssga_xlsx
-from app.md.seed import seed_from_holdings
+from app.md.seed import seed_securities
+from app.services.held_symbols import held_symbols
 
 HEADER = (
     "Ticker,Name,Sector,Asset Class,Market Value,Weight (%),Notional Value,Quantity,Price,"
@@ -340,13 +341,13 @@ def test_held_securities_are_added_once_options_left_out(db):
         )
     db.commit()
 
-    assert seed_from_holdings(db, date(2026, 10, 18)) == 4
+    assert seed_securities(db, held_symbols(db), date(2026, 10, 18)) == 4
     kinds = {
         sym: kind
         for sym, kind in db.query(SecuritySymbol.symbol, Security.kind).join(Security)
     }
     assert kinds == {"AAA": "stock", "BBB": "stock", "ETFX": "etf", "FNDX": "fund"}
-    assert seed_from_holdings(db, date(2026, 10, 18)) == 0
+    assert seed_securities(db, held_symbols(db), date(2026, 10, 18)) == 0
 
 
 def test_system_status_lists_market_data_jobs_and_a_failure(client, db, indices, files):

@@ -12,12 +12,14 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from app.config import settings
 from app.db.database import SessionLocal
 from app.md.classification import run_classification
+from app.md.database import MdSession
 from app.md.identifiers import run_identifiers
 from app.md.jobs import JobAlreadyRunning, tracked_run
 from app.md.membership import JOB as MEMBERSHIP_JOB, run_index_membership
 from app.md.models import JobRun
 from app.md.schedule import MD_JOBS, TIMEZONE
-from app.md.seed import seed_from_holdings
+from app.md.seed import seed_securities
+from app.services.held_symbols import held_symbols
 
 logging.basicConfig(
     level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -26,10 +28,12 @@ logger = logging.getLogger("app.md.worker")
 
 
 def _seed() -> None:
-    db = SessionLocal()
+    # The one place both databases are open: the app's for the symbols it holds.
+    app_db = SessionLocal()
+    db = MdSession()
     try:
         with tracked_run(db, "md_seed_holdings") as run:
-            run.rows_written = seed_from_holdings(db, date.today())
+            run.rows_written = seed_securities(db, held_symbols(app_db), date.today())
             run.note = f"{run.rows_written} securities added"
     except JobAlreadyRunning:
         logger.info("Held-securities seeding is already running")
@@ -37,10 +41,11 @@ def _seed() -> None:
         logger.exception("Held-securities seeding failed")
     finally:
         db.close()
+        app_db.close()
 
 
 def _membership() -> None:
-    db = SessionLocal()
+    db = MdSession()
     try:
         outcome = run_index_membership(db)
         logger.info("Index membership: %s", outcome.summary())
@@ -53,7 +58,7 @@ def _membership() -> None:
 
 
 def _identifiers() -> None:
-    db = SessionLocal()
+    db = MdSession()
     try:
         logger.info("Identifiers: %s", run_identifiers(db, date.today()))
     except JobAlreadyRunning:
@@ -65,7 +70,7 @@ def _identifiers() -> None:
 
 
 def _classification() -> None:
-    db = SessionLocal()
+    db = MdSession()
     try:
         saturday = date.today().weekday() == 5
         logger.info(
@@ -89,7 +94,7 @@ JOBS = {
 
 def _missed_today() -> bool:
     """Whether the membership job has not succeeded in the last 20 hours."""
-    db = SessionLocal()
+    db = MdSession()
     try:
         last = (
             db.query(JobRun.finished_at)

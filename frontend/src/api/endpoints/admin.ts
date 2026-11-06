@@ -1,11 +1,13 @@
 import { apiClient } from '../client'
 import type {
   ImportResponse, SyncDailyResponse,
-  SyncLogsResponse, SheetSyncConfig, SyncConfigCreate, SyncConfigUpdate, SystemStatusResponse,
+  MarketDataStatusResponse, SyncLogsResponse, SheetSyncConfig, SyncConfigCreate, SyncConfigUpdate, SystemStatusResponse,
 } from '../types'
 
 export const adminApi = {
   status: () => apiClient.get<SystemStatusResponse>('/api/v1/admin/status').then((r) => r.data),
+  marketDataStatus: () =>
+    apiClient.get<MarketDataStatusResponse>('/api/v1/admin/market-data/status').then((r) => r.data),
   /** Sends a test message through the alert channel. */
   testAlert: () =>
     apiClient.post<{ sent: boolean }>('/api/v1/admin/status/test-alert').then((r) => r.data),

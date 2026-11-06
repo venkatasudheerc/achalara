@@ -15,6 +15,8 @@ from datetime import date, datetime
 from typing import List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
+from app.utils.symbols import app_symbol
+
 
 @dataclass(frozen=True)
 class Holding:
@@ -28,12 +30,6 @@ class Holding:
 
 # A plain listed share, optionally with a class letter: AAPL, BRK.B, MOG.A.
 _SHARE = re.compile(r"^[A-Z]{1,5}(\.[A-Z])?$")
-
-
-def app_symbol(raw: str) -> str:
-    """The app's spelling of a ticker: ``BRK B`` / ``BRK/B`` / ``BRK-B`` -> ``BRK.B``."""
-    symbol = (raw or "").strip().upper()
-    return re.sub(r"[ /-]", ".", symbol)
 
 
 def _number(text) -> Optional[float]:

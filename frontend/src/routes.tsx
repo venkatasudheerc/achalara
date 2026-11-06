@@ -10,6 +10,7 @@ import { StrategiesPage } from '@/features/strategies/StrategiesPage'
 import { ImportsPage } from '@/features/imports/ImportsPage'
 import { SettingsPage } from '@/features/SettingsPage'
 import { StatusPage } from '@/features/status/StatusPage'
+import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
 import { RequestsPage } from '@/features/invitations/RequestsPage'
 import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
@@ -45,6 +46,7 @@ export function AppRoutes() {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="market-data" element={<MarketDataPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="risk" element={<RiskPage />} />

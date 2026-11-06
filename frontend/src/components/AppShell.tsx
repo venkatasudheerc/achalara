@@ -11,6 +11,7 @@ const navItems = [
   { to: '/app/strategies', label: 'Strategies' },
   { to: '/app/imports', label: 'Imports' },
   { to: '/app/status', label: 'System status' },
+  { to: '/app/market-data', label: 'Market data' },
 ]
 
 const fastFollowers = [
@@ -87,7 +88,7 @@ export function AppShell() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 md:ml-56 flex flex-col min-h-screen">
         {/* Top bar */}
         <header className="sticky top-0 z-10 bg-paper/95 backdrop-blur border-b border-stone/20 px-6 py-3 flex items-center gap-4">
           {/* Scope breadcrumb */}
@@ -150,7 +151,7 @@ export function AppShell() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-6 py-8">
+        <main className="flex-1 px-6 py-8 min-w-0">
           <Outlet />
         </main>
       </div>

@@ -29,6 +29,7 @@ from app.md.models import (
     Security,
     SecuritySymbol,
     SecuritySymbolHist,
+    US_MARKET,
     SourceFile,
 )
 from app.md.readers import Holding, read_ishares_csv, read_ssga_xlsx
@@ -222,7 +223,10 @@ class MembershipService:
         """The security a holding names, created the first time it is seen."""
         known = (
             self.db.query(SecuritySymbol)
-            .filter(SecuritySymbol.symbol == holding.symbol)
+            .filter(
+                SecuritySymbol.market_code == US_MARKET,
+                SecuritySymbol.symbol == holding.symbol,
+            )
             .first()
         )
         if known is not None:
@@ -263,6 +267,7 @@ class MembershipService:
             row[0]
             for row in self.db.query(SecuritySymbol.symbol)
             .join(IndexMember, IndexMember.security_id == SecuritySymbol.security_id)
+            .filter(SecuritySymbol.market_code == US_MARKET)
             .filter(IndexMember.index_code == "SP500")
         }
         only_ours, only_theirs = sorted(ours - theirs), sorted(theirs - ours)

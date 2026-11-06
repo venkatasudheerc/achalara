@@ -12,7 +12,8 @@ import time
 import urllib.parse
 from typing import Dict, Optional
 
-from app.services.webull_market_data import WebullMarketDataService
+from app.config import settings
+from app.utils.webull_signing import HOST, signed_headers
 
 # Seconds between requests to one endpoint.
 _FUNDAMENTALS_PACE = 2.0  # 30 a minute; Webull documents 60 for some of these
@@ -33,12 +34,11 @@ class WebullUnreachable(WebullError):
 
 class WebullClient:
     def __init__(self):
-        self._signer = WebullMarketDataService()
         self._last: Dict[str, float] = {}
         self.requests = 0
 
     def configured(self) -> bool:
-        return bool(self._signer.app_key and self._signer.app_secret)
+        return bool(settings.webull_app_key and settings.webull_app_secret)
 
     def _pace(self, path: str) -> None:
         gap = _FUNDAMENTALS_PACE if "/fundamentals/" in path else _DEFAULT_PACE
@@ -57,15 +57,19 @@ class WebullClient:
 
     def _send(self, method: str, path: str, query: dict, body: Optional[str]):
         self._pace(path)
-        host = self._signer.MARKET_HOST
-        headers = self._signer._build_headers(
-            host, path, query_params=query, body_string=body
+        headers = signed_headers(
+            settings.webull_app_key,
+            settings.webull_app_secret,
+            HOST,
+            path,
+            query,
+            body,
+            version="v3",
         )
-        headers["x-version"] = "v3"
         if body:
             headers["Content-Type"] = "application/json"
         url = path + ("?" + urllib.parse.urlencode(query) if query else "")
-        conn = http.client.HTTPSConnection(host, timeout=30)
+        conn = http.client.HTTPSConnection(HOST, timeout=30)
         self.requests += 1
         try:
             conn.request(method, url, body, headers)

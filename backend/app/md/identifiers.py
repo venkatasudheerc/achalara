@@ -16,8 +16,14 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.md import sources
 from app.md.jobs import tracked_run
-from app.md.models import Company, Security, SecuritySymbol, SecuritySymbolHist
-from app.md.readers import app_symbol
+from app.md.models import (
+    Company,
+    Security,
+    SecuritySymbol,
+    SecuritySymbolHist,
+    US_MARKET,
+)
+from app.utils.symbols import app_symbol, figi_symbol
 from app.md.webull import WebullClient, WebullError, WebullRefused
 
 logger = logging.getLogger(__name__)
@@ -66,7 +72,12 @@ class IdentifierService:
         if not self.webull.configured():
             self.notes.append("Webull not configured; skipped")
             return
-        symbols = {row.symbol: row.security_id for row in self.db.query(SecuritySymbol)}
+        symbols = {
+            row.symbol: row.security_id
+            for row in self.db.query(SecuritySymbol).filter(
+                SecuritySymbol.market_code == US_MARKET
+            )
+        }
         securities = {s.id: s for s in self.db.query(Security)}
         by_webull = {s.webull_id: s for s in securities.values() if s.webull_id}
         linked = renamed = 0
@@ -148,7 +159,12 @@ class IdentifierService:
             self.notes.append(f"SEC tickers file failed: {type(exc).__name__}")
             return
         columns = {name: i for i, name in enumerate(data.get("fields") or [])}
-        symbols = {row.symbol: row.security_id for row in self.db.query(SecuritySymbol)}
+        symbols = {
+            row.symbol: row.security_id
+            for row in self.db.query(SecuritySymbol).filter(
+                SecuritySymbol.market_code == US_MARKET
+            )
+        }
         companies = {
             c.cik: c for c in self.db.query(Company).filter(Company.cik.isnot(None))
         }
@@ -209,6 +225,7 @@ class IdentifierService:
         pending = (
             self.db.query(Security, SecuritySymbol.symbol)
             .join(SecuritySymbol, SecuritySymbol.security_id == Security.id)
+            .filter(Security.market_code == US_MARKET)
             .filter(Security.figi.is_(None))
             .limit(FIGI_PER_RUN)
             .all()
@@ -226,7 +243,7 @@ class IdentifierService:
             jobs = [
                 {
                     "idType": "TICKER",
-                    "idValue": symbol.replace(".", "/"),
+                    "idValue": figi_symbol(symbol),
                     "exchCode": "US",
                 }
                 for _, symbol in batch

@@ -73,6 +73,12 @@ jobs:
         run: alembic downgrade -1
       - name: Upgrade again
         run: alembic upgrade head
+      - name: Market data, upgrade to head
+        run: alembic -n md upgrade head
+      - name: Market data, downgrade to nothing
+        run: alembic -n md downgrade base
+      - name: Market data, upgrade again
+        run: alembic -n md upgrade head
 
   frontend:
     name: Frontend build

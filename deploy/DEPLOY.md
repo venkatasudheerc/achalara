@@ -222,8 +222,11 @@ The app's own daily jobs keep their UTC times.
 data: …": identifiers at 5:00 (Webull ids, SEC companies, FIGIs), held securities at 6:45, index
 membership at 7:00 Tuesday to Saturday, and sectors and industries at 10:30 PM. Set
 `SEC_CONTACT_EMAIL` in `deploy/.env` (the SEC requires a contact in each request; without it SEC
-lookups are skipped). `OPENFIGI_API_KEY` is optional.
-To run it by hand, for example right after the first deploy:
+lookups are skipped). `OPENFIGI_API_KEY` is optional. The backend applies market data's migrations
+at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABASE_URL` is only for
+giving market data a database of its own; left empty, it shares the app's.
+Its state is on the **Market data** page in the advisor workspace (`/app/market-data`). To run it by
+hand, for example right after the first deploy:
 
 ```sh
 docker compose exec backend python -m app.cli md-index-membership
