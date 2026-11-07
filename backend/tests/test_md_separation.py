@@ -22,12 +22,9 @@ APP = BACKEND / "app"
 
 # Outside the package, only these may be imported; the CLI is an operator's tool.
 ALLOWED_FROM_OUTSIDE = {"app.md.read", "app.md.schedule"}
-OUTSIDE_EXCEPTIONS = {
-    "cli.py": ("app.md",),
-    "models/__init__.py": ("app.md.models",),
-}
+OUTSIDE_EXCEPTIONS = {"cli.py": ("app.md",)}
 # Inside the package, only these parts of the app may be imported.
-ALLOWED_FROM_INSIDE = ("app.md", "app.config", "app.models.base", "app.utils")
+ALLOWED_FROM_INSIDE = ("app.md", "app.utils")
 # The worker is where the two meet: it hands md the symbols the app holds.
 WORKER_ALSO = ("app.db.database", "app.services.held_symbols")
 
@@ -272,3 +269,30 @@ def test_last_run_ignores_a_run_still_going(db):
     db.flush()
     assert md_read.last_run(db, "some_job") is None
     assert md_read.has_run(db, "some_job") is True
+
+
+def test_market_data_keeps_its_own_metadata():
+    """Its tables are not in the app's metadata, and the app's are not in its."""
+    from app.md.base import MdBase
+    from app.models.base import Base
+
+    md_tables = {t.schema for t in MdBase.metadata.tables.values()}
+    assert md_tables == {"md"}
+    assert not any(t.schema == "md" for t in Base.metadata.tables.values())
+
+
+def test_market_data_reads_its_own_settings(monkeypatch):
+    from app.md.config import MdSettings
+
+    monkeypatch.setenv("DATABASE_URL", "postgres://app-host/app")
+    monkeypatch.setenv("MD_DATABASE_URL", "")
+    shared = MdSettings()
+    assert shared.url == "postgresql://app-host/app"
+    assert shared.separate is False
+    monkeypatch.setenv("MD_DATABASE_URL", "postgresql://md-host/md")
+    own = MdSettings()
+    assert (own.url, own.separate) == ("postgresql://md-host/md", True)
+    monkeypatch.delenv("DATABASE_URL")
+    monkeypatch.setenv("MD_DATABASE_URL", "postgresql://md-host/md")
+    alone = MdSettings(_env_file=None)
+    assert alone.url == "postgresql://md-host/md"

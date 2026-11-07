@@ -18,9 +18,6 @@ from app.models.user import AccountAccess, AuthToken, User, UserSession
 from app.models.index_bar import IndexBar
 from app.models.invitation_request import InvitationRequest
 
-# Market data lives in its own package and schema; imported here so its tables
-# are part of the same metadata (migrations, and the tests' create_all).
-import app.md.models  # noqa: E402,F401
 from app.models.perf import (
     CorporateAction,
     DailyHolding,

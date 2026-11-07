@@ -20,7 +20,7 @@ from app.md.models import (
     SourceFile,
 )
 from app.md.schedule import MD_JOBS
-from app.models.base import Base
+from app.md.base import MdBase
 
 STOCK_KINDS = ("stock", "adr", "preferred")
 # Planned in MARKET_DATA.md § 1; each leaves this list once its model exists.
@@ -58,7 +58,7 @@ def _kind(table: str) -> str:
 def _tables(db: Session) -> List[Dict]:
     postgres = db.get_bind().dialect.name == "postgresql"
     built = sorted(
-        (table for table in Base.metadata.tables.values() if table.schema == SCHEMA),
+        (table for table in MdBase.metadata.tables.values() if table.schema == SCHEMA),
         key=lambda table: table.name,
     )
     return [
@@ -79,7 +79,9 @@ def _tables(db: Session) -> List[Dict]:
 
 def _not_built() -> List[Dict]:
     built = {
-        table.name for table in Base.metadata.tables.values() if table.schema == SCHEMA
+        table.name
+        for table in MdBase.metadata.tables.values()
+        if table.schema == SCHEMA
     }
     rows = [
         {"name": name, "phase": phase}

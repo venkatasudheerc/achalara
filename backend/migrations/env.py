@@ -39,12 +39,6 @@ def _include_name(name, type_, parent_names):
     return True
 
 
-def _include_object(obj, name, type_, reflected, compare_to):
-    """Market data's tables share the metadata but have their own history
-    (``migrations_md``)."""
-    return not (type_ == "table" and obj.schema == "md")
-
-
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = _get_url()
@@ -78,7 +72,6 @@ def run_migrations_online() -> None:
             # autogenerate neither sees them nor compares them.
             include_schemas=True,
             include_name=_include_name,
-            include_object=_include_object,
         )
 
         with context.begin_transaction():

@@ -373,14 +373,15 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   reads the other, and the two are never mixed in one calculation.
 - **Keep `md` able to run on another machine.** No foreign keys or SQL joins between `md` and
   `public` or `perf`. Outside the package, import only `app.md.read` and `app.md.schedule` (the CLI
-  and `models/__init__.py` are the exceptions); inside it, only `app.md`, `app.config`,
-  `app.models.base` and `app.utils`. `worker.py` alone also opens the app's database, to hand
+  is the exception); inside it, only `app.md` and `app.utils`. `worker.py` alone also opens the app's database, to hand
   `seed_securities` the list from `held_symbols`. `tests/test_md_separation.py` holds all this. A
   client screen that needs `md`'s data reads a small copy the app owns, refreshed by a job; it never
   depends on `md` being reachable. System status reads `md` through `read.py` and says so if it
   cannot (`MdUnavailable`).
-- **`md` opens sessions through `md.database.MdSession`,** which uses `MD_DATABASE_URL` when it is
-  set and the app's database otherwise.
+- **`md` stands on its own:** it opens sessions through `md.database.MdSession` (`MD_DATABASE_URL`
+  when set, the app's database otherwise), reads its settings from `md.config` (the same `.env`
+  names, never `app.config`), and its tables use `md.base.MdModel`, in their own metadata, not the
+  app's `Base`. A new `md` setting goes in `md/config.py`; a new `md` table extends `MdModel`.
 - **`md` has its own migrations** (`migrations_md/`, run with `alembic -n md ...`). Its version
   table is inside the schema, so a dump of `md` carries it. A new `md` table goes there, never in
   `migrations/`. The backend applies both histories at start.

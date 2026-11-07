@@ -12,7 +12,7 @@ import time
 import urllib.parse
 from typing import Dict, Optional
 
-from app.config import settings
+from app.md.config import settings
 from app.utils.webull_signing import HOST, signed_headers
 
 # Seconds between requests to one endpoint.

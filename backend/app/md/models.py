@@ -24,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
-from app.models.base import BaseModel
+from app.md.base import MdModel
 
 SCHEMA = "md"
 # Every feed so far is American. Other markets are rows in ``md.market``.
@@ -41,7 +41,7 @@ def _uuid() -> str:
 # ---------------------------------------------------------------------------
 
 
-class Market(BaseModel):
+class Market(MdModel):
     """Where a ticker means one thing: the US as a whole, or one foreign exchange.
 
     American exchanges share one set of tickers, so they are one market. Abroad
@@ -59,7 +59,7 @@ class Market(BaseModel):
     mic = Column(String(4))  # ISO 10383; empty for a market of several exchanges
 
 
-class Company(BaseModel):
+class Company(MdModel):
     """A legal company. Fundamentals hang off this; GOOG and GOOGL share one."""
 
     __tablename__ = "company"
@@ -74,7 +74,7 @@ class Company(BaseModel):
     country = Column(String(60))
 
 
-class Security(BaseModel):
+class Security(MdModel):
     """A tradable line: a share class, an ETF, an ADR, a fund."""
 
     __tablename__ = "security"
@@ -107,7 +107,7 @@ class Security(BaseModel):
     profile_checked_at = Column(DateTime(timezone=True))
 
 
-class SecuritySymbol(BaseModel):
+class SecuritySymbol(MdModel):
     """The ticker a security uses today: the lookup from a symbol to its security."""
 
     __tablename__ = "security_symbol"
@@ -132,7 +132,7 @@ class SecuritySymbol(BaseModel):
     )
 
 
-class Sector(BaseModel):
+class Sector(MdModel):
     """One of the 11 GICS sectors."""
 
     __tablename__ = "sector"
@@ -143,7 +143,7 @@ class Sector(BaseModel):
     sort = Column(Integer, nullable=False)
 
 
-class Industry(BaseModel):
+class Industry(MdModel):
     """An industry as a source names it, placed under one of the 11 sectors."""
 
     __tablename__ = "industry"
@@ -166,7 +166,7 @@ class Industry(BaseModel):
     )
 
 
-class SecurityClassification(BaseModel):
+class SecurityClassification(MdModel):
     """The sector and industry a security has now, and which source set each."""
 
     __tablename__ = "security_classification"
@@ -184,7 +184,7 @@ class SecurityClassification(BaseModel):
     as_of = Column(Date, nullable=False)
 
 
-class IndexDef(BaseModel):
+class IndexDef(MdModel):
     """An index tracked, and how its membership is obtained."""
 
     __tablename__ = "index_def"
@@ -202,7 +202,7 @@ class IndexDef(BaseModel):
     level_symbol = Column(String(12))  # its own level in index history (SPX, …)
 
 
-class IndexMember(BaseModel):
+class IndexMember(MdModel):
     """A security in an index today."""
 
     __tablename__ = "index_member"
@@ -224,7 +224,7 @@ class IndexMember(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SecuritySymbolHist(BaseModel):
+class SecuritySymbolHist(MdModel):
     """Every ticker a security has used, and the source's own spelling of it."""
 
     __tablename__ = "security_symbol_hist"
@@ -248,7 +248,7 @@ class SecuritySymbolHist(BaseModel):
     __table_args__ = ({"schema": SCHEMA},)
 
 
-class SecurityClassificationHist(BaseModel):
+class SecurityClassificationHist(MdModel):
     """What one source said a security's sector and industry were, over a span."""
 
     __tablename__ = "security_classification_hist"
@@ -270,7 +270,7 @@ class SecurityClassificationHist(BaseModel):
     __table_args__ = ({"schema": SCHEMA},)
 
 
-class IndexMemberHist(BaseModel):
+class IndexMemberHist(MdModel):
     """One span of a security's membership of an index."""
 
     __tablename__ = "index_member_hist"
@@ -295,7 +295,7 @@ class IndexMemberHist(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SourceFile(BaseModel):
+class SourceFile(MdModel):
     """A file exactly as downloaded, so it can be read again if a reader was wrong."""
 
     __tablename__ = "source_file"
@@ -315,7 +315,7 @@ class SourceFile(BaseModel):
     )
 
 
-class JobRun(BaseModel):
+class JobRun(MdModel):
     """One run of a market-data job: the lasting record System status reads."""
 
     __tablename__ = "job_run"

@@ -4,7 +4,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, List
 
-from app.config import settings
+from app.md.config import settings
 
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "

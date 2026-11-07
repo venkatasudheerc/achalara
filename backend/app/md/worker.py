@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from app.config import settings
+from app.md.config import settings
 from app.db.database import SessionLocal
 from app.md.classification import run_classification
 from app.md.database import MdSession

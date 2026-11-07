@@ -14,17 +14,18 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from app.models.base import Base  # noqa: E402
+from app.md.base import MdBase  # noqa: E402
 import app.md.models  # noqa: F401, E402
 
 SCHEMA = "md"
-target_metadata = Base.metadata
+# Market data's own metadata: only its tables, so nothing else is compared.
+target_metadata = MdBase.metadata
 
 
 def _get_url() -> str:
-    from app.config import settings
+    from app.md.config import settings
 
-    return settings.md_database_url or settings.database_url
+    return settings.url
 
 
 def _include_name(name, type_, parent_names):

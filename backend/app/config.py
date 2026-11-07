@@ -40,13 +40,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     # Email to clients (their invite and reset links), sent through Resend.
     # Either empty: no email is sent and links are passed on by hand.
-    # Market data's own database. Empty: it shares the app's.
-    md_database_url: str = ""
-    # Market data: the SEC asks every request to EDGAR to carry a contact email.
-    # Empty: SEC lookups are skipped.
-    sec_contact_email: str = ""
-    # OpenFIGI works without a key, at a lower rate; a key raises it.
-    openfigi_api_key: str = ""
+    # Market data's settings (MD_DATABASE_URL, SEC_CONTACT_EMAIL,
+    # OPENFIGI_API_KEY) are read by app/md/config.py, not here.
     resend_api_key: str = ""
     mail_from: str = ""  # e.g. Achalara <no-reply@mail.example.com>
 

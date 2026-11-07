@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from app.config import settings
+from app.md.config import settings
 from app.md import sources
 from app.md.classification import ClassificationService
 from app.md.identifiers import IdentifierService

@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.md.config import settings
 from app.md import sources
 from app.md.jobs import tracked_run
 from app.md.models import (

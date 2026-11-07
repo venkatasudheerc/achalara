@@ -533,7 +533,8 @@ Two kinds of table: **current** tables hold one row per thing and are what scree
 writes both in one transaction, and every current table can be rebuilt from its history.
 Nothing in `perf` reads `md`. Its jobs run only in the `md-worker` process. Its migrations are a
 history of their own (`migrations_md/`, `alembic -n md upgrade head`), with the version table at
-`md.alembic_version`, and `MD_DATABASE_URL` can put it in a database of its own.
+`md.alembic_version`, its tables are in their own metadata (`app/md/base.py`), and
+`MD_DATABASE_URL` can put it in a database of its own.
 
 Built so far: index membership, identifiers, sector and industry; prices and fundamentals follow.
 

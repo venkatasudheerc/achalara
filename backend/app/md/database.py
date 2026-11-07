@@ -7,14 +7,12 @@ change of setting.
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.config import settings
+from app.md.config import settings
 
-engine = create_engine(settings.md_database_url or settings.database_url, echo=False)
+engine = create_engine(settings.url, echo=False)
 MdSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def separate() -> bool:
     """Whether ``md`` is in a different database from the app's."""
-    return bool(settings.md_database_url) and (
-        settings.md_database_url != settings.database_url
-    )
+    return settings.separate
