@@ -21,6 +21,10 @@ Files here:
 
 ## Rules that must hold
 
+- **Two app containers, two job sets.** `backend` runs the website and the client-data jobs
+  (brokerage sync, capture, alerts). `md-worker` runs only the market-data jobs (index membership;
+  later prices and fundamentals) and never runs migrations. Run one of each.
+
 - **Run one backend, never two.** The daily jobs run inside it; a second copy runs each twice.
 - **Only one place may run the daily jobs against the brokerage.** Once the server is live, set
   `SCHEDULER_ENABLED=false` in the `.env` of any development machine that holds the same
@@ -211,6 +215,25 @@ starts empty at each restart.
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
 The app's own daily jobs keep their UTC times.
+
+**Market data (the `md` worker)**
+
+`md-worker` runs the market-data jobs, all US Eastern and listed on System status as "Market
+data: …": identifiers at 5:00 (Webull ids, SEC companies, FIGIs), held securities at 6:45, index
+membership at 7:00 Tuesday to Saturday, and sectors and industries at 10:30 PM. Set
+`SEC_CONTACT_EMAIL` in `deploy/.env` (the SEC requires a contact in each request; without it SEC
+lookups are skipped). `OPENFIGI_API_KEY` is optional. The backend applies market data's migrations
+at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABASE_URL` is only for
+giving market data a database of its own; left empty, it shares the app's.
+Its state is on the **Market data** page in the advisor workspace (`/app/market-data`). To run it by
+hand, for example right after the first deploy:
+
+```sh
+docker compose exec backend python -m app.cli md-index-membership
+docker compose exec backend python -m app.cli md-identifiers
+docker compose exec backend python -m app.cli md-classification
+docker compose logs --tail 50 md-worker
+```
 
 **Update to the latest code**
 

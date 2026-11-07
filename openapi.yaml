@@ -1493,7 +1493,6 @@ paths:
           type: string
           nullable: true
         description: Check only this link; every link when left out. 404 when it is not on file.
-      parameters:
       - name: achalara_session
         in: cookie
         required: false
@@ -1521,6 +1520,41 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: The brokerage source is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/market-data/status:
+    get:
+      tags:
+      - admin
+      summary: Market Data Status
+      description: 'The state of the security master: its jobs, indices, coverage and tables,
+
+        and what is not built yet.'
+      operationId: market_data_status_api_v1_admin_market_data_status_get
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketDataStatusResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
           content:
             application/json:
               schema:
@@ -6410,6 +6444,109 @@ components:
       - at
       - event
       - outcome
+    MdJobStatus:
+      type: object
+      required: [id, label]
+      properties:
+        id: {type: string}
+        label: {type: string}
+        outcome:
+          type: string
+          nullable: true
+          description: ok, failed, skipped or running; null if the job has never run
+        started_at: {type: string, format: date-time, nullable: true}
+        finished_at: {type: string, format: date-time, nullable: true}
+        requests: {type: integer, nullable: true}
+        rows_written: {type: integer, nullable: true}
+        note: {type: string, nullable: true}
+        next_run_at: {type: string, format: date-time, nullable: true}
+    MdIndexStatus:
+      type: object
+      required: [code, name, members, in_range]
+      properties:
+        code: {type: string}
+        name: {type: string}
+        members: {type: integer}
+        expected_min: {type: integer, nullable: true}
+        expected_max: {type: integer, nullable: true}
+        in_range: {type: boolean}
+        source: {type: string, nullable: true}
+        latest_file: {type: string, format: date, nullable: true}
+    MdCoverageMeasure:
+      type: object
+      required: [label, count, of, of_label]
+      properties:
+        label: {type: string}
+        count: {type: integer}
+        of: {type: integer}
+        of_label: {type: string}
+    MdNamedCount:
+      type: object
+      required: [name, count]
+      properties:
+        name: {type: string}
+        count: {type: integer}
+    MdCoverage:
+      type: object
+      required: [securities, companies, measures, by_kind, by_market, sector_sources]
+      properties:
+        securities: {type: integer}
+        companies: {type: integer}
+        measures:
+          type: array
+          items: {$ref: '#/components/schemas/MdCoverageMeasure'}
+        by_kind:
+          type: array
+          items: {$ref: '#/components/schemas/MdNamedCount'}
+        by_market:
+          type: array
+          items: {$ref: '#/components/schemas/MdNamedCount'}
+        sector_sources:
+          type: array
+          items: {$ref: '#/components/schemas/MdNamedCount'}
+    MdTableStatus:
+      type: object
+      required: [name, kind, rows]
+      properties:
+        name: {type: string}
+        kind:
+          type: string
+          description: current, history or operations
+        rows: {type: integer}
+        size_bytes: {type: integer, nullable: true}
+    MdNotBuilt:
+      type: object
+      required: [name, phase]
+      properties:
+        name: {type: string}
+        phase: {type: string}
+    MarketDataStatusResponse:
+      type: object
+      required: [generated_at, available, own_database, attention, jobs, indices, tables, not_built]
+      properties:
+        generated_at: {type: string, format: date-time}
+        available:
+          type: boolean
+          description: False when market data's own database cannot be read
+        own_database: {type: boolean}
+        attention:
+          type: array
+          items: {type: string}
+        jobs:
+          type: array
+          items: {$ref: '#/components/schemas/MdJobStatus'}
+        indices:
+          type: array
+          items: {$ref: '#/components/schemas/MdIndexStatus'}
+        coverage:
+          allOf: [{$ref: '#/components/schemas/MdCoverage'}]
+          nullable: true
+        tables:
+          type: array
+          items: {$ref: '#/components/schemas/MdTableStatus'}
+        not_built:
+          type: array
+          items: {$ref: '#/components/schemas/MdNotBuilt'}
     SystemStatusResponse:
       properties:
         generated_at:

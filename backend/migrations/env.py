@@ -33,7 +33,7 @@ def _get_url() -> str:
 
 
 def _include_name(name, type_, parent_names):
-    """Limit autogenerate to the schemas this application owns."""
+    """Limit autogenerate to the schemas this history owns."""
     if type_ == "schema":
         return name in (None, "public", "perf")
     return True

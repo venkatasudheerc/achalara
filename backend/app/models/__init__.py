@@ -17,6 +17,7 @@ from app.models.cash_activity import CashActivity
 from app.models.user import AccountAccess, AuthToken, User, UserSession
 from app.models.index_bar import IndexBar
 from app.models.invitation_request import InvitationRequest
+
 from app.models.perf import (
     CorporateAction,
     DailyHolding,

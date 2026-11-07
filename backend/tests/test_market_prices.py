@@ -17,6 +17,11 @@ class TestSymbolNormalization:
             ("AAPL", "AAPL"),
             ("nyse:gdx", "GDX"),
             (" spy ", "SPY"),
+            ("XYZ B", "XYZ B"),
+            ("XYZ.B", "XYZ B"),
+            ("XYZ-B", "XYZ B"),
+            ("XYZ/B", "XYZ B"),
+            ("NYSE:XYZ.B", "XYZ B"),
         ],
     )
     def test_normalize_symbol(self, raw, expected):

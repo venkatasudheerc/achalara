@@ -7,15 +7,13 @@ from typing import Optional, Dict, List
 import time
 import http.client
 import json
-import hashlib
-import hmac
-import base64
-import uuid
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime
 import logging
 
 from app.config import settings
+from app.utils.symbols import webull_symbol
+from app.utils.webull_signing import HOST, signed_headers
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +22,8 @@ class WebullMarketDataService:
     """Fetch market data from Webull API"""
 
     # API endpoints and configuration
-    MARKET_HOST = "api.webull.com"
-    TRADE_HOST = "api.webull.com"
+    MARKET_HOST = HOST
+    TRADE_HOST = HOST
 
     def __init__(self):
         """Initialize Webull API wrapper"""
@@ -40,15 +38,14 @@ class WebullMarketDataService:
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:
         """
-        Strip an exchange prefix before calling Webull.
+        Webull's spelling of a symbol, for a request.
 
         Google Finance uses ``EXCHANGE:TICKER`` (e.g. ``BATS:IGE``, ``NASDAQ:AAPL``),
-        but Webull expects the bare ticker. The exchange-prefixed form is kept on the
-        stored trade/position; only the outbound API request is normalized.
+        but Webull expects the bare ticker, and a share class as ``BRK B``. The
+        stored trade/position keeps its form; only the outbound API request is
+        normalized.
         """
-        if symbol and ":" in symbol:
-            symbol = symbol.split(":")[-1]
-        return (symbol or "").strip().upper()
+        return webull_symbol(symbol)
 
     def _rate_limit(self):
         """Apply rate limiting (300 requests/minute = 200ms per request)"""
@@ -56,47 +53,6 @@ class WebullMarketDataService:
         if elapsed < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - elapsed)
         self.last_request_time = time.time()
-
-    def _generate_signature(
-        self,
-        host: str,
-        path: str,
-        query_params: dict,
-        body_string: Optional[str],
-        timestamp: str,
-        nonce: str,
-    ) -> str:
-        """Generate HMAC-SHA1 signature for Webull API authentication"""
-        signing_headers = {
-            "x-app-key": self.app_key,
-            "x-timestamp": timestamp,
-            "x-signature-algorithm": "HMAC-SHA1",
-            "x-signature-version": "1.0",
-            "x-signature-nonce": nonce,
-            "host": host,
-        }
-
-        all_params = {**query_params, **signing_headers}
-        str1 = "&".join(f"{k}={all_params[k]}" for k in sorted(all_params))
-
-        if body_string:
-            str2 = hashlib.md5(body_string.encode("utf-8")).hexdigest().upper()
-            str3 = f"{path}&{str1}&{str2}"
-        else:
-            str3 = f"{path}&{str1}"
-
-        encoded_string = urllib.parse.quote(str3, safe="")
-        signing_key = f"{self.app_secret}&"
-
-        signature = base64.b64encode(
-            hmac.new(
-                signing_key.encode("utf-8"),
-                encoded_string.encode("utf-8"),
-                hashlib.sha1,
-            ).digest()
-        ).decode("utf-8")
-
-        return signature
 
     def _build_headers(
         self,
@@ -106,23 +62,9 @@ class WebullMarketDataService:
         body_string: Optional[str] = None,
     ) -> dict:
         """Build HTTP headers with Webull API authentication"""
-        query_params = query_params or {}
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        nonce = uuid.uuid4().hex
-        signature = self._generate_signature(
-            host, path, query_params, body_string, timestamp, nonce
+        return signed_headers(
+            self.app_key, self.app_secret, host, path, query_params, body_string
         )
-
-        return {
-            "Accept": "application/json",
-            "x-app-key": self.app_key,
-            "x-timestamp": timestamp,
-            "x-signature": signature,
-            "x-signature-algorithm": "HMAC-SHA1",
-            "x-signature-version": "1.0",
-            "x-signature-nonce": nonce,
-            "x-version": "v2",
-        }
 
     def _get_snapshot(self, symbol: str) -> Optional[dict]:
         """
@@ -240,6 +182,10 @@ class WebullMarketDataService:
                 if not rejected:
                     break  # some other failure: leave this batch unpriced
                 batch = [s for s in batch if s not in rejected]
+        # The reply uses the source's spelling; callers look up by their own.
+        for symbol in symbols:
+            if symbol and self._normalize_symbol(symbol) in prices:
+                prices.setdefault(symbol, prices[self._normalize_symbol(symbol)])
         return prices
 
     @staticmethod

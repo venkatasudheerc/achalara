@@ -55,6 +55,25 @@ services:
       retries: 3
       start_period: 40s
 
+  # Market-data jobs (the md schema): index membership now, prices and
+  # fundamentals later. Same image as the backend, its own process, so long
+  # data jobs never run in the web process. It does not run migrations; it
+  # starts once the backend (which does) is healthy.
+  md-worker:
+    build: ../backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.md.worker"]
+    deploy:
+      replicas: 1
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-achalara}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-achalara}
+      PYTHON_ENV: production
+      SCHEDULER_ENABLED: "false"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   web:
     build:
       context: ..

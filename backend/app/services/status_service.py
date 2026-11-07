@@ -18,12 +18,14 @@ from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.client import Client
 from app.models.index_bar import IndexBar
-from app.models.perf import DailyPrice, DailyValuation
+from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.trade import Trade
 from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.invitation_service import InvitationService
+from app.md import read as md_read
+from app.md.schedule import MD_JOBS
 from app.services.performance_build_service import last_market_day
 
 JOBS = (
@@ -79,6 +81,7 @@ class StatusService:
         capture = self._capture(now.date(), accounts, attention)
         backup = self._backup(now, attention)
         disk = self._disk(attention)
+        self._held_without_sector(attention)
         waiting = InvitationService(self.db).waiting()
         if waiting:
             attention.append(
@@ -145,7 +148,54 @@ class StatusService:
                     "last_error": run.get("error"),
                 }
             )
-        return jobs
+        return jobs + self._md_jobs(attention)
+
+    def _held_without_sector(self, attention: List[str]) -> None:
+        """Held stocks the market-data jobs could not give a sector (names stay off alerts)."""
+        held = {
+            symbol
+            for (symbol,) in self.db.query(DailyHolding.symbol).distinct()
+            if symbol
+        }
+        try:
+            if not md_read.has_run(self.db, "md_classification"):
+                return  # classification has not run yet
+            missing = md_read.stocks_without_sector(self.db, held)
+        except md_read.MdUnavailable:
+            return  # _md_jobs says so
+        if missing:
+            attention.append(
+                f"{missing} held stock{'' if missing == 1 else 's'} without a sector."
+            )
+
+    def _md_jobs(self, attention: List[str]) -> List[Dict]:
+        """Market-data jobs run in their own worker; their record is ``md.job_run``."""
+        now = datetime.now(timezone.utc)
+        rows = []
+        try:
+            runs = {job.id: md_read.last_run(self.db, job.id) for job in MD_JOBS}
+        except md_read.MdUnavailable:
+            attention.append("Market data's database could not be read.")
+            runs = {}
+        for job in MD_JOBS:
+            last = runs.get(job.id)
+            if last is not None and last.outcome == "failed":
+                attention.append(f"{job.label} failed on its last run.")
+            next_run = job.trigger().get_next_fire_time(None, now)
+            rows.append(
+                {
+                    "id": job.id,
+                    "label": job.label,
+                    "next_run_at": next_run,
+                    "last_started_at": _aware(last.started_at) if last else None,
+                    "last_finished_at": _aware(last.finished_at) if last else None,
+                    "last_ok": (last.outcome == "ok") if last else None,
+                    "last_error": last.note
+                    if last is not None and last.outcome == "failed"
+                    else None,
+                }
+            )
+        return rows
 
     def _brokerage_links(self, attention: List[str]) -> List[Dict]:
         """Each brokerage login on file, and whether the source still shares it."""

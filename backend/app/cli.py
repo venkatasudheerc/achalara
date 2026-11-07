@@ -4,9 +4,11 @@
     python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
+    python -m app.cli md-index-membership
     python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
 """
 import argparse
+from typing import Optional
 import base64
 import getpass
 import hashlib
@@ -161,6 +163,75 @@ def send_test_webhook(url: str) -> int:
     return 1
 
 
+def md_index_membership() -> int:
+    """Fetch the index funds' holdings now and bring membership up to date."""
+    from app.md.database import MdSession
+    from app.md.membership import run_index_membership
+    from app.md.seed import seed_securities
+    from app.services.held_symbols import held_symbols
+
+    app_db = SessionLocal()
+    db = MdSession()
+    try:
+        added = seed_securities(db, held_symbols(app_db), date.today())
+        print(f"Held securities added to the security master: {added}")
+        print(run_index_membership(db).summary())
+    finally:
+        db.close()
+        app_db.close()
+    return 0
+
+
+def md_identifiers() -> int:
+    """Fill in Webull ids, SEC companies and FIGIs now."""
+    from app.md.database import MdSession
+    from app.md.identifiers import run_identifiers
+
+    db = MdSession()
+    try:
+        print(run_identifiers(db, date.today()))
+    finally:
+        db.close()
+    return 0
+
+
+def md_classification(refresh: bool) -> int:
+    """Work out sectors and industries now."""
+    from app.md.classification import run_classification
+    from app.md.database import MdSession
+
+    db = MdSession()
+    try:
+        print(run_classification(db, date.today(), refresh=refresh))
+    finally:
+        db.close()
+    return 0
+
+
+def md_set_sector(symbol: str, sector: Optional[str], industry: Optional[str]) -> int:
+    """Set a security's sector and/or industry by hand; never overwritten by a source."""
+    from app.md.classification import ClassificationService
+    from app.md.database import MdSession
+    from app.md.sectors import SECTORS
+
+    codes = {code for code, _, _ in SECTORS}
+    if sector and sector not in codes:
+        print(f"Sector must be one of: {', '.join(sorted(codes))}", file=sys.stderr)
+        return 1
+    db = MdSession()
+    try:
+        ClassificationService(db).set_manual(
+            symbol.strip().upper(), sector, industry, date.today()
+        )
+    except LookupError as error:
+        print(error, file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+    print(f"{symbol.upper()}: set by hand")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -199,7 +270,36 @@ def main(argv=None) -> int:
     webhook.add_argument(
         "--url", required=True, help="https://<domain>/api/v1/webhooks/snaptrade"
     )
+    commands.add_parser(
+        "md-index-membership",
+        help="market data: fetch index holdings now and update membership",
+    )
+    commands.add_parser(
+        "md-identifiers", help="market data: Webull ids, SEC companies, FIGIs now"
+    )
+    classify = commands.add_parser(
+        "md-classification", help="market data: sectors and industries now"
+    )
+    classify.add_argument(
+        "--refresh", action="store_true", help="also refresh older Webull profiles"
+    )
+    manual = commands.add_parser(
+        "md-set-sector", help="market data: set a sector or industry by hand"
+    )
+    manual.add_argument("--symbol", required=True)
+    manual.add_argument(
+        "--sector", help="IT, HC, FIN, CD, CS, COM, EN, IND, MAT, RE, UT"
+    )
+    manual.add_argument("--industry")
     args = parser.parse_args(argv)
+    if args.command == "md-identifiers":
+        return md_identifiers()
+    if args.command == "md-classification":
+        return md_classification(args.refresh)
+    if args.command == "md-set-sector":
+        return md_set_sector(args.symbol, args.sector, args.industry)
+    if args.command == "md-index-membership":
+        return md_index_membership()
     if args.command == "send-test-webhook":
         return send_test_webhook(args.url)
     if args.command == "create-advisor":

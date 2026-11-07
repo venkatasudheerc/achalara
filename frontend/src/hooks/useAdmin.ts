@@ -16,6 +16,15 @@ export function useSystemStatus() {
   })
 }
 
+/** The state of the md schema, read again every minute while the page is open. */
+export function useMarketDataStatus() {
+  return useQuery({
+    queryKey: ['admin', 'market-data', 'status'] as const,
+    queryFn: () => adminApi.marketDataStatus(),
+    refetchInterval: 60_000,
+  })
+}
+
 export function useSendTestAlert() {
   return useMutation({ mutationFn: () => adminApi.testAlert() })
 }

@@ -600,6 +600,39 @@ export interface PortalOverviewResponse {
   recent: ActivityItem[]
 }
 
+/** The advisor's market data page */
+export interface MdJobStatus {
+  id: string; label: string
+  /** ok, failed, skipped or running; null if the job has never run */
+  outcome: string | null
+  started_at: string | null; finished_at: string | null
+  requests: number | null; rows_written: number | null
+  note: string | null; next_run_at: string | null
+}
+export interface MdIndexStatus {
+  code: string; name: string; members: number
+  expected_min: number | null; expected_max: number | null; in_range: boolean
+  source: string | null; latest_file: string | null
+}
+export interface MdCoverageMeasure { label: string; count: number; of: number; of_label: string }
+export interface MdNamedCount { name: string; count: number }
+export interface MdCoverage {
+  securities: number; companies: number
+  measures: MdCoverageMeasure[]; by_kind: MdNamedCount[]; by_market: MdNamedCount[]; sector_sources: MdNamedCount[]
+}
+export interface MdTableStatus { name: string; kind: string; rows: number; size_bytes: number | null }
+export interface MdNotBuilt { name: string; phase: string }
+export interface MarketDataStatusResponse {
+  generated_at: string
+  /** False when market data's own database cannot be read */
+  available: boolean
+  own_database: boolean
+  attention: string[]
+  jobs: MdJobStatus[]; indices: MdIndexStatus[]
+  coverage: MdCoverage | null
+  tables: MdTableStatus[]; not_built: MdNotBuilt[]
+}
+
 /** The advisor's system status page */
 export interface StatusJob {
   id: string; label: string; next_run_at: string | null

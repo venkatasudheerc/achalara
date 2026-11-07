@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     # Email to clients (their invite and reset links), sent through Resend.
     # Either empty: no email is sent and links are passed on by hand.
+    # Market data's settings (MD_DATABASE_URL, SEC_CONTACT_EMAIL,
+    # OPENFIGI_API_KEY) are read by app/md/config.py, not here.
     resend_api_key: str = ""
     mail_from: str = ""  # e.g. Achalara <no-reply@mail.example.com>
 

@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 
 from app.models.base import Base
+from app.md.base import MdBase
+import app.md.models  # noqa: F401  (market data keeps its own metadata)
 
 
 from app.api.deps import get_current_user
@@ -22,10 +24,12 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 def db_engine():
     """Create test database engine (session-scoped)"""
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-    # SQLite has no schemas, so the perf schema's tables live in the default one.
-    engine = engine.execution_options(schema_translate_map={"perf": None})
+    # SQLite has no schemas, so the perf and md schemas' tables live in the default one.
+    engine = engine.execution_options(schema_translate_map={"perf": None, "md": None})
     Base.metadata.create_all(bind=engine)
+    MdBase.metadata.create_all(bind=engine)
     yield engine
+    MdBase.metadata.drop_all(bind=engine)
     Base.metadata.drop_all(bind=engine)
 
 

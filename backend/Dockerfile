@@ -24,6 +24,7 @@ RUN pip install -r requirements.txt
 
 COPY alembic.ini .
 COPY migrations ./migrations
+COPY migrations_md ./migrations_md
 COPY app ./app
 
 RUN useradd --create-home --uid 1000 achalara
@@ -32,4 +33,4 @@ USER achalara
 EXPOSE 8000
 
 # Bring the database up to date, then serve. One worker: see the note above.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "alembic upgrade head && alembic -n md upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]

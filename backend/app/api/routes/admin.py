@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 import logging
 import uuid
 
+from app.api.schemas.market_data import MarketDataStatusResponse
 from app.api.schemas.status import AlertTestResponse, SystemStatusResponse
 from app.connectors.models import NotSupported
 from app.db.database import get_db
+from app.md import read as md_read
 from app.services import alerts
 from app.services.connection_service import ConnectionService
 from app.services.status_service import StatusService
@@ -32,6 +34,13 @@ def system_status(db: Session = Depends(get_db)):
     """Whether everything is running as it should: the daily jobs, brokerage
     accounts, data freshness, the last backup and recent warnings."""
     return StatusService(db).status()
+
+
+@router.get("/market-data/status", response_model=MarketDataStatusResponse)
+def market_data_status(db: Session = Depends(get_db)):
+    """The state of the security master: its jobs, indices, coverage and tables,
+    and what is not built yet."""
+    return md_read.market_data_status(db)
 
 
 @router.post("/status/test-alert", response_model=AlertTestResponse)
