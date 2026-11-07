@@ -33,11 +33,11 @@ limits, user-visible screens.
 | `deploy/**` (compose, Caddy, backup) | `deploy/DEPLOY.md` |
 | A brokerage connector | `backend/app/connectors/CONNECTORS.md`, `backend/CLAUDE.md` § Brokerage Sync Rules |
 | A frontend page, hook, route or design token | `frontend/CLAUDE.md` (Routing, Features, Shared components, Design Tokens) |
-| A gap the frontend works around | `frontend/BACKEND_GAPS.md` |
+| A gap the frontend works around | `docs/OPEN_ITEMS.md` *(local)* |
 | A table, relation or index anywhere | `docs/DATABASE_MODEL.md` *(local)* as well as `backend/DATA_MODEL.md` |
 | An item done, found or deferred | `docs/OPEN_ITEMS.md` *(local)*: tick it off or add it, and its "Last updated" date |
 | A phase finished or a plan changed | `ROADMAP.md`; for market data, the status table in `docs/MARKET_DATA.md` § 1 *(local)* |
-| Start-up or developer commands | `CLAUDE.md` (root), `backend/CLAUDE.md` § Commands, `backend/GETTING_STARTED.md`, `README.md` |
+| Start-up or developer commands | `backend/INFRA.md` (the one local runbook), `backend/CLAUDE.md` § Commands; `README.md` only if the quick start changes |
 | A new doc | Add it to this table, and point to it from the nearest `CLAUDE.md` |
 | A planned `md` table or column | `PLANNED_TABLES` in `backend/app/md/status_report.py`, which the Market data page lists as not built |
 

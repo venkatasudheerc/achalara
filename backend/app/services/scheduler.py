@@ -145,7 +145,7 @@ def start_scheduler() -> None:
         return
 
     _scheduler = BackgroundScheduler()
-    # Run at 4 PM UTC daily (matches ROADMAP default)
+    # The sheets sync: 4 PM UTC daily
     _scheduler.add_job(
         _job_wrapper,
         CronTrigger(hour=16, minute=0),
