@@ -42,5 +42,3 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
 - Trade tables load a capped page and sort it in the browser: the sleeve Trades tab shows the 1,000
   most recent trades and the client page the 100 most recent, so a larger sleeve is shown
   incompletely. Needs server-side sort and paging on the trades endpoints and in `DataTable`.
-- `openapi.yaml` repeats a `parameters` key on `/api/v1/admin/status/check-links`, which stops
-  `npm run gen:api`.
