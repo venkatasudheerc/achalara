@@ -1,10 +1,29 @@
-# Infrastructure Runbook — PMS Backend
+# Running Achalara locally
 
-How to start, stop, check, and restart the local stack. Run everything from `backend/`:
+How to set up, start, stop, check and restart the stack on your own machine. Run everything from
+`backend/`. For a server, see `../deploy/DEPLOY.md`.
+
+## First run
+
+Needs Python 3.10+, Node 18+ and a Docker runtime ([Colima](https://github.com/abiosoft/colima) on
+macOS).
 
 ```bash
-cd "/Users/sai/Documents/Github 2/Achalara/backend"
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env               # DATABASE_URL is already set for the Docker Postgres
+./infra.sh up -d                   # containers, both migration histories, API on :8000
+python -m app.cli create-advisor --email you@example.com --name "Your Name"   # asks for a password
+
+cd ../frontend
+cp .env.example .env               # VITE_API_BASE_URL=http://localhost:8000
+npm install && npm run dev         # http://localhost:5173, sign in with the advisor login
 ```
+
+Every data route needs a signed-in user, so call the API through the app, Swagger at `/docs` after
+signing in, or the Bruno collection (`bruno/README.md`). Brokerage, market-data and mail keys in
+`.env` are optional; without them those features say they are not configured.
 
 > **TL;DR — use the wrapper:** `./infra.sh up -d` (start all), `./infra.sh status`,
 > `./infra.sh down`, `./infra.sh restart`. Run `./infra.sh help` for all commands.
@@ -20,7 +39,7 @@ cd "/Users/sai/Documents/Github 2/Achalara/backend"
 |---|---|---|
 | 1. Docker runtime | Colima VM (provides the Docker daemon on macOS) | `colima` |
 | 2. Containers | `pms-db` (Postgres 15, port 5432), `pms-cache` (Redis 7, port 6379) | `docker-compose` |
-| 3. Schema | Alembic migrations → all 7 tables | `alembic` |
+| 3. Schema | Alembic migrations: the app's history (`public`, `perf`) and market data's (`md`) | `alembic`, `alembic -n md` |
 | 4. App | FastAPI via uvicorn (port 8000) | `uvicorn` |
 
 > Order matters: bring layers **up 1→4** and take them **down 4→1**. The app needs the DB; the DB needs the containers; the containers need Colima.
@@ -30,7 +49,7 @@ cd "/Users/sai/Documents/Github 2/Achalara/backend"
 ## Full stack — cold start
 
 ```bash
-cd "/Users/sai/Documents/Github 2/Achalara/backend"
+cd backend
 source venv/bin/activate
 
 colima start                       # 1. Docker runtime (no-op if already running)
@@ -142,10 +161,11 @@ curl -s http://localhost:8000/health   # {"status":"healthy",...}
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/docs   # 200
 ```
 
-The scheduler (APScheduler daily sync) starts/stops automatically with the app when
-`SCHEDULER_ENABLED=true` (the default). Startup log shows
-`APScheduler started — daily sync job scheduled at 16:00 UTC`. To run the app without it,
-set `SCHEDULER_ENABLED=false` in `.env`.
+The scheduler starts and stops with the app when `SCHEDULER_ENABLED=true` (the default). It runs
+the daily jobs System status lists: brokerage sync, daily capture, sheet sync, index history and the
+link check. Locally you usually want `SCHEDULER_ENABLED=false`, so a run on your machine does not
+spend a brokerage pull. Market-data jobs run only in their own worker (`python -m app.md.worker`),
+never in the app.
 
 ---
 
@@ -167,5 +187,22 @@ curl -s http://localhost:8000/health && echo                    # app
 | App boot: `ModuleNotFoundError: No module named 'apscheduler'` | `pip install -r requirements.txt` in the activated venv |
 | App can't reach DB / `connection refused` on 5432 | Containers down → `docker-compose up -d`; wait for `healthy` |
 | Port 8000 already in use | `uvicorn ... --port 8001`, or `lsof -i :8000` then `kill <pid>` |
-| Want a clean database | `docker-compose down -v && docker-compose up -d && alembic upgrade head` |
+| Want a clean database | `docker-compose down -v && docker-compose up -d && alembic upgrade head && alembic -n md upgrade head`, then `create-advisor` again |
 | Tests don't need Docker | `pytest` uses in-memory SQLite — runs without any of the above |
+| Virtual environment confused | `deactivate`, `source venv/bin/activate`, `pip install -r requirements.txt` |
+
+## Loading trades by hand
+
+Brokerage accounts sync themselves. For anything else, the Imports page takes a CSV and registers
+Google Sheets; both go through the same duplicate detection, so a second run adds nothing.
+
+CSV columns:
+
+```
+Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes
+2025-03-17,ABC,BUY,40,25.00,0,Example Strategy,Example Account,Initial purchase
+```
+
+- Validate first, then import. Without a sleeve, rows are routed by their Account and Strategy.
+- A Google Sheet must be shared as "Anyone with the link can view" and have the same header row.
+  `Date` may be `YYYY-MM-DD` or `YYYY/MM/DD`; `Action` is `Buy`/`Sell` in any case.
