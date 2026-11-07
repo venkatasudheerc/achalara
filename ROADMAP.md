@@ -1,171 +1,46 @@
-# Portfolio Management System — Roadmap
+# Achalara — Roadmap
 
-## Phase 0: Foundation Setup ✅ COMPLETE
+What is built, what comes next, and what is deliberately deferred. Detailed rules live in the
+`CLAUDE.md` files; this page is the overview.
 
-- [x] Directory structure, Git repo, `.gitignore`
-- [x] Docker Compose for PostgreSQL + Redis
-- [x] SQLAlchemy ORM models (Client, Account, Sleeve, Strategy, Trade, Position, SyncLog)
-- [x] Alembic migration framework
-- [x] Pydantic v2 schemas
-- [x] FastAPI app with CORS middleware
+## Built
 
----
+- **Hierarchy and trades.** Clients, accounts, firm-wide strategies and sleeves. Trades from CSV,
+  public Google Sheets and brokerages, with duplicate detection on every path.
+- **Brokerage connections (Bridge).** One connector interface (`app/connectors/`) with SnapTrade
+  as the first adapter: linking, discovery, mapping, a daily sync at 8 AM US Eastern and a signed
+  webhook. Splits, mergers and assigned or expired options are read from the brokerage's rows.
+  A symbol's history can be moved between sleeves of one account.
+- **Performance.** Money- and time-weighted returns at sleeve, account, client and strategy
+  level, from a daily record (`perf` schema) of observed and rebuilt days. Periods by day, week,
+  month and quarter, risk figures, benchmarks, and the account PDF report.
+- **Realised gains.** Lot matching by FIFO or MinTax, following the brokerage's reading: wash
+  sales, the 60/40 split and year-end mark of index options.
+- **Sign-in and the client portal.** Advisor and client roles, invite and reset links (emailed when
+  mail is set up), shared accounts, and a public invitation form. The portal shows home, holdings
+  at live prices, activity, realised gains and performance.
+- **Operations.** Deployment to one server (`deploy/`), backups, System status with alerts.
+- **Market data (`md` schema).** Securities, daily index membership (S&P 500, Russell
+  1000/2000/3000), identifiers, sectors and industries, in its own worker and migration history.
+  A data model that can hold any market; every feed is American. A Market data page shows its state.
 
-## Phase 1: Foundation Validation ✅ COMPLETE
+## Next
 
-- [x] PostgreSQL connection verified
-- [x] Alembic migrations running (`alembic upgrade head`)
-- [x] FastAPI server starts clean; `/health` and `/docs` respond
-- [x] pytest suite passing (SQLite in-memory)
+- Deploy market data so its daily collection starts; then sectors on the Holdings page, daily
+  prices for index members and chosen funds, and fundamentals.
+- Register the SnapTrade webhook on the public host and confirm a real delivery.
 
----
+## Deferred
 
-## Phase 2: Historical Data Import ✅ COMPLETE
+- **Portfolio, Risk and Grow** screens show "coming soon" and have no backend.
+- **Trading** through SnapTrade (`place_order`) waits until Grow is on the active roadmap.
+- **Markets outside the US**: the model is ready; which markets and sources is decided later.
 
-- [x] CSV import pipeline with `VALIDATE`/`IMPORT` modes
-- [x] Auto-routing by Account + Strategy columns (creates sleeves as needed)
-- [x] Duplicate detection on `(date, symbol, qty, price)` per sleeve
-- [x] SyncLog audit trail per import
-- [x] `GET /api/v1/admin/sync-logs`
+## Technical debt
 
----
-
-## Phase 3: Portfolio Calculations ✅ COMPLETE
-
-- [x] Position tracking: quantity-matched round-trips, weighted-avg cost basis
-- [x] Open positions with unrealized P&L (Webull price fetch)
-- [x] Closed positions with realized gains
-- [x] MWR (IRR solver) and TWR (geometric linking) at sleeve / account / client / strategy level
-- [x] Monthly return breakdown endpoint
-
----
-
-## Phase 4: Daily Sync Pipeline ✅ COMPLETE
-
-- [x] Public Google Sheets sync via CSV export (no credentials needed)
-- [x] Dedup on `google_sheet_row_id` (safe to re-run)
-- [x] APScheduler daily sync job (configurable hour via `.env`)
-- [x] SheetSyncConfig CRUD — register sheet → sleeve mappings
-- [x] `POST /api/v1/admin/sync-daily` and scheduler both call shared `run_daily_sync()`
-
----
-
-## Phase 5: Frontend Application
-
-- [ ] Initialize React + TypeScript app (Vite)
-- [ ] API client (Axios/Fetch with typed responses from `openapi.yaml`)
-- [ ] Client dashboard — list clients, create client, client detail
-- [ ] Account & sleeve management views
-- [ ] Performance dashboard — MWR/TWR charts, date range selector, strategy comparison
-- [ ] Positions table (open + closed) with P&L columns
-- [ ] Trade history view + manual trade entry form
-- [ ] Admin tools — CSV import form, sync logs viewer, sync-config management
-
-**Deliverable:** Full-featured web application for portfolio management.
-
----
-
-## Phase 6: Advanced Features (Ongoing)
-
-- [x] **Client portal** — a client's own screens over every account they may view: home,
-      open positions, trades, realised gains and performance, each filterable by account and
-      strategy, with CSV export and the account PDF report. Advisors can preview any client's portal.
-- [x] **Auth** — email + password sign-in (session cookie), advisor and client roles, invite and
-      reset links, read-only client access to own and shared accounts. Not built: an email
-      service (links are passed on by the advisor), API keys, two-factor sign-in.
-- [ ] **Reporting** — PDF/Excel export, performance attribution, benchmark comparison, tax-lot tracking
-- [ ] **Real-time** — WebSocket for live price updates and position changes
-- [ ] **Data quality** — anomaly detection, account reconciliation, audit logging
-- [ ] **Performance optimization** — Redis caching for computed metrics, materialized views
-
----
-
-## Open Technical Items
-
-- Rotate the Webull API secrets in `backend/.env` — they are live and should move to a secrets manager long-term.
-- Decide symbol normalization: trades store `BATS:IGE`; Webull lookups strip to `IGE`. Optionally normalize on import.
-- Tech debt: migrate Pydantic `class Config` → `model_config = ConfigDict(...)`.
-- Replace Postgres-only `DISTINCT ON` in `twr_calculation.py` for portability.
-- Exercise live Google Sheets sync end-to-end once a `SheetSyncConfig` is registered.
-- **Trade tables load a capped page and sort it in the browser.** The sleeve Trades tab shows
-  the 1,000 most recent trades and the client page the 100 most recent; sorting and the
-  move-symbol list only see those rows, so a sleeve with more (ETFs has 1,067) is displayed
-  incompletely. Fix with server-side sort and pagination on the trades endpoints
-  (`sort`/`order` params alongside `skip`/`limit`) and paging controls in `DataTable`.
-
-## Phase — Bridge (universal brokerage connectivity)
-
-> Bridge brings trade/position data into Achalara from any source. Today that's CSV, Google
-> Sheets, and Webull prices living in `app/services/`. This phase formalizes them behind one
-> `BrokerageConnector` interface so any vendor (starting with SnapTrade) is a swappable adapter,
-> and CSV/manual remain the permanent universal fallback.
->
-> Strategy decided: **aggregator-first, not build-your-own** (per-broker integrations don't
-> scale and "any broker in the world" can't be built solo). First adapter: **SnapTrade**
-> (US-first, read + trade on one API, so it carries us from performance now to Grow later).
-> Architecture guardrails live in `backend/app/connectors/CONNECTORS.md`.
-
-### Pre-work (do first)
-
-- [ ] **Rotate the exposed Webull secrets** and confirm no `.env` is in git history (repo is
-      public). Blast radius only grows once SnapTrade keys + per-client tokens arrive.
-
-### B1 — Formalize the interface ✅ COMPLETE
-
-- [x] Add `app/connectors/` with `base.py` (`BrokerageConnector` + `ConnectorCapabilities`),
-      `models.py` (normalized types), `registry.py`.
-- [x] Add `fake_connector.py` for tests.
-- [x] Write `app/connectors/CONNECTORS.md` (the "no vendor SDK escapes this layer" rule).
-
-### B2 — Refactor existing sources behind the interface ✅ COMPLETE
-
-- [x] `csv_connector.py` — existing CSV import, now producing `NormalizedTrade[]`.
-- [x] `sheets_connector.py` — existing Google Sheets sync, same.
-- [x] `webull_connector.py` — existing price fetch, normalized.
-- [x] Extract the shared VALIDATE→IMPORT/dedup/route/persist path into
-      `services/ingestion_service.py`; every source feeds it. Proves the abstraction against
-      code we already trust.
-
-### B3 — SnapTrade spike ~~(throwaway separate repo)~~ — SUPERSEDED
-
-Original plan was a throwaway repo. Dropped after reading SnapTrade's live docs: the auth flow,
-endpoints, `UniversalActivity` shape, daily-batch freshness model, rate limits and webhook events
-were researched up front (what still holds is in `app/connectors/CONNECTORS.md` and the
-connector's docstrings), so the unknowns were narrow and Vanguard-specific. B1/B2 also already derisked the abstraction, so the adapter is a contained
-addition rather than a bet.
-
-Replaced by: build the connector in this repo, exercise it against a real Vanguard account with a
-throwaway script in the scratchpad, then sanitize those payloads into CI fixtures.
-
-### B4 — SnapTrade adapter (production, in main repo)
-
-- [x] `snaptrade_connector.py` implementing the interface: linking + read, verified against a
-      real Vanguard capture.
-- [x] App-level keys in `.env`. No per-client token is stored: the Personal flow issues none.
-      Encrypted `userSecret` storage arrives with the Commercial key (multi-client), not before.
-- [x] Connections persisted (`brokerage_connections`, `brokerage_accounts`); link / discover /
-      map / sync / reconcile / delete endpoints in root `openapi.yaml`.
-- [x] Recorded-fixture tests (no live network in CI).
-- [x] FIFO lot accounting for brokerage sleeves; dividends and fees feed MWR/TWR.
-- [x] Reassign a symbol's history between sleeves of one account (split by strategy).
-- [ ] Options, splits/mergers and assignments — currently skipped and reported as drift.
-- [ ] Live end-to-end run against the real account (link → map → sync → compare holdings).
-
-### B5 — Freshness
-
-- [x] Daily scheduler job syncs every mapped account (transactions are a day-delayed batch, so
-      daily is as fresh as the source gets).
-- [x] HMAC-verified SnapTrade webhook endpoint calling the same shared sync.
-- [ ] Register the webhook URL in the SnapTrade dashboard once there is a public host, and
-      confirm the signature encoding against a real delivery.
-
-### B6 — Trading (deferred — enables Grow)
-
-- [ ] Implement `place_order` on the SnapTrade adapter; flip `capabilities.can_trade`.
-- [ ] Do not start until Grow is on the active roadmap.
-
-### Definition of done (Bridge MVP = B1–B4)
-
-A US client links a brokerage account via SnapTrade; transactions flow through the **same**
-ingestion pipeline as CSV, dedup idempotently by `external_id`, and appear in performance
-(MWR/TWR) with no manual upload — while CSV/Sheets remain available for any unsupported broker.
+- Pydantic `class Config` in the schemas should become `model_config = ConfigDict(...)`.
+- Trade tables load a capped page and sort it in the browser: the sleeve Trades tab shows the 1,000
+  most recent trades and the client page the 100 most recent, so a larger sleeve is shown
+  incompletely. Needs server-side sort and paging on the trades endpoints and in `DataTable`.
+- `openapi.yaml` repeats a `parameters` key on `/api/v1/admin/status/check-links`, which stops
+  `npm run gen:api`.

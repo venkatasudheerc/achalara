@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Achalara** is a multi-client, multi-strategy investment portfolio management system for advisory firms. It tracks trades through a `Client → Account → Sleeve` hierarchy, calculates portfolio performance (MWR/TWR), imports historical trades from CSV or Google Sheets, and fetches live prices via Webull.
 
-See `ROADMAP.md` for the phased plan.
+See `ROADMAP.md` for what is built and what is next, and `backend/INFRA.md` to run it locally.
 
 ## Starting the full stack
 
@@ -31,20 +31,21 @@ cd frontend && npm run gen:api      # copies ../openapi.yaml → src/api/schema.
 Achalara/
 ├── CLAUDE.md              # this file — shared context
 ├── openapi.yaml           # OpenAPI 3.0 spec — source of truth for the API contract
-├── README.md              # project overview and quick start
-├── ROADMAP.md             # phased delivery plan
-├── idea.md                # original vision
+├── README.md              # what Achalara is, and where to read next
+├── ROADMAP.md             # built, next, deferred, technical debt
 ├── docs/                  # local only, never in GitHub (the folder is git-excluded)
-│   ├── OPEN_ITEMS.md      # action items
+│   ├── OPEN_ITEMS.md      # action items, and gaps the frontend works around
 │   ├── DATABASE_MODEL.md  # the full database model, indexes, performance concerns
 │   ├── MARKET_DATA.md     # market data plan, design, running it, limitations
-│   └── ARCHITECTURE_REVIEW.md
+│   ├── idea.md            # the original vision
+│   └── archive/           # superseded write-ups, e.g. the architecture review of 2026-10-11
 ├── backend/
 │   ├── CLAUDE.md          # backend-specific guidance (read before touching backend code)
 │   ├── app/               # FastAPI application
 │   ├── migrations/        # Alembic migrations
 │   ├── tests/             # pytest suite
 │   ├── bruno/             # Bruno API collection
+│   ├── INFRA.md           # running it locally: first run, start/stop, troubleshooting
 │   └── ...
 └── frontend/
     ├── CLAUDE.md          # frontend-specific guidance (read before touching frontend code)
