@@ -1493,7 +1493,6 @@ paths:
           type: string
           nullable: true
         description: Check only this link; every link when left out. 404 when it is not on file.
-      parameters:
       - name: achalara_session
         in: cookie
         required: false
