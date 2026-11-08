@@ -432,7 +432,7 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
 - Sectors are the 11 GICS sectors (`md.sector`). Precedence for sector: manual > iShares > Webull
   industry's sector > SEC code; for industry: manual > Webull > SEC. A Webull industry's sector is
   worked out from its index members (`ishares_majority`), not written by hand.
-- By hand: `python -m app.cli md-index-membership`, `md-identifiers`, `md-classification
+- By hand: `python -m app.cli md-index-membership`, `md-identifiers [--names-only]`, `md-classification
   [--refresh]`, `md-daily-closes`, `md-adjusted-history`, `md-index-levels`, `md-refresh-returns`,
   `md-track-fund [--symbol XYZ --group gold] [--remove]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
 - **The Market data page (`/app/market-data`)** reads `GET /api/v1/admin/market-data/status`
@@ -442,7 +442,9 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   its model exists. A new `md` job only needs adding to `MD_JOBS` to appear there.
 - **Security names:** the identifiers job (`identifiers.fill_names`) names a security still called by
   its ticker from its SEC company, else Webull's instrument name, and index files rename one the
-  same way (`membership._security_for`). A real name is never replaced.
+  same way (`membership._security_for`). A real name is never replaced. Trademark marks (®, ™) are
+  dropped. `md-identifiers --names-only` reads only Webull's instrument list (one request per page)
+  to name securities still called by their ticker, without the SEC and FIGI lookups.
 
 ### Research and chatbot guardrails
 

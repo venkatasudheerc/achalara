@@ -11,6 +11,7 @@ import urllib.error
 from datetime import date
 from typing import Dict, List, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.md.config import settings
@@ -46,6 +47,26 @@ class IdentifierService:
         self.requests = 0
         self.rows = 0
         self._webull_names: Dict[str, str] = {}  # security id -> Webull's name
+
+    def run_names(self, today: date) -> str:
+        """Only the Webull list (a few requests, one per page) and the names it gives:
+        for naming securities still called by their ticker, mostly funds, without the
+        SEC and FIGI lookups. Runs as this job, so never beside the nightly run."""
+        with tracked_run(self.db, JOB) as run:
+            try:
+                self._webull_instruments(today)
+            except WebullRefused:
+                self.notes.append("Webull refused (too many requests); stopped")
+                run.outcome = "failed"
+            except WebullError as exc:
+                self.notes.append(f"Webull list not read ({exc})")
+                run.outcome = "failed"
+            named = fill_names(self.db, self._webull_names)
+            self.notes.append(f"Names only: named {named} securities known only by ticker")
+            run.requests = self.requests + self.webull.requests
+            run.rows_written = self.rows + named
+            run.note = "; ".join(self.notes)[:2000]
+        return "; ".join(self.notes)
 
     def run(self, today: date) -> str:
         with tracked_run(self.db, JOB) as run:
@@ -279,8 +300,9 @@ class IdentifierService:
         self.notes.append(f"OpenFIGI: {found} of {len(pending)}")
 
 
-def run_identifiers(db: Session, today: date) -> str:
-    return IdentifierService(db).run(today)
+def run_identifiers(db: Session, today: date, names_only: bool = False) -> str:
+    service = IdentifierService(db)
+    return service.run_names(today) if names_only else service.run(today)
 
 
 def fill_names(db: Session, webull_names: Optional[Dict[str, str]] = None) -> int:
@@ -300,9 +322,19 @@ def fill_names(db: Session, webull_names: Optional[Dict[str, str]] = None) -> in
     )
     named = 0
     for security, symbol, company_name in rows:
-        name = (company_name or "").strip() or webull_names.get(security.id, "").strip()
+        name = _plain(company_name or "") or _plain(webull_names.get(security.id, ""))
         if name and name.upper() != symbol.upper():
             security.name = name[:255]
             named += 1
+    # Trademark marks are the issuer's branding, not part of the name people use.
+    for security in db.query(Security).filter(
+        or_(Security.name.contains("®"), Security.name.contains("™"))
+    ):
+        security.name = _plain(security.name)
     db.commit()
     return named
+
+
+def _plain(name: str) -> str:
+    """A name without trademark marks or doubled spaces: "State Street® … SPDR® ETF"."""
+    return " ".join(name.replace("®", "").replace("™", "").split())
