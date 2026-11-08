@@ -141,12 +141,13 @@ export function Tabs<T extends string>({ tabs, value, onChange }: {
   tabs: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void
 }) {
   return (
-    <div role="tablist" aria-label="Market patterns views" className="flex overflow-x-auto border-b border-stone/30">
+    <div role="tablist" aria-label="Market patterns views"
+      className="flex overflow-x-auto overflow-y-hidden border-b border-stone/30 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const on = t.value === value
         return (
           <button key={t.value} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.value)}
-            className={`shrink-0 mr-[28px] py-[14px] text-[16px] whitespace-nowrap border-b-[3px] -mb-px transition-colors ${
+            className={`shrink-0 mr-[28px] py-[14px] text-[16px] whitespace-nowrap border-b-[3px] transition-colors ${
               on ? 'border-gold text-summit-ink font-semibold' : 'border-transparent text-stone hover:text-summit-ink'
             }`}>
             {t.label}
