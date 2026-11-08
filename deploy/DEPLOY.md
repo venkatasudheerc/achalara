@@ -222,8 +222,8 @@ The app's own daily jobs keep their UTC times.
 data: …": identifiers at 5:00 (Webull ids, SEC companies, FIGIs), held securities at 6:45, index
 membership at 7:00 Tuesday to Saturday, daily closes at 8:30 PM on weekdays (the day's prices as
 traded; a day missed is lost, so the worker catches up once after a restart), adjusted history at
-9:00 PM, US index levels at 9:15 PM and 6:15 AM, Indian index levels on weekdays at 4:45 PM India time
-(6:15 AM Eastern in winter, 7:15 AM in summer), the history limit at 9:45 PM (off unless
+9:00 PM, US index levels at 9:15 PM and 6:15 AM, Indian index levels on weekdays at 6:00 PM India time
+(7:30 AM Eastern in winter, 8:30 AM in summer), the history limit at 9:45 PM (off unless
 `MD_HISTORY_YEARS` is set), the return tables at 9:50 PM and 6:30 AM, and sectors and industries
 at 10:30 PM. Set
 `SEC_CONTACT_EMAIL` in `deploy/.env` (the SEC requires a contact in each request; without it SEC

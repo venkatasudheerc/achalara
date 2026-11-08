@@ -140,11 +140,11 @@ def test_each_market_runs_on_its_own_clock(db):
     assert set(_levels(db, "SPX")) == {date(2026, 11, 5)}
     jobs = {r.job for r in db.query(JobRun)}
     assert jobs == {levels.JOB, levels.JOB_IN}
-    # The Indian job fires at 4:45 PM in Kolkata on weekdays, whatever New York's clock says.
+    # The Indian job fires at 6 PM in Kolkata on weekdays, whatever New York's clock says.
     india = next(j for j in MD_JOBS if j.id == levels.JOB_IN).trigger()
     assert isinstance(india, CronTrigger)
     fire = india.get_next_fire_time(None, datetime(2026, 11, 6, 0, 0, tzinfo=timezone.utc))
-    assert (fire.hour, fire.minute, str(fire.tzinfo)) == (16, 45, "Asia/Kolkata")
+    assert (fire.hour, fire.minute, str(fire.tzinfo)) == (18, 0, "Asia/Kolkata")
     assert india.get_next_fire_time(None, datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)).weekday() == 0  # Saturday -> Monday
 
 

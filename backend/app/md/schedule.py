@@ -53,10 +53,12 @@ def _index_levels_trigger() -> OrTrigger:
 
 
 def _india_levels_trigger() -> CronTrigger:
-    # India closes at 3:30 PM IST and its levels are final by 4:30 PM: weekdays at 4:45 PM
-    # in India's own time zone, so US clock changes never move it (6:15 AM Eastern in
-    # winter, 7:15 AM in summer: before the quiet hours either way).
-    return CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone="Asia/Kolkata")
+    # India closes at 3:30 PM IST and its levels are final by 4:30 PM; Sai chose 6 PM IST
+    # (2026-11-08) for a wider margin, in case the source posts the final level late.
+    # Weekdays, in India's own time zone, so US clock changes never move it: 7:30 AM
+    # Eastern in winter, 8:30 AM in summer. It uses Yahoo only, so the quiet hours (which
+    # keep the Webull key free for client screens) do not apply.
+    return CronTrigger(day_of_week="mon-fri", hour=18, minute=0, timezone="Asia/Kolkata")
 
 
 def _prune_trigger() -> CronTrigger:
@@ -74,8 +76,8 @@ def _refresh_returns_trigger() -> OrTrigger:
 
 
 def in_quiet_hours(now: datetime) -> bool:
-    """8:30 AM to 6:00 PM Eastern on weekdays: no md job then, the client
-    screens' live prices share the Webull key."""
+    """8:30 AM to 6:00 PM Eastern on weekdays: no md job that uses Webull then, since the
+    client screens' live prices share the Webull key. Jobs on other sources may run."""
     local = now.astimezone(ZoneInfo(TIMEZONE))
     return local.weekday() < 5 and time(8, 30) <= local.time() < time(18, 0)
 

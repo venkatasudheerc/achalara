@@ -419,7 +419,7 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   **Each market runs on its own clock** (`levels.MARKET_CLOCK`): a US close is final after 5 PM
   New York time, an Indian one after 4:30 PM IST. The US indices are fetched by
   `md_index_levels` (9:15 PM and 6:15 AM Eastern); the Indian ones by `md_index_levels_in`, on
-  weekdays at 4:45 PM in Asia/Kolkata time (`schedule._india_levels_trigger`), so US clock
+  weekdays at 6:00 PM in Asia/Kolkata time (`schedule._india_levels_trigger`), so US clock
   changes never move it. `md-index-levels --market US|IN` runs one; without it, both. Volatility indices stay out of the Overview's stock indices.
   Yahoo is free and unofficial: an index can stop arriving while the run still succeeds, so
   `levels.stale_levels` names any index with no new level for more than 4 weekdays (or none at
