@@ -100,6 +100,7 @@ class RsSectorResult(BaseModel):
     observations: int
     beat_share: float
     median_excess: float
+    median_return: float
 
 
 class RsSectorRow(BaseModel):

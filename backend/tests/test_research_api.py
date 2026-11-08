@@ -204,6 +204,11 @@ def test_the_sector_scorecard_puts_two_indices_side_by_side(db, market):
     assert "R2000" in rows["IT"]
     assert rows["FIN"]["SP500"]["observations"] == 4
     assert rows["FIN"]["SP500"]["stocks"] == 1
+    it = rows["IT"]["SP500"]
+    assert it["median_return"] > it["median_excess"] > 0  # SPY also rose each November
+    # Ordered by lead over the benchmark, highest first.
+    leads = [r["results"]["SP500"]["median_excess"] for r in out["sectors"]]
+    assert leads == sorted(leads, reverse=True)
     assert any("up to 4 so far" in n for n in out["notes"])
 
 

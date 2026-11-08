@@ -570,6 +570,7 @@ def sector_scorecard(
             .filter(SecurityClassification.sector_code.isnot(None))
         )
         margins: Dict[str, List[float]] = defaultdict(list)
+        returns: Dict[str, List[float]] = defaultdict(list)
         stocks: Dict[str, set] = defaultdict(set)
         for sid, months in perf.monthly_returns(db, ids, today).items():
             sector = sectors.get(sid)
@@ -579,6 +580,7 @@ def sector_scorecard(
             for k, ret in months.items():
                 if k[1] == month and k in bench:
                     margins[sector].append(ret - bench[k])
+                    returns[sector].append(ret)
                     stocks[sector].add(sid)
                     years += 1
             most_years = max(most_years, years)
@@ -588,14 +590,17 @@ def sector_scorecard(
                 "observations": len(values),
                 "beat_share": sum(1 for v in values if v > 0) / len(values),
                 "median_excess": median(values),
+                "median_return": median(returns[sector]),
             }
     first = universes[0]
     rows = [
         {"sector_code": code, "sector": SECTOR_NAMES.get(code, code), "results": res}
         for code, res in results.items()
     ]
+    # Ordered by the typical lead over the benchmark in the first index chosen.
     rows.sort(
-        key=lambda r: r["results"].get(first, {}).get("beat_share", -1), reverse=True
+        key=lambda r: r["results"].get(first, {}).get("median_excess", float("-inf")),
+        reverse=True,
     )
     return {
         "month": month,
@@ -607,6 +612,8 @@ def sector_scorecard(
             f"Stocks are today's members with a whole {calendar.month_name[month]} on file. "
             f"Each counts once for every {calendar.month_name[month]} on file: up to "
             f"{most_years} so far, more as the years go by.",
+            "Median return is what the stocks did; median lead is how far ahead of the "
+            "benchmark they finished, each the middle value across stocks and years.",
             "A share well above 50% across many stocks is a pattern; one stock's few "
             "years are not.",
             "Stocks that have left the index are not counted (survivors only).",

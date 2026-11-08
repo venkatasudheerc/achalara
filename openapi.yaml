@@ -8131,12 +8131,16 @@ components:
         median_excess:
           type: number
           title: Median Excess
+        median_return:
+          type: number
+          title: Median Return
       type: object
       required:
       - stocks
       - observations
       - beat_share
       - median_excess
+      - median_return
       title: RsSectorResult
     RsSectorRow:
       properties:

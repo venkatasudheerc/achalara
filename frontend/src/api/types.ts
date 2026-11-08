@@ -710,7 +710,7 @@ export interface RsTopPerformers {
   month: number; month_name: string; universe: string; benchmark: RsBenchmark; min_years: number
   eligible: number; found: number; expected_by_luck: number; rows: RsPerformer[]; notes: string[]
 }
-export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number }
+export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number; median_return: number }
 export interface RsSectors {
   month: number; month_name: string; universes: string[]; benchmarks: RsBenchmark[]
   sectors: { sector_code: string; sector: string; results: Record<string, RsSectorResult> }[]
