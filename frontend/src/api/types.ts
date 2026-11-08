@@ -681,3 +681,70 @@ export interface SystemStatusResponse {
   webhooks: { at: string; event: string; outcome: string }[]
   recent_log: { at: string; level: string; source: string; message: string }[]
 }
+
+/** Market insights (/api/v1/research): shared with every signed-in user.
+ *  Every return is a decimal fraction (0.05 = 5%). `basis` is 'total' (dividends in)
+ *  or 'price' (an index level). */
+export interface RsStats {
+  count: number; mean: number; median: number; share_up: number; best: number; worst: number
+  first_year?: number | null; last_year?: number | null
+}
+export interface RsReturnRow { symbol: string; label: string; basis: string; ret: number }
+export interface RsMover { symbol: string; ret: number }
+export interface RsWeek {
+  as_of: string; period: string; start: string; end: string
+  indices: RsReturnRow[]; funds: RsReturnRow[]; sectors: RsReturnRow[]
+  best: RsMover[]; worst: RsMover[]; notes: string[]
+}
+export interface RsMonthRow {
+  symbol: string; label: string; kind: string; basis: string
+  month_to_date: number | null; record: RsStats | null
+}
+export interface RsMonth { as_of: string | null; month: string; month_name: string; rows: RsMonthRow[]; notes: string[] }
+export interface RsBenchmark { symbol: string; basis: string; universe?: string | null }
+export interface RsPerformer {
+  symbol: string; name: string | null; sector: string | null; industry: string | null
+  years: number; median_excess: number; worst_excess: number; median_return: number
+}
+export interface RsTopPerformers {
+  month: number; month_name: string; universe: string; benchmark: RsBenchmark; min_years: number
+  eligible: number; found: number; expected_by_luck: number; rows: RsPerformer[]; notes: string[]
+}
+export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number }
+export interface RsSectors {
+  month: number; month_name: string; universes: string[]; benchmarks: RsBenchmark[]
+  sectors: { sector_code: string; sector: string; results: Record<string, RsSectorResult> }[]
+  notes: string[]
+}
+export interface RsOutlook {
+  month: number; month_name: string
+  indices: { symbol: string; label: string; basis: string; record: RsStats }[]
+  sectors: RsSectors; steadiest: RsTopPerformers; notes: string[]
+}
+export interface RsCell { month: number; day: number; value: number; mean: number; median: number; days: number }
+export interface RsCalendar {
+  symbol: string; kind: string; basis: string; stat: 'mean' | 'median'
+  years: { first: number; last: number; count: number }
+  cells: RsCell[]; best: RsCell[]; worst: RsCell[]; notes: string[]
+}
+export interface RsSearch {
+  query: string
+  results: { symbol: string; name: string | null; kind: string; sector: string | null; indices: string[] }[]
+}
+export interface RsBucket {
+  bucket: string; order: number | string; count: number; mean: number; median: number
+  share_up: number; stdev: number; best: number; worst: number
+}
+export interface RsPattern {
+  subject: string; by: string; month?: number | null; kind: string; basis: string
+  members?: number | null; survivorship: boolean
+  years?: { first: number; last: number; count: number } | null
+  buckets: RsBucket[]; month_to_date?: { trading_day: number; years: number; mean: number }[] | null
+}
+export interface RsProfile {
+  symbol: string; name: string | null; sector: string | null; industry: string | null
+  kind: string; basis: string; indices: string[]; first_day: string; last_day: string
+  last_12_months: { period: string; ret: number }[]
+  month_of_year: RsPattern; month: number; month_name: string
+  month_by_trading_day: RsPattern; sector_month_of_year: RsPattern | null; notes: string[]
+}

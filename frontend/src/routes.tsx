@@ -11,6 +11,7 @@ import { ImportsPage } from '@/features/imports/ImportsPage'
 import { SettingsPage } from '@/features/SettingsPage'
 import { StatusPage } from '@/features/status/StatusPage'
 import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
+import { ResearchPage } from '@/features/research/ResearchPage'
 import { RequestsPage } from '@/features/invitations/RequestsPage'
 import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
@@ -46,6 +47,7 @@ export function AppRoutes() {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="research" element={<ResearchPage />} />
           <Route path="market-data" element={<MarketDataPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
@@ -60,6 +62,7 @@ export function AppRoutes() {
           <Route path="activity" element={<PortalActivityPage />} />
           <Route path="realized" element={<PortalRealizedPage />} />
           <Route path="performance" element={<PortalPerformancePage />} />
+          <Route path="research" element={<ResearchPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

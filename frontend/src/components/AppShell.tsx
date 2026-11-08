@@ -6,6 +6,7 @@ import { useScope } from '@/context/ScopeContext'
 
 const navItems = [
   { to: '/app/performance', label: 'Performance' },
+  { to: '/app/research', label: 'Research' },
   { to: '/app/clients', label: 'Clients' },
   { to: '/app/requests', label: 'Requests' },
   { to: '/app/strategies', label: 'Strategies' },
