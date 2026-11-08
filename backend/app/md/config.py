@@ -24,6 +24,9 @@ class MdSettings(BaseSettings):
     # (that one not set yet): research still reads through read-only sessions, on
     # md's own login.
     md_read_database_url: str = ""
+    # The read-only login's name, for the grants migration (create-md-reader.sh
+    # and docker-compose.yml read the same setting).
+    md_reader_user: str = "md_reader"
     database_url: str = ""
     log_level: str = "INFO"
     webull_app_key: str = ""

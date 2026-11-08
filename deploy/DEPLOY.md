@@ -231,10 +231,11 @@ at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABAS
 giving market data a database of its own; left empty, it shares the app's.
 
 **The read-only login for research (once per server).** The Research page reads market data
-through `md_reader`, a login that may read the `md` schema and nothing else. Until it exists,
-research still runs in read-only sessions, but as the owner login. Only its password goes in
-`deploy/.env`; `docker-compose.yml` builds the address (`MD_READ_DATABASE_URL`) from it. Use
-letters and digits only, since the password sits inside that address:
+through a login that may read the `md` schema and nothing else: `MD_READER_USER` in
+`deploy/.env` (`md_reader` unless you change it), beside the owner login `POSTGRES_USER`. Until it
+exists, research still runs in read-only sessions, but as the owner login. Its name and password
+go in `deploy/.env`; `docker-compose.yml` builds the address (`MD_READ_DATABASE_URL`) from them.
+Use letters and digits only, since the password sits inside that address:
 
 ```sh
 cd /srv/achalara/deploy
