@@ -56,3 +56,27 @@ def tracked_run(db: Session, job: str):
         if postgres:
             db.execute(text("select pg_advisory_unlock(:k)"), {"k": _lock_key(job)})
             db.commit()
+
+
+def close_abandoned(db: Session) -> int:
+    """Mark runs left "running" by a process that stopped as failed; the number closed.
+
+    A run is only abandoned if nothing holds its job's lock: a run started by
+    hand in another container while the worker restarts is left alone.
+    """
+    postgres = db.get_bind().dialect.name == "postgresql"
+    closed = 0
+    for run in db.query(JobRun).filter(JobRun.outcome == "running").all():
+        if postgres:
+            free = db.execute(
+                text("select pg_try_advisory_lock(:k)"), {"k": _lock_key(run.job)}
+            ).scalar()
+            if not free:
+                continue
+            db.execute(text("select pg_advisory_unlock(:k)"), {"k": _lock_key(run.job)})
+        run.outcome = "failed"
+        run.note = "Interrupted: the process running it stopped before it finished."
+        run.finished_at = run.finished_at or datetime.now(timezone.utc)
+        closed += 1
+    db.commit()
+    return closed

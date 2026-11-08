@@ -14,7 +14,7 @@ from app.db.database import SessionLocal
 from app.md.classification import run_classification
 from app.md.database import MdSession
 from app.md.identifiers import run_identifiers
-from app.md.jobs import JobAlreadyRunning, tracked_run
+from app.md.jobs import JobAlreadyRunning, close_abandoned, tracked_run
 from app.md.membership import JOB as MEMBERSHIP_JOB, run_index_membership
 from app.md.models import JobRun
 from app.md.schedule import MD_JOBS, TIMEZONE
@@ -109,7 +109,18 @@ def _missed_today() -> bool:
         db.close()
 
 
+def _close_abandoned() -> None:
+    db = MdSession()
+    try:
+        closed = close_abandoned(db)
+        if closed:
+            logger.info("Closed %s run(s) left running by a stopped process", closed)
+    finally:
+        db.close()
+
+
 def main() -> None:
+    _close_abandoned()
     scheduler = BlockingScheduler(timezone=TIMEZONE)
     for job in MD_JOBS:
         scheduler.add_job(
