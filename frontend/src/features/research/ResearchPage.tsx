@@ -461,7 +461,7 @@ function SectorsTab() {
                   {data.universes.length > 1 && data.universes.map((u) => (
                     <th key={u} colSpan={3} className={`${thNum} text-center border-l border-stone/15`}>{UNIVERSE_LABEL[u] ?? u}</th>
                   ))}
-                  {data.universes.length === 1 && <><th className={thNum}>Beat the fund</th><th className={thNum}>Median lead</th><th className={thNum}>Stock-years</th></>}
+                  {data.universes.length === 1 && <><th className={thNum}>Beat the fund</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>}
                 </tr>
                 {data.universes.length > 1 && (
                   <tr className="border-b border-stone/20">
@@ -481,7 +481,7 @@ function SectorsTab() {
                       return [
                         <td key={`${u}-b`} className={`${tdNum} ${data.universes.length > 1 ? 'border-l border-stone/15' : ''}`}><BeatBar value={r.beat_share} /></td>,
                         <td key={`${u}-m`} className={tdNum}><Pct value={r.median_excess} /></td>,
-                        <td key={`${u}-n`} className={`${tdNum} text-stone`}>{r.observations.toLocaleString('en-US')}</td>,
+                        <td key={`${u}-n`} className={`${tdNum} text-stone`}>{r.stocks.toLocaleString('en-US')}</td>,
                       ]
                     })}
                   </tr>
@@ -496,7 +496,7 @@ function SectorsTab() {
 }
 
 function SectorHeads() {
-  return <><th className={`${thNum} border-l border-stone/15`}>Beat</th><th className={thNum}>Median lead</th><th className={thNum}>Stock-years</th></>
+  return <><th className={`${thNum} border-l border-stone/15`}>Beat</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>
 }
 
 function BucketTable({ buckets, label }: { buckets: RsBucket[]; label: string }) {

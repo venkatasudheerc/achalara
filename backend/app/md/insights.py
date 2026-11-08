@@ -9,6 +9,7 @@ as JSON Schema; the chatbot's tool definitions are made from it.
 
 These read md only; the session they are given is read-only (``read.ReadSession``).
 """
+import calendar
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -556,6 +557,7 @@ def sector_scorecard(
     )
     results: Dict[str, Dict[str, Dict]] = defaultdict(dict)
     benchmarks = []
+    most_years = 0
     for code in universes:
         bench_symbol, bench = _benchmark_months(db, code, today)
         benchmarks.append({"universe": code, "symbol": bench_symbol, "basis": "total"})
@@ -573,10 +575,13 @@ def sector_scorecard(
             sector = sectors.get(sid)
             if not sector:
                 continue
+            years = 0
             for k, ret in months.items():
                 if k[1] == month and k in bench:
                     margins[sector].append(ret - bench[k])
                     stocks[sector].add(sid)
+                    years += 1
+            most_years = max(most_years, years)
         for sector, values in margins.items():
             results[sector][code] = {
                 "stocks": len(stocks[sector]),
@@ -599,11 +604,12 @@ def sector_scorecard(
         "benchmarks": benchmarks,
         "sectors": rows,
         "notes": [
-            "Each stock-year counts once: a sector's share is how often its stocks beat "
-            "their index's fund in that month.",
-            "A share well above 50% across hundreds of stock-years is a pattern; one "
-            "stock's handful of years is not.",
-            "Members are today's (survivors only).",
+            f"Stocks are today's members with a whole {calendar.month_name[month]} on file. "
+            f"Each counts once for every {calendar.month_name[month]} on file: up to "
+            f"{most_years} so far, more as the years go by.",
+            "A share well above 50% across many stocks is a pattern; one stock's few "
+            "years are not.",
+            "Stocks that have left the index are not counted (survivors only).",
         ],
     }
 

@@ -203,6 +203,8 @@ def test_the_sector_scorecard_puts_two_indices_side_by_side(db, market):
     assert rows["IT"]["SP500"]["beat_share"] == 1.0  # AAA, every November
     assert "R2000" in rows["IT"]
     assert rows["FIN"]["SP500"]["observations"] == 4
+    assert rows["FIN"]["SP500"]["stocks"] == 1
+    assert any("up to 4 so far" in n for n in out["notes"])
 
 
 def test_a_calendar_grid_says_how_thin_its_cells_are(db, market):
