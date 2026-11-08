@@ -30,7 +30,7 @@ limits, user-visible screens.
 | `backend/app/md/**` (market data) | `docs/MARKET_DATA.md` *(local)* (plan status, design, schedule, Webull budget, troubleshooting, limitations); `backend/CLAUDE.md` § "Market data"; `backend/DATA_MODEL.md` § "The `md` schema" |
 | Research, `md/insights.py` (`TOOLS`), `ReadSession` or the `md_reader` grants | `backend/CLAUDE.md` § "Research and chatbot guardrails"; `openapi.yaml`; `frontend/CLAUDE.md` (Research page); `docs/MARKET_DATA.md` *(local)* |
 | A scheduled job or its time (`services/scheduler.py`, `md/schedule.py`) | `deploy/DEPLOY.md` § Routine; `docs/MARKET_DATA.md` § 5 *(local)* for md jobs; the System status notes in `backend/CLAUDE.md` |
-| A setting in `app/config.py` | `deploy/.env.example` (name only, empty value) and `deploy/DEPLOY.md`; `backend/.env.example` if it exists |
+| A setting in `app/config.py` or `app/md/config.py` | `deploy/.env.example` (name only, empty value, in the section of its neighbours: a login's name and password go under "Database credentials" beside the others) and `deploy/DEPLOY.md`; `deploy/docker-compose.yml` if the setting is built from others there; `backend/.env.example` if it exists. Check it follows root `CLAUDE.md` § "A new setting follows the settings beside it" |
 | `deploy/**` (compose, Caddy, backup) | `deploy/DEPLOY.md` |
 | A brokerage connector | `backend/app/connectors/CONNECTORS.md`, `backend/CLAUDE.md` § Brokerage Sync Rules |
 | A frontend page, hook, route or design token | `frontend/CLAUDE.md` (Routing, Features, Shared components, Design Tokens) |
