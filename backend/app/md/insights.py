@@ -668,21 +668,21 @@ def find_security(db: Session, query: str, limit: int = 10) -> Dict:
     word = re.compile(r"\b" + re.escape(text.lower()))
 
     def rank(row):
-        """An exact ticker; then a name with a word starting with the text (Apple,
-        not Pineapple); then a ticker starting with it; then any name containing it.
-        Within each, the larger company first (S&P 500, then Russell 1000)."""
+        """As a quote screen lists them: the exact ticker; then tickers starting with the
+        text, shortest first (APP, APPF, APPN); then names with a word starting with it
+        (Apple, not Pineapple); then any name containing it. Among names, the larger
+        company first (S&P 500, then Russell 1000)."""
         sid, symbol, name, _, company = row
         names = f"{name or ''} {company or ''}".lower()
-        if symbol == ticker:
-            group = 0
-        elif word.search(names):
-            group = 1
-        elif symbol.startswith(ticker):
-            group = 2
-        else:
-            group = 3
         size = 0 if "SP500" in indices[sid] else 1 if "R1000" in indices[sid] else 2
-        return (group, size, len(symbol), symbol)
+        # A share class (BRK.B) is what someone typing its base ticker (BRK) means.
+        if symbol == ticker or re.split(r"[. ]", symbol)[0] == ticker:
+            return (0, len(symbol), size, symbol)
+        if symbol.startswith(ticker):
+            return (1, len(symbol), size, symbol)
+        if word.search(names):
+            return (2, size, len(symbol), symbol)
+        return (3, size, len(symbol), symbol)
 
     rows.sort(key=rank)
     rows = rows[:limit]

@@ -285,5 +285,14 @@ def test_search_puts_a_word_match_and_a_large_company_first(db, market):
     found = [r["symbol"] for r in insights.find_security(db, "apple")["results"]]
     assert found[:2] == ["APX", "PNX"]  # a word starting "apple" before "pineapple"
     # Same kind of match: the S&P 500 member (AAA, BBB) before the rest.
+    # Tickers starting with the text come before names, shortest ticker first.
+    for symbol, name in (("APXL", "Long Ticker Example"), ("ZZZ", "Apx Partners Example")):
+        security = Security(name=name, kind="stock")
+        db.add(security)
+        db.flush()
+        db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    db.flush()
+    found = [r["symbol"] for r in insights.find_security(db, "apx")["results"]]
+    assert found[:3] == ["APX", "APXL", "ZZZ"]
     names = [r["symbol"] for r in insights.find_security(db, "example corp")["results"]]
     assert names.index("AAA") < names.index("SML") and names.index("BBB") < names.index("SML")

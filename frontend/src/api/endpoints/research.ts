@@ -18,7 +18,7 @@ export const researchApi = {
   sectors: (params: { month: number; universe: string; compare?: string }) =>
     apiClient.get<RsSectors>('/api/v1/research/sectors', { params }).then((r) => r.data),
   search: (q: string) =>
-    apiClient.get<RsSearch>('/api/v1/research/securities', { params: { q, limit: 8 } }).then((r) => r.data),
+    apiClient.get<RsSearch>('/api/v1/research/securities', { params: { q, limit: 12 } }).then((r) => r.data),
   profile: (symbol: string, month?: number) =>
     apiClient.get<RsProfile>(`/api/v1/research/securities/${encodeURIComponent(symbol)}`, { params: { month } }).then((r) => r.data),
 }

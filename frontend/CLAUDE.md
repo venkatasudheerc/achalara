@@ -144,7 +144,8 @@ Each feature directory contains its page component(s). Implemented:
   the tabs (`research/Overview.tsx`, `GlanceCards`); the tabs are Overview (this week, this month
   against a typical one, next month's record), Months by year (`MonthsTab`, a 12-month bar chart over
   the year × month grid `MonthGrid`), Calendar days (`CalendarHeatmap`), Top performers, Sectors
-  and Stock/ETF look-up (`LookupTab`: opens as you type; the last 12 months, the stock beside its
+  and Stock/ETF look-up (`LookupTab`: matches drop down as you type, a ticker column and a name
+  column, stocks and funds grouped, typed letters highlighted; only the chosen one, or an exact ticker, is shown; the last 12 months, the stock beside its
   sector, and a month date by date: the typical path from `month_path.typical`, and this year's
   so far in gold when the month is the one running, `month_path.current`). Building blocks are in `research/ui.tsx`: `Tabs` (underlined,
   for views) apart from `Segmented` (for settings), `Section` (a card that opens with its answer

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { useSecurityProfile, useSecuritySearch } from '@/hooks/useResearch'
 import type { RsBucket, RsMonthPath, RsProfile } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
@@ -7,7 +7,7 @@ import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
 import { Select, tone, useDebounced } from '@/features/portal/ui'
 import {
-  Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, SearchBox, Section, UNIVERSE_LABEL,
+  Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, UNIVERSE_LABEL,
   displayName, notFound, pct1, unavailable,
 } from './ui'
 
@@ -156,45 +156,124 @@ function MonthPath({ path, name, month }: { path: RsMonthPath; name: string; mon
   )
 }
 
+type Match = { symbol: string; name: string | null; kind: string; sector: string | null; indices: string[] }
+
+/** The typed text highlighted where it appears in a ticker or a name. */
+function Marked({ text, query }: { text: string; query: string }) {
+  const q = query.trim().toLowerCase()
+  const at = q ? text.toLowerCase().indexOf(q) : -1
+  if (at < 0) return <>{text}</>
+  return <>{text.slice(0, at)}<span className="font-semibold text-pine">{text.slice(at, at + q.length)}</span>{text.slice(at + q.length)}</>
+}
+
+const GROUPS = [
+  { label: 'Stocks', kinds: ['stock', 'adr'] },
+  { label: 'ETFs and funds', kinds: ['etf', 'fund'] },
+]
+
+/** A search box whose matches drop down as you type, a ticker column and a name column,
+ *  stocks and funds apart, as a quote screen lists them: arrow keys move, Enter or a
+ *  click chooses, Escape closes. Choosing puts the choice in the box. */
+function SecurityCombobox({ query, onQuery, results, loading, onChoose }: {
+  query: string; onQuery: (q: string) => void; results: Match[]; loading: boolean
+  onChoose: (m: Match) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  // Grouped, but in one order for the arrow keys: the server's ranking within each group.
+  const groups = GROUPS.map((g) => ({ ...g, items: results.filter((r) => g.kinds.includes(r.kind)) }))
+  groups.push({ label: 'Other', kinds: [], items: results.filter((r) => !GROUPS.some((g) => g.kinds.includes(r.kind))) })
+  // The group holding the best match comes first: typing "spy" leads with the SPY fund.
+  groups.sort((a, b) => (a.items.length ? results.indexOf(a.items[0]) : 99) - (b.items.length ? results.indexOf(b.items[0]) : 99))
+  const shown = groups.flatMap((g) => g.items)
+  const showList = open && query.trim().length > 0 && (shown.length > 0 || !loading)
+  const choose = (m: Match) => { onChoose(m); setOpen(false) }
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, shown.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+    else if (e.key === 'Enter' && showList && shown[active]) { e.preventDefault(); choose(shown[active]) }
+    else if (e.key === 'Escape') setOpen(false)
+  }
+  const q = query.trim()
+  return (
+    <div className="flex flex-col gap-[6px] w-full max-w-[520px]">
+      <label htmlFor="lookup" className="text-[13px] text-stone">Company, fund or ticker</label>
+      <div className="relative">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" className="absolute left-[14px] top-[13px] text-stone">
+          <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+        </svg>
+        <input id="lookup" type="search" value={query} placeholder="Apple, Schwab, SPY" autoComplete="off"
+          role="combobox" aria-expanded={showList} aria-controls="lookup-list" aria-autocomplete="list"
+          aria-activedescendant={showList && shown[active] ? `lookup-${shown[active].symbol}` : undefined}
+          onChange={(e) => { onQuery(e.target.value); setOpen(true); setActive(0) }}
+          onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onKeyDown={onKey}
+          className="w-full h-[44px] pl-[42px] pr-[14px] rounded-[10px] border border-stone/40 bg-surface text-[15px] text-summit-ink focus:outline-none focus:ring-2 focus:ring-gold" />
+        {showList && (
+          <div id="lookup-list" role="listbox" aria-label="Matches"
+            className="absolute z-20 left-0 right-0 top-[50px] max-h-[420px] overflow-y-auto rounded-[10px] border border-stone/40 bg-surface shadow-xl py-[4px]">
+            {shown.length === 0
+              ? <div className="px-[14px] py-[10px] text-[14px] text-stone">Nothing matches “{q}”</div>
+              : groups.filter((g) => g.items.length).map((g) => (
+                <div key={g.label} role="group" aria-label={g.label}>
+                  <div className="px-[14px] pt-[10px] pb-[4px] text-[12px] font-semibold uppercase tracking-wide text-stone">{g.label}</div>
+                  {g.items.map((m) => {
+                    const i = shown.indexOf(m)
+                    return (
+                      <div key={m.symbol} id={`lookup-${m.symbol}`} role="option" aria-selected={i === active}
+                        // mousedown, not click: it runs before the input loses focus and closes the list
+                        onMouseDown={(e) => { e.preventDefault(); choose(m) }} onMouseEnter={() => setActive(i)}
+                        className={`grid [grid-template-columns:84px_minmax(0,1fr)] gap-[12px] px-[14px] py-[8px] cursor-pointer ${i === active ? 'bg-mist' : ''}`}>
+                        <span className="font-mono text-[14px] text-summit-ink"><Marked text={m.symbol} query={q} /></span>
+                        <span className="truncate text-[15px] text-summit-ink"><Marked text={displayName(m.name)} query={q} /></span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function LookupTab({ query, onQuery, onOpenMonths }: {
   query: string; onQuery: (q: string) => void; onOpenMonths: (symbol: string) => void
 }) {
-  const [picked, setPicked] = useState<{ query: string; symbol: string } | null>(null)
+  const [selected, setSelected] = useState<{ symbol: string; label: string } | null>(null)
   const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const typed = useDebounced(query.trim(), 300)
-  const search = useSecuritySearch(typed)
-  const results = typed ? search.data?.results ?? [] : []
-  // No click needed: an exact ticker, else the best match, opens by itself; a click only
-  // switches to another match for the same search.
-  const exact = results.find((r) => r.symbol === typed.toUpperCase())
-  const chosen = picked && picked.query === typed ? picked.symbol : (exact ?? results[0])?.symbol ?? null
+  const typed = useDebounced(query.trim(), 200)
+  // The box shows the choice once made; that text is not a new search.
+  const showingChoice = selected != null && query === selected.label
+  const searching = showingChoice || (selected && typed === selected.label) ? '' : typed
+  const search = useSecuritySearch(searching)
+  const results = searching ? search.data?.results ?? [] : []
+  // Only what is chosen is shown; an exact ticker (typed, or opened from another tab)
+  // counts as chosen, so it needs no click.
+  const exact = results.find((r) => r.symbol === searching.toUpperCase())
+  const chosen = showingChoice ? selected.symbol : exact?.symbol ?? selected?.symbol ?? null
+  const choose = (m: Match) => {
+    const label = `${displayName(m.name, m.symbol)} · ${m.symbol}`
+    setSelected({ symbol: m.symbol, label })
+    onQuery(label)
+  }
   const profile = useSecurityProfile(chosen, month)
   const p = profile.data
-  const others = results.filter((r) => r.symbol !== chosen)
   const answer = p ? headline(p) : null
   const total = p ? p.last_12_months.reduce((g, m) => g * (1 + m.ret), 1) - 1 : 0
 
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
-        <SearchBox id="lookup" label="Company, fund or ticker" value={query} onChange={onQuery} placeholder="Apple, Schwab, SPY" />
-        {others.length > 0 && (
-          <div className="flex flex-wrap items-center gap-[8px] pb-[6px]">
-            <span className="text-[13px] text-stone">Also matches:</span>
-            {others.slice(0, 5).map((r) => (
-              <button key={r.symbol} type="button" onClick={() => setPicked({ query: typed, symbol: r.symbol })}
-                className="h-[32px] px-[12px] rounded-full border border-stone/40 text-[13px] text-summit-ink hover:border-pine">
-                {displayName(r.name, r.symbol)} <span className="font-mono text-stone">{r.symbol}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        <SecurityCombobox query={query} onQuery={onQuery} results={results} loading={search.isLoading} onChoose={choose} />
       </Controls>
 
-      {!typed ? <EmptyState title="Look up a stock or a fund" message="Type a company's name or a ticker: Apple, Schwab, SPY." />
-        : search.isLoading ? <Loading rows={3} />
-        : search.isError ? <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />
-        : results.length === 0 ? <EmptyState title={`Nothing matches “${typed}”`} message="Try a company's name or its ticker." />
+      {!chosen ? (
+        !query.trim() ? <EmptyState title="Look up a stock or a fund" message="Type a company's name or a ticker: Apple, Schwab, SPY." />
+          : search.isError ? <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />
+          : <p className="text-[15px] text-stone">Choose a match from the list.</p>
+      )
         : profile.isLoading ? <Section title="Loading…"><Loading rows={10} /></Section>
         : notFound(profile.error) ? <EmptyState title={`No prices on file for ${chosen}`} message="Market data knows this security but holds no daily history for it yet." />
         : profile.isError || !p ? <ErrorState message={unavailable(profile.error)} onRetry={() => profile.refetch()} />
