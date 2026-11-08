@@ -5,8 +5,9 @@ data, so both cut weeks and months the same way: ISO weeks (Monday to Sunday)
 and calendar months, quarters and years. A period's return runs from the last
 close before it to its own last close.
 """
+import calendar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from statistics import mean, median, pstdev
 from typing import Dict, Hashable, Iterable, List, Optional, Sequence, Tuple
 
@@ -30,20 +31,47 @@ def period_key(day: date, grain: str):
     raise ValueError(f"grain must be one of {', '.join(GRAINS)}")
 
 
+def period_end(key, grain: str) -> date:
+    """The last calendar day of a period."""
+    if grain == "day":
+        return key
+    if grain == "week":
+        return date.fromisocalendar(key[0], key[1], 7)
+    if grain == "month":
+        return date(key[0], key[1], calendar.monthrange(key[0], key[1])[1])
+    if grain == "quarter":
+        month = key[1] * 3
+        return date(key[0], month, calendar.monthrange(key[0], month)[1])
+    return date(key[0], 12, 31)
+
+
+def still_running(key, grain: str, as_of: date) -> bool:
+    """Whether a weekday is left in the period after ``as_of``: a week that ended
+    on Friday is over on the Saturday."""
+    end = period_end(key, grain)
+    day = as_of + timedelta(days=1)
+    while day <= end:
+        if day.weekday() < 5:
+            return True
+        day += timedelta(days=1)
+    return False
+
+
 @dataclass(frozen=True)
 class PeriodReturn:
     key: Hashable
     start: date  # first trading day in the period
     end: date  # last trading day in the period
     ret: float
-    partial: bool  # the period has not ended yet
+    partial: bool  # trading days are left in the period after ``as_of``
 
 
 def period_returns(
     closes: Sequence[Close], grain: str, as_of: Optional[date] = None
 ) -> List[PeriodReturn]:
     """Each period's return, oldest first. The first period has no close before
-    it and is left out; the period containing ``as_of`` is marked partial."""
+    it and is left out; a period with trading days left after ``as_of`` is
+    marked partial."""
     groups: List[List[Close]] = []
     current = None
     for day, close in sorted(closes):
@@ -52,17 +80,15 @@ def period_returns(
             groups.append([])
             current = key
         groups[-1].append((day, close))
-    running = period_key(as_of, grain) if as_of else None
     out = []
     for before, group in zip(groups, groups[1:]):
         previous, last = before[-1][1], group[-1][1]
         if not previous:
             continue
         key = period_key(group[0][0], grain)
+        partial = bool(as_of) and still_running(key, grain, as_of)
         out.append(
-            PeriodReturn(
-                key, group[0][0], group[-1][0], last / previous - 1, key == running
-            )
+            PeriodReturn(key, group[0][0], group[-1][0], last / previous - 1, partial)
         )
     return out
 
@@ -78,15 +104,19 @@ class DayReturn:
 
 def day_returns(closes: Sequence[Close]) -> List[DayReturn]:
     """Each day's return from the previous close, with its place in its month.
-    ``trading_days_left`` counts only days on file, so it is exact for months
-    that have ended."""
+    The month of the first close is left out: its earlier days are not on file,
+    so a day's place in it is not known. ``trading_days_left`` counts only days
+    on file, so it is exact for months that have ended."""
     ordered = sorted(closes)
+    if not ordered:
+        return []
+    first_month = (ordered[0][0].year, ordered[0][0].month)
     by_month: Dict[Tuple[int, int], List[date]] = {}
     for day, _ in ordered:
         by_month.setdefault((day.year, day.month), []).append(day)
     out = []
     for (_, previous), (day, close) in zip(ordered, ordered[1:]):
-        if not previous:
+        if not previous or (day.year, day.month) == first_month:
             continue
         month = by_month[(day.year, day.month)]
         place = month.index(day)

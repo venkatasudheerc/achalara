@@ -50,11 +50,18 @@ def test_unsorted_input_and_a_gap_give_the_same_answer():
 
 
 def test_days_know_their_place_in_the_month():
-    closes = [(date(2026, 10, day), 100.0) for day in (26, 27, 28, 29)] + [
-        (date(2026, 10, 30), 101.0),  # Friday, October's last trading day
-        (date(2026, 11, 2), 99.99),  # Monday, November's first
-        (date(2026, 11, 3), 100.99),
+    october = [
+        date(2026, 10, d) for d in range(1, 30) if date(2026, 10, d).weekday() < 5
     ]
+    closes = (
+        [(date(2026, 9, 30), 100.0)]
+        + [(d, 100.0) for d in october]
+        + [
+            (date(2026, 10, 30), 101.0),  # Friday, October's last trading day
+            (date(2026, 11, 2), 99.99),  # Monday, November's first
+            (date(2026, 11, 3), 100.99),
+        ]
+    )
     rows = day_returns(closes)
     assert [r.day for r in rows][-3:] == [
         date(2026, 10, 30),
@@ -62,7 +69,7 @@ def test_days_know_their_place_in_the_month():
         date(2026, 11, 3),
     ]
     last_oct, first_nov, second_nov = rows[-3:]
-    assert last_oct.trading_day_of_month == 5
+    assert last_oct.trading_day_of_month == len(october) + 1 == 22
     assert (last_oct.trading_days_left, turn_of_month(last_oct)) == (0, "last day")
     assert (first_nov.trading_day_of_month, first_nov.weekday) == (1, 1)
     assert first_nov.ret == pytest.approx(-0.01)
@@ -82,3 +89,23 @@ def test_seasonality_counts_and_averages_each_bucket():
 def test_excess_and_compounding():
     assert excess({1: 0.05, 2: 0.01}, {1: 0.02}) == {1: pytest.approx(0.03)}
     assert compound([0.1, 0.1]) == pytest.approx(0.21)
+
+
+def test_a_week_that_ended_on_friday_is_over_at_the_weekend():
+    closes = [(date(2026, 10, 30), 100.0), (date(2026, 11, 6), 110.0)]
+    saturday = period_returns(closes, "week", as_of=date(2026, 11, 7))
+    friday_noon = period_returns(closes, "week", as_of=date(2026, 11, 5))
+    assert saturday[-1].partial is False and friday_noon[-1].partial is True
+    # November still has trading days after the 7th.
+    assert period_returns(closes, "month", as_of=date(2026, 11, 7))[-1].partial is True
+
+
+def test_a_month_only_partly_on_file_gives_no_day_places():
+    """History starting on 9 Nov: that November's 'day 1' would really be its sixth."""
+    closes = [(date(2021, 11, 9), 100.0), (date(2021, 11, 10), 101.0)] + [
+        (date(2021, 12, 1), 102.0),
+        (date(2021, 12, 2), 103.0),
+    ]
+    rows = day_returns(closes)
+    assert [r.day for r in rows] == [date(2021, 12, 1), date(2021, 12, 2)]
+    assert rows[0].trading_day_of_month == 1
