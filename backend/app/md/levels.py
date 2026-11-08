@@ -21,7 +21,8 @@ from app.utils import yahoo_chart
 
 logger = logging.getLogger(__name__)
 
-JOB = "md_index_levels"
+JOB = "md_index_levels"  # the US indices (and every index when no market is named)
+JOB_IN = "md_index_levels_in"  # the Indian indices, run after India's close
 SOURCE = "yahoo"
 
 
@@ -38,6 +39,13 @@ class IndexLevel:
     group: str  # how the page groups it
     volatility: bool = False  # expected volatility, not a price
 
+
+# When a market's day is over: its close is final this long after the closing bell, in the
+# market's own time zone. India closes at 3:30 PM IST, about 5 or 6 AM in New York.
+MARKET_CLOCK = {
+    "US": (ZoneInfo("America/New_York"), time(17, 0)),
+    "IN": (ZoneInfo("Asia/Kolkata"), time(16, 30)),
+}
 
 US = "Indices (US)"
 IN_BROAD = "India: broad market"
@@ -89,12 +97,14 @@ class IndexLevelService:
         self.db = db
         self._fetch = fetch or yahoo_chart.fetch
 
-    def run(self, now: Optional[datetime] = None) -> str:
+    def run(self, now: Optional[datetime] = None, market: Optional[str] = None) -> str:
+        """Fetch the levels of one market's indices (``US``, ``IN``), or every index."""
         now = now or datetime.now(timezone.utc)
         written: Dict[str, int] = {}
         failed: List[str] = []
-        with tracked_run(self.db, JOB) as run:
-            for code, source_symbol in LEVELS.items():
+        wanted = [i for i in INDEX_LEVELS_INFO if market is None or i.country == market]
+        with tracked_run(self.db, JOB_IN if market == "IN" else JOB) as run:
+            for code, source_symbol in ((i.code, i.source) for i in wanted):
                 latest = (
                     self.db.query(func.max(IndexLevelHist.price_date))
                     .filter(IndexLevelHist.symbol == code)
@@ -120,10 +130,14 @@ class IndexLevelService:
 
     def _store(self, code: str, bars: List[Dict], now: datetime) -> int:
         """Write the final days given, replacing a day already on file."""
-        here = now.astimezone(MARKET_ZONE)
+        # Final once the index's own market has closed for the day, in its own time zone.
+        zone, final_after = MARKET_CLOCK.get(
+            INFO[code].country if code in INFO else "US", (MARKET_ZONE, FINAL_AFTER)
+        )
+        here = now.astimezone(zone)
         last_final = (
             here.date()
-            if here.time() >= FINAL_AFTER
+            if here.time() >= final_after
             else here.date() - timedelta(days=1)
         )
         bars = [bar for bar in bars if bar["bar_date"] <= last_final]
@@ -145,8 +159,14 @@ class IndexLevelService:
         return len(bars)
 
 
-def run_index_levels(db: Session, now: Optional[datetime] = None) -> str:
-    return IndexLevelService(db).run(now)
+def run_index_levels(
+    db: Session, now: Optional[datetime] = None, market: Optional[str] = None
+) -> str:
+    """One market's index levels, or, with no market, each market in turn (each its own
+    recorded run, as the scheduled jobs are)."""
+    if market is not None:
+        return IndexLevelService(db).run(now, market)
+    return "; ".join(IndexLevelService(db).run(now, m) for m in ("US", "IN"))
 
 
 STALE_AFTER_MARKET_DAYS = 4  # longer than the longest regular break, in either market

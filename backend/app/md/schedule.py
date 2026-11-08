@@ -52,6 +52,13 @@ def _index_levels_trigger() -> OrTrigger:
     )
 
 
+def _india_levels_trigger() -> CronTrigger:
+    # India closes at 3:30 PM IST and its levels are final by 4:30 PM: weekdays at 4:45 PM
+    # in India's own time zone, so US clock changes never move it (6:15 AM Eastern in
+    # winter, 7:15 AM in summer: before the quiet hours either way).
+    return CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone="Asia/Kolkata")
+
+
 def _prune_trigger() -> CronTrigger:
     return CronTrigger(day_of_week="mon-fri", hour=21, minute=45, timezone=TIMEZONE)
 
@@ -88,7 +95,12 @@ MD_JOBS: List[MdJob] = [
         "Market data: adjusted history",
         _adjusted_closes_trigger,
     ),
-    MdJob("md_index_levels", "Market data: index levels", _index_levels_trigger),
+    MdJob("md_index_levels", "Market data: index levels (US)", _index_levels_trigger),
+    MdJob(
+        "md_index_levels_in",
+        "Market data: index levels (India)",
+        _india_levels_trigger,
+    ),
     MdJob("md_prune_prices", "Market data: history limit", _prune_trigger),
     MdJob("md_refresh_returns", "Market data: return tables", _refresh_returns_trigger),
     MdJob(

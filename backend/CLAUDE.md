@@ -416,8 +416,11 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   flags an index code that is also a ticker. Results say what an index is
   (`insights._subject_notes`): an `INR` level is a return in rupees, before currency moves; a
   volatility index (VIX, India VIX) is expected volatility, never called a return or a gain.
-  Indian closes are final after 5 PM US Eastern like the rest, so the 6:15 AM run leaves a day
-  to the 9:15 PM run. Volatility indices stay out of the Overview's stock indices.
+  **Each market runs on its own clock** (`levels.MARKET_CLOCK`): a US close is final after 5 PM
+  New York time, an Indian one after 4:30 PM IST. The US indices are fetched by
+  `md_index_levels` (9:15 PM and 6:15 AM Eastern); the Indian ones by `md_index_levels_in`, on
+  weekdays at 4:45 PM in Asia/Kolkata time (`schedule._india_levels_trigger`), so US clock
+  changes never move it. `md-index-levels --market US|IN` runs one; without it, both. Volatility indices stay out of the Overview's stock indices.
   Yahoo is free and unofficial: an index can stop arriving while the run still succeeds, so
   `levels.stale_levels` names any index with no new level for more than 4 weekdays (or none at
   all) on the Market data page and on System status, and so in the alerts.

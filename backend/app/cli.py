@@ -235,14 +235,14 @@ def md_adjusted_history() -> int:
     return 0
 
 
-def md_index_levels() -> int:
-    """Fetch index levels now: in full for an index without any."""
+def md_index_levels(market: Optional[str] = None) -> int:
+    """Fetch index levels now (one market, or each in turn): in full for an index without any."""
     from app.md.database import MdSession
     from app.md.levels import run_index_levels
 
     db = MdSession()
     try:
-        print(run_index_levels(db))
+        print(run_index_levels(db, market=market))
     finally:
         db.close()
     return 0
@@ -415,8 +415,11 @@ def main(argv=None) -> int:
         "md-adjusted-history",
         help="market data: adjusted daily closes now (in full where none are on file)",
     )
-    commands.add_parser(
+    levels_cmd = commands.add_parser(
         "md-index-levels", help="market data: index levels now (in full the first time)"
+    )
+    levels_cmd.add_argument(
+        "--market", choices=["US", "IN"], help="one market's indices; both when left out"
     )
     commands.add_parser(
         "md-refresh-returns",
@@ -440,7 +443,7 @@ def main(argv=None) -> int:
     if args.command == "md-adjusted-history":
         return md_adjusted_history()
     if args.command == "md-index-levels":
-        return md_index_levels()
+        return md_index_levels(args.market)
     if args.command == "md-refresh-returns":
         return md_refresh_returns()
     if args.command == "md-track-fund":
