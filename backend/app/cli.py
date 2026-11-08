@@ -247,6 +247,19 @@ def md_index_levels() -> int:
     return 0
 
 
+def md_refresh_returns() -> int:
+    """Refresh the stored week and month return tables now."""
+    from app.md.database import MdSession
+    from app.md.views import refresh_return_views
+
+    db = MdSession()
+    try:
+        print(refresh_return_views(db))
+    finally:
+        db.close()
+    return 0
+
+
 def md_track_fund(symbol: Optional[str], group: Optional[str], remove: bool) -> int:
     """Track a fund (priced each evening), stop tracking one, or list them."""
     from app.md.closes import track_fund, tracked, untrack_fund
@@ -367,6 +380,10 @@ def main(argv=None) -> int:
     commands.add_parser(
         "md-index-levels", help="market data: index levels now (in full the first time)"
     )
+    commands.add_parser(
+        "md-refresh-returns",
+        help="market data: refresh the stored week and month return tables now",
+    )
     fund = commands.add_parser(
         "md-track-fund",
         help="market data: track a fund, stop tracking one (--remove), or list them",
@@ -381,6 +398,8 @@ def main(argv=None) -> int:
         return md_adjusted_history()
     if args.command == "md-index-levels":
         return md_index_levels()
+    if args.command == "md-refresh-returns":
+        return md_refresh_returns()
     if args.command == "md-track-fund":
         return md_track_fund(args.symbol, args.group, args.remove)
     if args.command == "md-identifiers":

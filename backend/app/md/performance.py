@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, text
 from sqlalchemy.orm import Session
 
 from app.md.closes import universe
@@ -127,6 +127,34 @@ def month_end_closes(
     return out
 
 
+def monthly_returns(
+    db: Session, security_ids: Iterable[str], today: date
+) -> Dict[str, Dict[Tuple[int, int], float]]:
+    """Each security's returns for months that have ended, keyed ``(year, month)``.
+
+    On Postgres, read from the stored ``md.month_return`` (refreshed each night),
+    which answers across every stock at once; elsewhere, computed from month-end
+    closes. Both run from one month's last close to the next."""
+    ids = list(security_ids)
+    if db.get_bind().dialect.name == "postgresql":
+        rows = db.execute(
+            text(
+                "select security_id, year, month, ret from md.month_return"
+                " where kind = 'security' and security_id = any(:ids)"
+                " and make_date(year, month, 1) < make_date(:y, :m, 1)"
+            ),
+            {"ids": ids, "y": today.year, "m": today.month},
+        )
+        out: Dict[str, Dict[Tuple[int, int], float]] = defaultdict(dict)
+        for security_id, year, month, ret in rows:
+            out[security_id][(year, month)] = float(ret)
+        return out
+    return {
+        security_id: _complete_months(closes, today)
+        for security_id, closes in month_end_closes(db, ids).items()
+    }
+
+
 def _complete_months(
     closes: Sequence[Close], today: date
 ) -> Dict[Tuple[int, int], float]:
@@ -240,8 +268,8 @@ def _group_months(
 ) -> Dict[Tuple[int, int], float]:
     """Equal-weighted average of the members' monthly returns, month by month."""
     totals: Dict[Tuple[int, int], List[float]] = defaultdict(list)
-    for closes in month_end_closes(db, ids).values():
-        for key, ret in _complete_months(closes, today).items():
+    for months in monthly_returns(db, ids, today).values():
+        for key, ret in months.items():
             totals[key].append(ret)
     return {key: sum(v) / len(v) for key, v in totals.items()}
 
@@ -381,7 +409,7 @@ def consistent_months(
     _, bench_basis, bench_closes = series(db, benchmark)
     bench = _complete_months(bench_closes, today)
     ids = _universe_ids(db, universe_index)
-    closes = month_end_closes(db, ids)
+    by_security = monthly_returns(db, ids, today)
     sectors = dict(
         db.query(
             SecurityClassification.security_id, SecurityClassification.sector_code
@@ -391,8 +419,7 @@ def consistent_months(
     luck = 0.0
     per: Dict[str, Dict] = {}
     sector_beats: Dict[str, List[bool]] = defaultdict(list)
-    for security_id, series_ in closes.items():
-        monthly = _complete_months(series_, today)
+    for security_id, monthly in by_security.items():
         over = excess(monthly, bench)
         chosen = {k: v for k, v in over.items() if k[1] == month}
         for value in chosen.values():

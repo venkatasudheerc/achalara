@@ -56,6 +56,16 @@ def _prune_trigger() -> CronTrigger:
     return CronTrigger(day_of_week="mon-fri", hour=21, minute=45, timezone=TIMEZONE)
 
 
+def _refresh_returns_trigger() -> OrTrigger:
+    # After the evening's prices and levels, and the morning's corrected levels.
+    return OrTrigger(
+        [
+            CronTrigger(day_of_week="mon-fri", hour=21, minute=50, timezone=TIMEZONE),
+            CronTrigger(day_of_week="tue-sat", hour=6, minute=30, timezone=TIMEZONE),
+        ]
+    )
+
+
 def in_quiet_hours(now: datetime) -> bool:
     """8:30 AM to 6:00 PM Eastern on weekdays: no md job then, the client
     screens' live prices share the Webull key."""
@@ -80,6 +90,7 @@ MD_JOBS: List[MdJob] = [
     ),
     MdJob("md_index_levels", "Market data: index levels", _index_levels_trigger),
     MdJob("md_prune_prices", "Market data: history limit", _prune_trigger),
+    MdJob("md_refresh_returns", "Market data: return tables", _refresh_returns_trigger),
     MdJob(
         "md_classification",
         "Market data: sectors and industries",

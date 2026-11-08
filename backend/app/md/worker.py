@@ -13,6 +13,7 @@ from app.md.config import settings
 from app.db.database import SessionLocal
 from app.md.adjusted import prune_prices, run_adjusted_history
 from app.md.levels import run_index_levels
+from app.md.views import refresh_return_views
 from app.md.classification import run_classification
 from app.md.config import settings as md_settings
 from app.md.closes import JOB as CLOSES_JOB, run_daily_closes
@@ -124,6 +125,18 @@ def _index_levels() -> None:
         db.close()
 
 
+def _refresh_returns() -> None:
+    db = MdSession()
+    try:
+        logger.info("Return tables: %s", refresh_return_views(db))
+    except JobAlreadyRunning:
+        logger.info("Return tables are already being refreshed")
+    except Exception:  # noqa: BLE001
+        logger.exception("Return tables refresh failed")
+    finally:
+        db.close()
+
+
 def _prune() -> None:
     db = MdSession()
     try:
@@ -148,6 +161,7 @@ JOBS = {
     "md_adjusted_closes": _adjusted_history,
     "md_index_levels": _index_levels,
     "md_prune_prices": _prune,
+    "md_refresh_returns": _refresh_returns,
 }
 
 

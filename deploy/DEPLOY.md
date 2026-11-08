@@ -221,8 +221,10 @@ The app's own daily jobs keep their UTC times.
 `md-worker` runs the market-data jobs, all US Eastern and listed on System status as "Market
 data: …": identifiers at 5:00 (Webull ids, SEC companies, FIGIs), held securities at 6:45, index
 membership at 7:00 Tuesday to Saturday, daily closes at 8:30 PM on weekdays (the day's prices as
-traded; a day missed is lost, so the worker catches up once after a restart), and sectors and
-industries at 10:30 PM. Set
+traded; a day missed is lost, so the worker catches up once after a restart), adjusted history at
+9:00 PM, index levels at 9:15 PM and 6:15 AM, the history limit at 9:45 PM (off unless
+`MD_HISTORY_YEARS` is set), the return tables at 9:50 PM and 6:30 AM, and sectors and industries
+at 10:30 PM. Set
 `SEC_CONTACT_EMAIL` in `deploy/.env` (the SEC requires a contact in each request; without it SEC
 lookups are skipped). `OPENFIGI_API_KEY` is optional. The backend applies market data's migrations
 at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABASE_URL` is only for
@@ -235,6 +237,9 @@ docker compose exec backend python -m app.cli md-index-membership
 docker compose exec backend python -m app.cli md-identifiers
 docker compose exec backend python -m app.cli md-classification
 docker compose exec backend python -m app.cli md-daily-closes
+docker compose exec backend python -m app.cli md-adjusted-history   # first time ~7 min, ~330 requests
+docker compose exec backend python -m app.cli md-index-levels       # first time loads from 1927
+docker compose exec backend python -m app.cli md-refresh-returns    # after the two above, ~30 s
 docker compose exec backend python -m app.cli md-track-fund    # list; --symbol XYZ --group gold to add
 docker compose logs --tail 50 md-worker
 ```
