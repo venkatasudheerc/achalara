@@ -182,14 +182,15 @@ def md_index_membership() -> int:
     return 0
 
 
-def md_identifiers() -> int:
-    """Fill in Webull ids, SEC companies and FIGIs now."""
+def md_identifiers(names_only: bool = False) -> int:
+    """Fill in Webull ids, SEC companies and FIGIs now, or with ``names_only`` just the
+    Webull list and the names it gives."""
     from app.md.database import MdSession
     from app.md.identifiers import run_identifiers
 
     db = MdSession()
     try:
-        print(run_identifiers(db, date.today()))
+        print(run_identifiers(db, date.today(), names_only=names_only))
     finally:
         db.close()
     return 0
@@ -353,8 +354,13 @@ def main(argv=None) -> int:
         "md-index-membership",
         help="market data: fetch index holdings now and update membership",
     )
-    commands.add_parser(
+    identifiers = commands.add_parser(
         "md-identifiers", help="market data: Webull ids, SEC companies, FIGIs now"
+    )
+    identifiers.add_argument(
+        "--names-only",
+        action="store_true",
+        help="only Webull's instrument list (a few requests) and the names it gives",
     )
     classify = commands.add_parser(
         "md-classification", help="market data: sectors and industries now"
@@ -403,7 +409,7 @@ def main(argv=None) -> int:
     if args.command == "md-track-fund":
         return md_track_fund(args.symbol, args.group, args.remove)
     if args.command == "md-identifiers":
-        return md_identifiers()
+        return md_identifiers(names_only=args.names_only)
     if args.command == "md-classification":
         return md_classification(args.refresh)
     if args.command == "md-set-sector":

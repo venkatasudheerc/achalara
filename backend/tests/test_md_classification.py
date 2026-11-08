@@ -452,3 +452,22 @@ def test_a_security_known_only_by_its_ticker_is_named(db):
     assert named_already.name == "Hand-set name"  # never replaced
     assert nameless.name == "CCC"  # nothing to go on
     assert fill_names(db) == 0
+
+
+def test_names_only_reads_the_webull_list_and_nothing_else(db, master, monkeypatch):
+    for step in ("_sec_companies", "_sec_submissions", "_figis"):
+        monkeypatch.setattr(
+            IdentifierService, step, lambda self, s=step: pytest.fail(f"{s} reached")
+        )
+    fund = db.query(Security).join(SecuritySymbol).filter(SecuritySymbol.symbol == "FUND").one()
+    fund.name = "FUND"  # known only by its ticker
+    db.commit()
+    webull = FakeWebull(
+        pages={
+            "COMMON_STOCK": [[]],
+            "ETF": [[{"symbol": "FUND", "instrument_id": 4, "name": "Example® Sector Fund™"}]],
+        }
+    )
+    note = IdentifierService(db, webull).run_names(DAY)
+    assert db.get(Security, fund.id).name == "Example Sector Fund"
+    assert "named 1" in note and webull.requests == 2  # one page per list
