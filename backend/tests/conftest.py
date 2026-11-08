@@ -224,3 +224,27 @@ def create_test_strategy(
     sleeve_id = sleeve_resp.json()["id"]
 
     return client_id, account_id, sleeve_id
+
+
+class _SharedSession:
+    """The test's session, handed to research code as its ReadSession; closing it
+    is left to the test."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def close(self):
+        pass
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
+@pytest.fixture(autouse=True)
+def research_reads_the_test_db(db, monkeypatch):
+    """Research reads md through ReadSession, a read-only connection of its own.
+    In tests that is the test's session, so research sees the test's rows; the
+    read-only mechanism itself is tested in test_research_guardrails.py."""
+    from app.md import read as md_read
+
+    monkeypatch.setattr(md_read, "ReadSession", lambda: _SharedSession(db))

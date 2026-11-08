@@ -18,6 +18,9 @@ class MdSettings(BaseSettings):
 
     # Market data's own database; empty means it shares the app's.
     md_database_url: str = ""
+    # The read-only login research uses (role md_reader). Empty: research still
+    # reads through read-only sessions, on md's own login.
+    md_read_database_url: str = ""
     database_url: str = ""
     log_level: str = "INFO"
     webull_app_key: str = ""
@@ -32,7 +35,7 @@ class MdSettings(BaseSettings):
     # cannot be fetched again.
     md_history_years: int = 0
 
-    @field_validator("md_database_url", "database_url")
+    @field_validator("md_database_url", "md_read_database_url", "database_url")
     @classmethod
     def _postgresql_scheme(cls, url: str) -> str:
         """Some hosts hand out ``postgres://``; SQLAlchemy only knows ``postgresql://``."""
@@ -47,6 +50,11 @@ class MdSettings(BaseSettings):
         if not url:
             raise ValueError("Set MD_DATABASE_URL or DATABASE_URL for market data")
         return url
+
+    @property
+    def read_url(self) -> str:
+        """Where research reads md: the read-only login when set, else md's own."""
+        return self.md_read_database_url or self.url
 
     @property
     def separate(self) -> bool:

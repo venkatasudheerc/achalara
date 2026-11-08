@@ -78,7 +78,6 @@ def market_data_returns(
     wanted = [s.strip() for s in symbols.split(",") if s.strip()][:20]
     return _market_data(
         md_read.market_returns,
-        app_db=db,
         symbols=wanted,
         grain=grain,
         start=start,
@@ -100,9 +99,7 @@ def market_data_seasonality(
 ):
     """How returns fall by month of year, weekday, turn of the month, or day by
     day within one month, with the number of years behind each figure."""
-    return _market_data(
-        md_read.market_seasonality, app_db=db, subject=subject, by=by, month=month
-    )
+    return _market_data(md_read.market_seasonality, subject=subject, by=by, month=month)
 
 
 @router.get("/market-data/consistent-months", response_model=MdConsistentResponse)
@@ -120,7 +117,6 @@ def market_data_consistent_months(
     how many luck alone would give and the index's long-run result."""
     return _market_data(
         md_read.consistent_months,
-        app_db=db,
         month=month,
         benchmark=benchmark,
         min_years=min_years,
@@ -142,7 +138,6 @@ def market_data_movers(
     """The best and worst over one week or month."""
     return _market_data(
         md_read.market_movers,
-        app_db=db,
         grain=grain,
         period=period,
         universe_index=universe,
