@@ -4,9 +4,6 @@ import type { RsMonthGrid, RsMonthSummary } from '@/api/types'
 import { capOf, heat, signed } from './heat'
 
 const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-  'September', 'October', 'November', 'December']
-
 type Stat = 'mean' | 'median'
 
 const SUMMARY_ROWS: { label: string; key: keyof RsMonthSummary; kind: 'ret' | 'share' | 'count' }[] = [
@@ -35,8 +32,8 @@ function show(s: RsMonthSummary | null | undefined, key: keyof RsMonthSummary, k
   return `${signed(v)}%`
 }
 
-/** Each month's return year by year (newest first), the chosen statistic as a headline
- *  row, and every calendar month's record beneath. */
+/** Each month's return year by year (newest first), with every calendar month's full
+ *  record on demand beneath. The chosen statistic is drawn above it as a bar chart. */
 export function MonthGrid({ grid, stat }: { grid: RsMonthGrid; stat: Stat }) {
   const colours = useChartColours().diverging
   const cap = useMemo(
@@ -45,17 +42,9 @@ export function MonthGrid({ grid, stat }: { grid: RsMonthGrid; stat: Stat }) {
   )
   const yearCap = useMemo(() => capOf(grid.rows.map((r) => r.ret)), [grid])
   const fill = (value: number, c = cap) => ({ background: heat(colours, value, c), color: colours.text })
-  const headline = stat === 'mean' ? 'Average' : 'Median'
 
   return (
     <div className="space-y-[16px]">
-      {(grid.best || grid.worst) && (
-        <p className="text-[14px] text-stone">
-          {grid.best && <>Best month: <span className="font-mono text-gain">{signed(grid.best.ret)}%</span> ({MONTH_NAMES[grid.best.month - 1]} {grid.best.year})</>}
-          {grid.best && grid.worst && ' · '}
-          {grid.worst && <>worst: <span className="font-mono text-loss">{signed(grid.worst.ret)}%</span> ({MONTH_NAMES[grid.worst.month - 1]} {grid.worst.year})</>}
-        </p>
-      )}
       <div className="overflow-x-auto rounded-[8px]">
         <table className="w-full min-w-[980px] border-separate border-spacing-[2px] font-mono text-[13px]">
           <caption className="sr-only">
@@ -69,24 +58,6 @@ export function MonthGrid({ grid, stat }: { grid: RsMonthGrid; stat: Stat }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <th scope="row" className="sticky left-0 z-10 bg-surface px-[6px] text-left font-sans text-[14px] font-semibold text-summit-ink">{headline}</th>
-              {MONTHS.map((_, i) => {
-                const s = grid.summary[String(i + 1)]
-                const v = s ? s[stat] : null
-                return (
-                  <td key={i} className={`${cellBase} font-semibold border border-gold/60`}
-                    style={v == null ? undefined : fill(v)}>
-                    {v == null ? '—' : `${signed(v)}%`}
-                  </td>
-                )
-              })}
-              <td className={`${cellBase} font-semibold border border-gold/60`}
-                style={grid.year_summary ? fill(grid.year_summary[stat], yearCap) : undefined}>
-                {grid.year_summary ? `${signed(grid.year_summary[stat])}%` : '—'}
-              </td>
-            </tr>
-            <tr aria-hidden><td colSpan={14} className="h-[8px]" /></tr>
             {grid.rows.map((row) => (
               <tr key={row.year}>
                 <th scope="row" className="sticky left-0 z-10 bg-surface px-[6px] text-left font-normal text-summit-ink">
@@ -116,8 +87,9 @@ export function MonthGrid({ grid, stat }: { grid: RsMonthGrid; stat: Stat }) {
         * Not a whole year on file: the year's figure covers only the months shown. A dashed cell is the month still running.
       </p>
 
-      <h3 className="font-display text-[20px]">Each month's record</h3>
-      <div className="overflow-x-auto rounded-[8px] border border-stone/25">
+      <details>
+      <summary className="cursor-pointer text-[15px] font-medium text-pine">Every figure, month by month</summary>
+      <div className="mt-[12px] overflow-x-auto rounded-[8px] border border-stone/25">
         <table className="w-full min-w-[980px] border-collapse font-mono text-[13px]">
           <thead>
             <tr className="border-b border-stone/20">
@@ -145,6 +117,7 @@ export function MonthGrid({ grid, stat }: { grid: RsMonthGrid; stat: Stat }) {
         The record counts whole months only; the Year column counts whole years only. Sizes ignore the sign:
         the largest and smallest moves either way.
       </p>
+      </details>
     </div>
   )
 }
