@@ -383,7 +383,7 @@ function TopTab({ forAdvisor }: { forAdvisor: boolean }) {
                 </button>
               )}
             </div>
-            {data.rows.length === 0 ? <EmptyState title="None this month" message="No stock beat its index fund in every year on file." /> : (
+            {data.rows.length === 0 ? <EmptyState title="None this month" message="No stock beat its benchmark in every year on file." /> : (
               <Box minWidth={820}>
                 <thead><tr className="border-b border-stone/20">
                   <th className={th}>Symbol</th><th className={th}>Name</th><th className={th}>Sector · industry</th>
@@ -450,7 +450,7 @@ function SectorsTab() {
         : (
           <div className={`space-y-[12px] ${isFetching ? 'opacity-70' : ''}`}>
             <p className="text-[15px] text-stone">
-              How often a sector's stocks beat their index fund in {MONTHS[data.month - 1]}{' '}
+              How often a sector's stocks beat their benchmark in {MONTHS[data.month - 1]}{' '}
               ({data.benchmarks.map((b) => `${UNIVERSE_LABEL[b.universe ?? ''] ?? b.universe}: ${b.symbol}`).join(', ')}),
               and by how much at the median. 50% would be an even split.
             </p>
@@ -461,7 +461,7 @@ function SectorsTab() {
                   {data.universes.length > 1 && data.universes.map((u) => (
                     <th key={u} colSpan={3} className={`${thNum} text-center border-l border-stone/15`}>{UNIVERSE_LABEL[u] ?? u}</th>
                   ))}
-                  {data.universes.length === 1 && <><th className={thNum}>Beat the fund</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>}
+                  {data.universes.length === 1 && <><th className={thNum}>Beat the benchmark</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>}
                 </tr>
                 {data.universes.length > 1 && (
                   <tr className="border-b border-stone/20">
@@ -496,7 +496,7 @@ function SectorsTab() {
 }
 
 function SectorHeads() {
-  return <><th className={`${thNum} border-l border-stone/15`}>Beat</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>
+  return <><th className={`${thNum} border-l border-stone/15`}>Beat the benchmark</th><th className={thNum}>Median lead</th><th className={thNum}>Stocks</th></>
 }
 
 function BucketTable({ buckets, label }: { buckets: RsBucket[]; label: string }) {
