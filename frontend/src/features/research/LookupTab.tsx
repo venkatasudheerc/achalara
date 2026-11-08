@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import { useSecurityProfile, useSecuritySearch } from '@/hooks/useResearch'
 import type { RsBucket, RsMonthPath, RsProfile } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
@@ -238,28 +238,42 @@ function SecurityCombobox({ query, onQuery, results, loading, onChoose }: {
   )
 }
 
-export function LookupTab({ query, onQuery, onOpenMonths }: {
-  query: string; onQuery: (q: string) => void; onOpenMonths: (symbol: string) => void
+export type LookupChoice = { symbol: string; label: string }
+
+export function lookupLabel(symbol: string, name?: string | null): string {
+  return name ? `${displayName(name, symbol)} · ${symbol}` : symbol
+}
+
+/** The page changes only on a decision: Enter or a click in the list, or a name chosen
+ *  elsewhere on the page. Typing only changes the list (Sai, 2026-11-08). */
+export function LookupTab({ query, onQuery, choice, onChoice, onOpenMonths }: {
+  query: string; onQuery: (q: string) => void
+  choice: LookupChoice | null; onChoice: (c: LookupChoice) => void
+  onOpenMonths: (symbol: string) => void
 }) {
-  const [selected, setSelected] = useState<{ symbol: string; label: string } | null>(null)
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const typed = useDebounced(query.trim(), 200)
   // The box shows the choice once made; that text is not a new search.
-  const showingChoice = selected != null && query === selected.label
-  const searching = showingChoice || (selected && typed === selected.label) ? '' : typed
+  const showingChoice = choice != null && (query === choice.label || typed === choice.label)
+  const searching = showingChoice ? '' : typed
   const search = useSecuritySearch(searching)
   const results = searching ? search.data?.results ?? [] : []
-  // Only what is chosen is shown; an exact ticker (typed, or opened from another tab)
-  // counts as chosen, so it needs no click.
-  const exact = results.find((r) => r.symbol === searching.toUpperCase())
-  const chosen = showingChoice ? selected.symbol : exact?.symbol ?? selected?.symbol ?? null
+  const chosen = choice?.symbol ?? null
   const choose = (m: Match) => {
-    const label = `${displayName(m.name, m.symbol)} · ${m.symbol}`
-    setSelected({ symbol: m.symbol, label })
-    onQuery(label)
+    const c = { symbol: m.symbol, label: lookupLabel(m.symbol, m.name) }
+    onChoice(c)
+    onQuery(c.label)
   }
   const profile = useSecurityProfile(chosen, month)
   const p = profile.data
+  // A name chosen elsewhere arrives as its ticker; once its profile is in, name it in the box.
+  useEffect(() => {
+    if (p && choice && p.symbol === choice.symbol && choice.label === choice.symbol && query === choice.symbol) {
+      const c = { symbol: p.symbol, label: lookupLabel(p.symbol, p.name) }
+      onChoice(c)
+      onQuery(c.label)
+    }
+  }, [p, choice, query, onChoice, onQuery])
   const answer = p ? headline(p) : null
   const total = p ? p.last_12_months.reduce((g, m) => g * (1 + m.ret), 1) - 1 : 0
 
@@ -269,10 +283,10 @@ export function LookupTab({ query, onQuery, onOpenMonths }: {
         <SecurityCombobox query={query} onQuery={onQuery} results={results} loading={search.isLoading} onChoose={choose} />
       </Controls>
 
+      {search.isError && <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />}
       {!chosen ? (
-        !query.trim() ? <EmptyState title="Look up a stock or a fund" message="Type a company's name or a ticker: Apple, Schwab, SPY." />
-          : search.isError ? <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />
-          : <p className="text-[15px] text-stone">Choose a match from the list.</p>
+        <EmptyState title="Look up a stock or a fund"
+          message="Type a company's name or a ticker, then press Enter or choose from the list: Apple, Schwab, SPY." />
       )
         : profile.isLoading ? <Section title="Loading…"><Loading rows={10} /></Section>
         : notFound(profile.error) ? <EmptyState title={`No prices on file for ${chosen}`} message="Market data knows this security but holds no daily history for it yet." />

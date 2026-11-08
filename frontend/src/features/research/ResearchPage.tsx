@@ -8,7 +8,7 @@ import { Select, useDebounced } from '@/features/portal/ui'
 import { CalendarHeatmap } from './CalendarHeatmap'
 import { GlanceCards, OverviewTab } from './Overview'
 import { MonthsTab } from './MonthsTab'
-import { LookupTab } from './LookupTab'
+import { LookupTab, type LookupChoice } from './LookupTab'
 import {
   Box, Controls, HowToRead, Loading, MONTHS, Pct, SearchBox, Section, Segmented, Tabs, UNIVERSES, UNIVERSE_LABEL,
   capitalise, displayName, notFound, pct1, share, subjectName, td, tdNum, th, thNum, unavailable,
@@ -271,12 +271,10 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   // One symbol for the index-or-ticker views, so it carries from tab to tab.
   const [symbol, setSymbol] = useState('SPX')
   const [lookup, setLookup] = useState('')
-  const openLookup = (s: string) => { setLookup(s); setTab('lookup') }
+  const [choice, setChoice] = useState<LookupChoice | null>(null)
+  // Choosing a name elsewhere on the page is a decision, so it opens the profile at once.
+  const openLookup = (s: string) => { setChoice({ symbol: s, label: s }); setLookup(s); setTab('lookup') }
   const openMonths = (s: string) => { setSymbol(s); setTab('months') }
-  const changeTab = (t: Tab) => {
-    if (t === 'lookup' && !lookup && symbol && !['SPX', 'NDX', 'DJI', 'RUT', 'RUI', 'RUA'].includes(symbol.toUpperCase())) setLookup(symbol)
-    setTab(t)
-  }
   return (
     <div className="max-w-[1280px] w-full mx-auto flex flex-col gap-[32px]">
       <div className="flex flex-col gap-[8px]">
@@ -287,13 +285,13 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
       </div>
       <GlanceCards />
       <div className="flex flex-col gap-[24px]">
-        <Tabs tabs={TABS} value={tab} onChange={changeTab} />
+        <Tabs tabs={TABS} value={tab} onChange={setTab} />
         {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} />}
         {tab === 'months' && <MonthsTab symbol={symbol} onSymbol={setSymbol} />}
         {tab === 'calendar' && <CalendarTab symbol={symbol} onSymbol={setSymbol} />}
         {tab === 'top' && <TopTab forAdvisor={forAdvisor} onLookup={openLookup} />}
         {tab === 'sectors' && <SectorsTab />}
-        {tab === 'lookup' && <LookupTab query={lookup} onQuery={setLookup} onOpenMonths={openMonths} />}
+        {tab === 'lookup' && <LookupTab query={lookup} onQuery={setLookup} choice={choice} onChoice={setChoice} onOpenMonths={openMonths} />}
       </div>
     </div>
   )
