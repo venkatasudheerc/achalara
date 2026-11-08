@@ -189,7 +189,8 @@ def test_top_performers_compare_with_the_index_fund_and_say_what_luck_gives(db, 
     assert out["eligible"] == 2 and out["expected_by_luck"] == pytest.approx(
         2 * 0.5**4
     )
-    assert any("chance" in n for n in out["notes"])
+    # The luck estimate is a figure for the advisor's screen, not a note every reader sees.
+    assert not any("chance" in n for n in out["notes"])
     small = insights.top_performers(db, 11, "R2000", today=TODAY)
     assert small["benchmark"]["symbol"] == "IWM"
     with pytest.raises(ValueError):

@@ -147,7 +147,9 @@ Each feature directory contains its page component(s). Implemented:
   index or two side by side) and A security (search, then its profile). Reads only
   `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal fractions. Every
   figure shows its basis (dividends in or out) and its sample, and each answer's `notes` are shown
-  as given. It describes the past: no advice or forecast wording.
+  as given. It describes the past: no advice or forecast wording. The luck estimate (`expected_by_luck`: how many perfect
+  records coin flips would give) is shown only where the route passes `forAdvisor` (`/app/research`);
+  family members found it confusing, so `/portal/research`, previews included, leaves it out.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)

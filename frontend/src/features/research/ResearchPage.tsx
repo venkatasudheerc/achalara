@@ -173,7 +173,10 @@ function ThisMonth() {
   )
 }
 
-function NextMonth() {
+// The luck estimate (how many perfect records coin flips would give) is shown on the
+// advisor's page only: family members found it confusing (Sai, 2026-11-08).
+
+function NextMonth({ forAdvisor }: { forAdvisor: boolean }) {
   const next = (new Date().getMonth() + 1) % 12 + 1
   const { data, isLoading, isError, error, refetch } = useResearchOutlook(next)
   const title = `${MONTHS[next - 1]}'s record`
@@ -204,8 +207,8 @@ function NextMonth() {
         </div>
       )}
       <div className="text-[14px] text-stone">
-        {data.steadiest.found} stocks beat {data.steadiest.benchmark.symbol} in every one of at least {data.steadiest.min_years} years;
-        chance alone would give about {formatNumber(data.steadiest.expected_by_luck, 0)}.
+        {data.steadiest.found} stocks beat {data.steadiest.benchmark.symbol} in every one of at least {data.steadiest.min_years} years.
+        {forAdvisor && <> If results were coin flips, about {formatNumber(data.steadiest.expected_by_luck, 0)} would still show a perfect record.</>}
       </div>
       <Notes notes={data.notes} />
     </Panel>
@@ -350,7 +353,7 @@ function downloadCsv(name: string, rows: RsPerformer[]) {
   URL.revokeObjectURL(url)
 }
 
-function TopTab() {
+function TopTab({ forAdvisor }: { forAdvisor: boolean }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [universe, setUniverse] = useState<string>('SP500')
   const { data, isLoading, isError, error, refetch, isFetching } = useTopPerformers({ month, universe })
@@ -368,8 +371,10 @@ function TopTab() {
               <p className="text-[15px] text-stone max-w-[760px]">
                 Stocks in the {UNIVERSE_LABEL[data.universe] ?? data.universe} that beat {data.benchmark.symbol} in{' '}
                 {MONTHS[data.month - 1]} in every year on file (at least {data.min_years}).{' '}
-                <span className="text-summit-ink">{data.found} of {data.eligible}</span> did;
-                chance alone would give about <span className="text-summit-ink font-mono">{formatNumber(data.expected_by_luck, 0)}</span>.
+                <span className="text-summit-ink">{data.found} of {data.eligible}</span> did.
+                {forAdvisor && <>{' '}If {MONTHS[data.month - 1]} results were coin flips, about{' '}
+                  <span className="text-summit-ink font-mono">{formatNumber(data.expected_by_luck, 0)}</span> would still show a
+                  perfect record, so most of this list may be luck.</>}
               </p>
               {data.rows.length > 0 && (
                 <button type="button" onClick={() => downloadCsv(`top-${data.universe}-${data.month_name}.csv`, data.rows)}
@@ -447,7 +452,7 @@ function SectorsTab() {
             <p className="text-[15px] text-stone">
               How often a sector's stocks beat their index fund in {MONTHS[data.month - 1]}{' '}
               ({data.benchmarks.map((b) => `${UNIVERSE_LABEL[b.universe ?? ''] ?? b.universe}: ${b.symbol}`).join(', ')}),
-              and by how much at the median. Half is what chance gives.
+              and by how much at the median. 50% would be an even split.
             </p>
             <Box minWidth={data.universes.length > 1 ? 760 : 520}>
               <thead>
@@ -604,7 +609,7 @@ function SecurityTab() {
 }
 
 /** Market insights from the md schema, the same for every signed-in user. */
-export function ResearchPage() {
+export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [tab, setTab] = useState<Tab>('months')
   return (
     <div className="max-w-[1400px] w-full mx-auto flex flex-col gap-[24px]">
@@ -618,7 +623,7 @@ export function ResearchPage() {
       <div className="grid gap-[16px] lg:grid-cols-3">
         <ThisWeek />
         <ThisMonth />
-        <NextMonth />
+        <NextMonth forAdvisor={forAdvisor} />
       </div>
       <section className="flex flex-col gap-[16px]">
         <h2 className="font-display text-[24px]">Explore</h2>
@@ -626,7 +631,7 @@ export function ResearchPage() {
         <div className="bg-surface border border-stone/25 rounded-card p-[16px] md:p-[24px] min-w-0">
           {tab === 'months' && <MonthsTab />}
           {tab === 'calendar' && <CalendarTab />}
-          {tab === 'top' && <TopTab />}
+          {tab === 'top' && <TopTab forAdvisor={forAdvisor} />}
           {tab === 'sectors' && <SectorsTab />}
           {tab === 'security' && <SecurityTab />}
         </div>

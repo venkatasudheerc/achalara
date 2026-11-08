@@ -47,7 +47,7 @@ export function AppRoutes() {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="status" element={<StatusPage />} />
-          <Route path="research" element={<ResearchPage />} />
+          <Route path="research" element={<ResearchPage forAdvisor />} />
           <Route path="market-data" element={<MarketDataPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />

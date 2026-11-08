@@ -534,7 +534,7 @@ def top_performers(
         "rows": rows,
         "notes": [
             f"{len(found)} of {eligible} beat {bench_symbol} in every {_months_label(month)} "
-            f"on file; about {round(luck)} would by chance alone.",
+            "on file.",
             "Members are today's, so stocks that left the index are missing (survivors only).",
             "Ranked by the typical (median) margin, so one big year cannot carry a stock.",
         ],
