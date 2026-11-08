@@ -4,6 +4,7 @@ from datetime import datetime, time
 from typing import Callable, List, NamedTuple
 from zoneinfo import ZoneInfo
 
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 TIMEZONE = "America/New_York"
@@ -12,7 +13,7 @@ TIMEZONE = "America/New_York"
 class MdJob(NamedTuple):
     id: str
     label: str
-    trigger: Callable[[], CronTrigger]
+    trigger: Callable[[], object]
 
 
 def _membership_trigger() -> CronTrigger:
@@ -38,6 +39,17 @@ def _daily_closes_trigger() -> CronTrigger:
 def _adjusted_closes_trigger() -> CronTrigger:
     # After the day's closes as traded.
     return CronTrigger(day_of_week="mon-fri", hour=21, minute=0, timezone=TIMEZONE)
+
+
+def _index_levels_trigger() -> OrTrigger:
+    # The evening has the day; the source completes it overnight, so the
+    # morning run reads it again.
+    return OrTrigger(
+        [
+            CronTrigger(day_of_week="mon-fri", hour=21, minute=15, timezone=TIMEZONE),
+            CronTrigger(day_of_week="tue-sat", hour=6, minute=15, timezone=TIMEZONE),
+        ]
+    )
 
 
 def _prune_trigger() -> CronTrigger:
@@ -66,6 +78,7 @@ MD_JOBS: List[MdJob] = [
         "Market data: adjusted history",
         _adjusted_closes_trigger,
     ),
+    MdJob("md_index_levels", "Market data: index levels", _index_levels_trigger),
     MdJob("md_prune_prices", "Market data: history limit", _prune_trigger),
     MdJob(
         "md_classification",

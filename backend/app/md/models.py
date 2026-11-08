@@ -409,3 +409,17 @@ class PriceAdjDaily(MdModel):
     price_date = Column(Date, primary_key=True)
     adj_close = Column(Numeric(18, 6), nullable=False)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class IndexLevelHist(MdModel):
+    """A market index's closing level for one market day: a price return (no
+    dividends). Linked from ``index_def.level_symbol``."""
+
+    __tablename__ = "index_level_hist"
+    __table_args__ = {"schema": SCHEMA}
+
+    symbol = Column(String(12), primary_key=True)  # SPX, NDX, DJI, RUI, RUT, RUA
+    price_date = Column(Date, primary_key=True)
+    close = Column(Numeric(18, 4), nullable=False)
+    source = Column(String(20), nullable=False)  # yahoo
+    fetched_at = Column(DateTime(timezone=True), nullable=False)

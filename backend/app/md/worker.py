@@ -12,6 +12,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from app.md.config import settings
 from app.db.database import SessionLocal
 from app.md.adjusted import prune_prices, run_adjusted_history
+from app.md.levels import run_index_levels
 from app.md.classification import run_classification
 from app.md.config import settings as md_settings
 from app.md.closes import JOB as CLOSES_JOB, run_daily_closes
@@ -111,6 +112,18 @@ def _adjusted_history() -> None:
         db.close()
 
 
+def _index_levels() -> None:
+    db = MdSession()
+    try:
+        logger.info("Index levels: %s", run_index_levels(db))
+    except JobAlreadyRunning:
+        logger.info("Index levels are already being fetched")
+    except Exception:  # noqa: BLE001
+        logger.exception("Index levels failed")
+    finally:
+        db.close()
+
+
 def _prune() -> None:
     db = MdSession()
     try:
@@ -133,6 +146,7 @@ JOBS = {
     "md_classification": _classification,
     CLOSES_JOB: _daily_closes,
     "md_adjusted_closes": _adjusted_history,
+    "md_index_levels": _index_levels,
     "md_prune_prices": _prune,
 }
 

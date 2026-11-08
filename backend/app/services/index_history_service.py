@@ -8,12 +8,8 @@ item before go-live). Nothing that values an account reads this table; an
 index may be chosen as a benchmark through ``services/benchmarks.py``.
 """
 import csv
-import json
 import logging
-import urllib.parse
-import urllib.request
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
 from typing import Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -21,6 +17,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.index_bar import IndexBar
+from app.utils.yahoo_chart import (
+    FIELDS,
+    parse_bars,
+)  # noqa: F401  (parse_bars: callers)
+from app.utils.yahoo_chart import bar as _bar
+from app.utils.yahoo_chart import fetch as _fetch
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,6 @@ SOURCE = "yahoo"
 # Our symbol for each index, and the source's.
 INDICES = {"SPX": "^GSPC", "DJI": "^DJI", "NDX": "^NDX"}
 
-_HOST = "https://query1.finance.yahoo.com/v8/finance/chart/"
 # Before any index was published; the source answers from its first day.
 _EARLIEST = date(1880, 1, 1)
 # A top-up reads these days again, so a late correction by the source is taken.
@@ -37,80 +38,6 @@ _OVERLAP = timedelta(days=7)
 _MARKET_ZONE = ZoneInfo("America/New_York")
 # The day's bar is final some time after the 4pm close.
 _FINAL_AFTER = time(17, 0)
-_PLACES = Decimal("0.0001")
-_FIELDS = ("open", "high", "low", "close", "volume")
-
-
-def _fetch(source_symbol: str, start: date) -> dict:
-    """The source's daily series for one index from ``start``, as it answers."""
-    since = datetime.combine(start, time(), tzinfo=timezone.utc)
-    until = datetime.now(timezone.utc) + timedelta(days=2)
-    query = urllib.parse.urlencode(
-        {
-            "period1": int(since.timestamp()),
-            "period2": int(until.timestamp()),
-            "interval": "1d",
-        }
-    )
-    request = urllib.request.Request(
-        f"{_HOST}{urllib.parse.quote(source_symbol)}?{query}",
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.load(response)
-
-
-def _level(value) -> Optional[Decimal]:
-    if value is None or value <= 0:
-        return None
-    return Decimal(str(value)).quantize(_PLACES)
-
-
-def _bar(day: date, open_, high, low, close, volume) -> Optional[Dict]:
-    """One day as it is stored, or None for a day with no close.
-
-    A day whose open, high and low all equal its close was published as a
-    close only, and keeps only the close.
-    """
-    values = {
-        "open": _level(open_),
-        "high": _level(high),
-        "low": _level(low),
-        "close": _level(close),
-    }
-    if values["close"] is None:
-        return None
-    close_only = (
-        values["open"] is None
-        or values["open"] == values["high"] == values["low"] == values["close"]
-    )
-    if close_only:
-        values.update(open=None, high=None, low=None)
-    return {"bar_date": day, **values, "volume": int(volume) if volume else None}
-
-
-def parse_bars(payload: dict) -> List[Dict]:
-    """The days in one answer from the source, oldest first."""
-    results = (payload.get("chart") or {}).get("result") or []
-    if not results:
-        return []
-    stamps = results[0].get("timestamp") or []
-    quote = ((results[0].get("indicators") or {}).get("quote") or [{}])[0]
-
-    def at(key: str, i: int):
-        series = quote.get(key) or []
-        return series[i] if i < len(series) else None
-
-    bars = []
-    for i, stamp in enumerate(stamps):
-        # The stamp is the session's opening bell, the same day in UTC.
-        day = (
-            datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=stamp)
-        ).date()
-        bar = _bar(day, *(at(key, i) for key in _FIELDS))
-        if bar is not None:
-            bars.append(bar)
-    return bars
 
 
 def read_csv_bars(path: str) -> List[Dict]:
@@ -120,7 +47,7 @@ def read_csv_bars(path: str) -> List[Dict]:
         for row in csv.DictReader(handle):
             named = {(key or "").strip().lower(): value for key, value in row.items()}
             day = date.fromisoformat(named["date"].strip())
-            bar = _bar(day, *(_number(named.get(key)) for key in _FIELDS))
+            bar = _bar(day, *(_number(named.get(key)) for key in FIELDS))
             if bar is not None:
                 bars.append(bar)
     return sorted(bars, key=lambda bar: bar["bar_date"])

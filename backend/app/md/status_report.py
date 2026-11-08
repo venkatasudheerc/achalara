@@ -28,7 +28,6 @@ from app.md.base import MdBase
 STOCK_KINDS = ("stock", "adr", "preferred")
 # Planned in MARKET_DATA.md § 1; each leaves this list once its model exists.
 PLANNED_TABLES = (
-    ("index_level_hist", "indices in md"),
     ("statement_hist", "4"),
     ("fundamentals", "4"),
     ("fundamentals_hist", "4"),
