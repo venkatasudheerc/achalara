@@ -27,6 +27,10 @@ class MdSettings(BaseSettings):
     sec_contact_email: str = ""
     # OpenFIGI works without a key, at a lower rate; a key raises it.
     openfigi_api_key: str = ""
+    # Years of stock and fund prices to keep; 0 keeps everything. Only ever set
+    # where another copy keeps the full history (the laptop), as prices as traded
+    # cannot be fetched again.
+    md_history_years: int = 0
 
     @field_validator("md_database_url", "database_url")
     @classmethod

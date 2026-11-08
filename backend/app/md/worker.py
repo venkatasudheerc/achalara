@@ -11,7 +11,9 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.md.config import settings
 from app.db.database import SessionLocal
+from app.md.adjusted import prune_prices, run_adjusted_history
 from app.md.classification import run_classification
+from app.md.config import settings as md_settings
 from app.md.closes import JOB as CLOSES_JOB, run_daily_closes
 from app.md.database import MdSession
 from app.md.identifiers import run_identifiers
@@ -97,12 +99,41 @@ def _daily_closes() -> None:
         db.close()
 
 
+def _adjusted_history() -> None:
+    db = MdSession()
+    try:
+        logger.info("Adjusted history: %s", run_adjusted_history(db))
+    except JobAlreadyRunning:
+        logger.info("Adjusted history is already being fetched")
+    except Exception:  # noqa: BLE001
+        logger.exception("Adjusted history failed")
+    finally:
+        db.close()
+
+
+def _prune() -> None:
+    db = MdSession()
+    try:
+        logger.info(
+            "History limit: %s",
+            prune_prices(db, date.today(), md_settings.md_history_years),
+        )
+    except JobAlreadyRunning:
+        logger.info("History limit is already being applied")
+    except Exception:  # noqa: BLE001
+        logger.exception("History limit failed")
+    finally:
+        db.close()
+
+
 JOBS = {
     "md_seed_holdings": _seed,
     MEMBERSHIP_JOB: _membership,
     "md_identifiers": _identifiers,
     "md_classification": _classification,
     CLOSES_JOB: _daily_closes,
+    "md_adjusted_closes": _adjusted_history,
+    "md_prune_prices": _prune,
 }
 
 

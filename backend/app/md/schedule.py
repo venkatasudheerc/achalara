@@ -35,6 +35,15 @@ def _daily_closes_trigger() -> CronTrigger:
     return CronTrigger(day_of_week="mon-fri", hour=20, minute=30, timezone=TIMEZONE)
 
 
+def _adjusted_closes_trigger() -> CronTrigger:
+    # After the day's closes as traded.
+    return CronTrigger(day_of_week="mon-fri", hour=21, minute=0, timezone=TIMEZONE)
+
+
+def _prune_trigger() -> CronTrigger:
+    return CronTrigger(day_of_week="mon-fri", hour=21, minute=45, timezone=TIMEZONE)
+
+
 def in_quiet_hours(now: datetime) -> bool:
     """8:30 AM to 6:00 PM Eastern on weekdays: no md job then, the client
     screens' live prices share the Webull key."""
@@ -52,6 +61,12 @@ MD_JOBS: List[MdJob] = [
     MdJob("md_index_membership", "Market data: index membership", _membership_trigger),
     MdJob("md_identifiers", "Market data: identifiers", _identifiers_trigger),
     MdJob("md_daily_closes", "Market data: daily closes", _daily_closes_trigger),
+    MdJob(
+        "md_adjusted_closes",
+        "Market data: adjusted history",
+        _adjusted_closes_trigger,
+    ),
+    MdJob("md_prune_prices", "Market data: history limit", _prune_trigger),
     MdJob(
         "md_classification",
         "Market data: sectors and industries",

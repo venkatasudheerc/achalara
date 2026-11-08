@@ -384,3 +384,28 @@ class PriceDailyHist(MdModel):
     volume = Column(BigInteger)
     last_trade_at = Column(DateTime(timezone=True))
     source = Column(String(20), nullable=False)  # webull_snapshot
+
+
+class PriceAdjDaily(MdModel):
+    """One security's close for one market day, adjusted for later splits and
+    dividends: the series every return is computed from (a total return).
+
+    Webull rewrites its whole adjusted series after each split or dividend, so
+    these rows are refreshed and rescaled, never treated as fixed. Prices as
+    traded are in ``price_daily_hist``.
+    """
+
+    __tablename__ = "price_adj_daily"
+    __table_args__ = (
+        Index("ix_md_price_adj_daily_price_date", "price_date"),
+        {"schema": SCHEMA},
+    )
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    price_date = Column(Date, primary_key=True)
+    adj_close = Column(Numeric(18, 6), nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)

@@ -221,6 +221,19 @@ def md_daily_closes() -> int:
     return 0
 
 
+def md_adjusted_history() -> int:
+    """Fetch adjusted history now: in full for securities without it."""
+    from app.md.adjusted import run_adjusted_history
+    from app.md.database import MdSession
+
+    db = MdSession()
+    try:
+        print(run_adjusted_history(db))
+    finally:
+        db.close()
+    return 0
+
+
 def md_track_fund(symbol: Optional[str], group: Optional[str], remove: bool) -> int:
     """Track a fund (priced each evening), stop tracking one, or list them."""
     from app.md.closes import track_fund, tracked, untrack_fund
@@ -334,6 +347,10 @@ def main(argv=None) -> int:
     commands.add_parser(
         "md-daily-closes", help="market data: capture the latest day's prices now"
     )
+    commands.add_parser(
+        "md-adjusted-history",
+        help="market data: adjusted daily closes now (in full where none are on file)",
+    )
     fund = commands.add_parser(
         "md-track-fund",
         help="market data: track a fund, stop tracking one (--remove), or list them",
@@ -344,6 +361,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command == "md-daily-closes":
         return md_daily_closes()
+    if args.command == "md-adjusted-history":
+        return md_adjusted_history()
     if args.command == "md-track-fund":
         return md_track_fund(args.symbol, args.group, args.remove)
     if args.command == "md-identifiers":
