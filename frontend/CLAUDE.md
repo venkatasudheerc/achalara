@@ -144,7 +144,9 @@ Each feature directory contains its page component(s). Implemented:
   (`research/MonthGrid`: year × month returns with each month's record beneath; symbol, average or
   median, and years), Calendar days (`research/CalendarHeatmap`: a day × month grid, average or
   median), both coloured by `research/heat.ts` from `useChartColours().diverging`, Top performers (with a CSV built on the client), Sectors (one
-  index or two side by side) and A security (search, then its profile). Reads only
+  index or two side by side, ordered by median lead over the benchmark) and A security (the profile
+  opens as you type: an exact ticker, else the best match, with other matches to switch to; month by
+  month beside its sector, and a link to Months by year for the same symbol). Reads only
   `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal fractions. Every
   figure shows its basis (dividends in or out) and its sample, and each answer's `notes` are shown
   as given. It describes the past: no advice or forecast wording. The luck estimate (`expected_by_luck`: how many perfect

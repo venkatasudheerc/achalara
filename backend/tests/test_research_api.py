@@ -264,3 +264,19 @@ def test_a_month_grid_takes_a_span_of_years(db, market):
         insights.month_grid(db, "SPX", 2010, 2000, TODAY)
     with pytest.raises(ValueError):
         insights.month_grid(db, "AAA", 2010, 2012, TODAY)
+
+
+def test_search_puts_a_word_match_and_a_large_company_first(db, market):
+    from app.md.models import Security, SecuritySymbol
+
+    for symbol, name in (("PNX", "Pineapple Example Holdings"), ("APX", "Apple Example Inc")):
+        security = Security(name=name, kind="stock")
+        db.add(security)
+        db.flush()
+        db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    db.flush()
+    found = [r["symbol"] for r in insights.find_security(db, "apple")["results"]]
+    assert found[:2] == ["APX", "PNX"]  # a word starting "apple" before "pineapple"
+    # Same kind of match: the S&P 500 member (AAA, BBB) before the rest.
+    names = [r["symbol"] for r in insights.find_security(db, "example corp")["results"]]
+    assert names.index("AAA") < names.index("SML") and names.index("BBB") < names.index("SML")

@@ -10,6 +10,7 @@ as JSON Schema; the chatbot's tool definitions are made from it.
 These read md only; the session they are given is read-only (``read.ReadSession``).
 """
 import calendar
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -650,22 +651,36 @@ def find_security(db: Session, query: str, limit: int = 10) -> Dict:
                 func.lower(Company.name).like(like),
             )
         )
-        .limit(200)
+        .limit(500)
         .all()
     )
-
-    def rank(row):
-        symbol = row[1]
-        return (symbol != ticker, not symbol.startswith(ticker), len(symbol), symbol)
-
-    rows.sort(key=rank)
-    rows = rows[:limit]
-    labels = _labels(db, [r[0] for r in rows])
     indices = defaultdict(list)
     for sid, code in db.query(IndexMember.security_id, IndexMember.index_code).filter(
         IndexMember.security_id.in_([r[0] for r in rows])
     ):
         indices[sid].append(code)
+    word = re.compile(r"\b" + re.escape(text.lower()))
+
+    def rank(row):
+        """An exact ticker; then a name with a word starting with the text (Apple,
+        not Pineapple); then a ticker starting with it; then any name containing it.
+        Within each, the larger company first (S&P 500, then Russell 1000)."""
+        sid, symbol, name, _, company = row
+        names = f"{name or ''} {company or ''}".lower()
+        if symbol == ticker:
+            group = 0
+        elif word.search(names):
+            group = 1
+        elif symbol.startswith(ticker):
+            group = 2
+        else:
+            group = 3
+        size = 0 if "SP500" in indices[sid] else 1 if "R1000" in indices[sid] else 2
+        return (group, size, len(symbol), symbol)
+
+    rows.sort(key=rank)
+    rows = rows[:limit]
+    labels = _labels(db, [r[0] for r in rows])
     return {
         "query": text,
         "results": [

@@ -269,8 +269,8 @@ const SPANS = [
 ] as const
 type Span = (typeof SPANS)[number]['value']
 
-function MonthsTab() {
-  const [symbol, setSymbol] = useState('SPX')
+function MonthsTab({ initial = 'SPX' }: { initial?: string }) {
+  const [symbol, setSymbol] = useState(initial)
   const [stat, setStat] = useState<'mean' | 'median'>('mean')
   const [span, setSpan] = useState<Span>('20')
   const [from, setFrom] = useState<number | undefined>()
@@ -525,14 +525,59 @@ function BucketTable({ buckets, label }: { buckets: RsBucket[]; label: string })
   )
 }
 
-function SecurityTab() {
+function SideBySide({ symbol, own, sector, sectorName }: {
+  symbol: string; own: RsBucket[]; sector: RsBucket[] | null; sectorName: string | null
+}) {
+  const bySector = new Map((sector ?? []).map((b) => [String(b.order), b]))
+  return (
+    <Box minWidth={sector ? 720 : 420}>
+      <thead>
+        <tr className="border-b border-stone/20">
+          <th className={th} rowSpan={2}>Month</th>
+          <th className={`${thNum} text-center`} colSpan={3}>{symbol}</th>
+          {sector && <th className={`${thNum} text-center border-l border-stone/15`} colSpan={3}>{sectorName ?? 'Its sector'}</th>}
+        </tr>
+        <tr className="border-b border-stone/20">
+          <th className={thNum}>Average</th><th className={thNum}>Median</th><th className={thNum}>Up</th>
+          {sector && <><th className={`${thNum} border-l border-stone/15`}>Average</th><th className={thNum}>Median</th><th className={thNum}>Up</th></>}
+        </tr>
+      </thead>
+      <tbody>
+        {own.map((b) => {
+          const s = bySector.get(String(b.order))
+          return (
+            <tr key={b.bucket} className="border-b border-stone/10 last:border-0">
+              <td className={td}>{b.bucket}</td>
+              <td className={tdNum}><Pct value={b.mean} /></td>
+              <td className={tdNum}><Pct value={b.median} /></td>
+              <td className={tdNum}>{share(b.share_up)} <span className="text-stone text-[13px]">of {b.count}</span></td>
+              {sector && <>
+                <td className={`${tdNum} border-l border-stone/15`}><Pct value={s?.mean} /></td>
+                <td className={tdNum}><Pct value={s?.median} /></td>
+                <td className={tdNum}>{share(s?.share_up)}</td>
+              </>}
+            </tr>
+          )
+        })}
+      </tbody>
+    </Box>
+  )
+}
+
+function SecurityTab({ onOpenMonths }: { onOpenMonths: (symbol: string) => void }) {
   const [query, setQuery] = useState('')
-  const [symbol, setSymbol] = useState<string | null>(null)
+  const [picked, setPicked] = useState<{ query: string; symbol: string } | null>(null)
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const typed = useDebounced(query.trim(), 300)
   const search = useSecuritySearch(typed)
-  const profile = useSecurityProfile(symbol, month)
+  const results = typed ? search.data?.results ?? [] : []
+  // No click needed: an exact ticker, else the best match, opens by itself; a click
+  // only switches to another match for the same search.
+  const exact = results.find((r) => r.symbol === typed.toUpperCase())
+  const chosen = picked && picked.query === typed ? picked.symbol : (exact ?? results[0])?.symbol ?? null
+  const profile = useSecurityProfile(chosen, month)
   const p = profile.data
+  const others = results.filter((r) => r.symbol !== chosen)
   return (
     <div className="space-y-[16px]">
       <div className="max-w-[420px]">
@@ -540,33 +585,41 @@ function SecurityTab() {
           <TextInput id="sec-search" value={query} onChange={setQuery} placeholder="Schwab, AAPL, utilities fund" />
         </Field>
       </div>
-      {typed && (search.isLoading ? <Loading rows={3} />
+      {!typed ? <p className="text-[15px] text-stone">Type a ticker or part of a company's name.</p>
+        : search.isLoading ? <Loading rows={3} />
         : search.isError ? <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />
-        : search.data && search.data.results.length === 0 ? <p className="text-[15px] text-stone">Nothing matches “{typed}”.</p>
-        : (
-          <div className="flex flex-wrap gap-[8px]">
-            {search.data?.results.map((r) => (
-              <button key={r.symbol} type="button" onClick={() => setSymbol(r.symbol)} aria-pressed={symbol === r.symbol}
-                className={`text-left px-[12px] py-[8px] rounded-btn border text-[14px] ${symbol === r.symbol ? 'bg-pine border-pine text-on-dark' : 'bg-surface border-stone/40 hover:border-pine'}`}>
-                <span className="font-mono font-semibold">{r.symbol}</span> {r.name ?? ''}
-                {r.indices.length > 0 && <span className={`${symbol === r.symbol ? 'text-on-dark/75' : 'text-stone'} text-[12px]`}> · {r.indices.join(', ')}</span>}
-              </button>
-            ))}
-          </div>
-        ))}
-      {!symbol ? null
+        : results.length === 0 ? <p className="text-[15px] text-stone">Nothing matches “{typed}”.</p>
+        : null}
+      {others.length > 0 && (
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <span className="text-[14px] text-stone">Other matches:</span>
+          {others.map((r) => (
+            <button key={r.symbol} type="button" onClick={() => setPicked({ query: typed, symbol: r.symbol })}
+              className="text-left px-[10px] py-[6px] rounded-btn border text-[14px] bg-surface border-stone/40 hover:border-pine">
+              <span className="font-mono font-semibold">{r.symbol}</span> {r.name ?? ''}
+            </button>
+          ))}
+        </div>
+      )}
+      {!chosen ? null
         : profile.isLoading ? <Loading rows={8} />
-        : notFound(profile.error) ? <EmptyState title={`No prices on file for ${symbol}`} message="Market data knows this security but holds no daily history for it yet." />
+        : notFound(profile.error) ? <EmptyState title={`No prices on file for ${chosen}`} message="Market data knows this security but holds no daily history for it yet." />
         : profile.isError || !p ? <ErrorState message={unavailable(profile.error)} onRetry={() => profile.refetch()} />
         : (
           <div className="space-y-[20px]">
-            <div>
-              <h3 className="font-display text-[24px]">{p.name ?? p.symbol} <span className="font-mono text-[18px] text-stone">{p.symbol}</span></h3>
-              <p className="text-[14px] text-stone">
-                {[p.sector, p.industry].filter(Boolean).join(' · ') || p.kind}
-                {p.indices.length > 0 && ` · in ${p.indices.map((i) => UNIVERSE_LABEL[i] ?? i).join(', ')}`}
-                {` · prices ${formatDate(p.first_day)} to ${formatDate(p.last_day)} · ${p.basis === 'total' ? 'dividends included' : 'price only'}`}
-              </p>
+            <div className="flex flex-wrap items-end justify-between gap-[12px]">
+              <div>
+                <h3 className="font-display text-[24px]">{p.name ?? p.symbol} <span className="font-mono text-[18px] text-stone">{p.symbol}</span></h3>
+                <p className="text-[14px] text-stone">
+                  {[p.sector, p.industry].filter(Boolean).join(' · ') || p.kind}
+                  {p.indices.length > 0 && ` · in ${p.indices.map((i) => UNIVERSE_LABEL[i] ?? i).join(', ')}`}
+                  {` · prices ${formatDate(p.first_day)} to ${formatDate(p.last_day)} · ${p.basis === 'total' ? 'dividends included' : 'price only'}`}
+                </p>
+              </div>
+              <button type="button" onClick={() => onOpenMonths(p.symbol)}
+                className="h-[44px] px-[16px] border border-pine rounded-btn bg-surface text-pine text-[15px] font-semibold hover:bg-pine hover:text-on-dark transition-colors">
+                Every month, year by year →
+              </button>
             </div>
             <div>
               <h4 className="text-[15px] font-medium mb-[8px]">The last 12 months</h4>
@@ -579,22 +632,16 @@ function SecurityTab() {
                 ))}
               </div>
             </div>
-            <div className="grid gap-[20px] xl:grid-cols-2">
-              <div className="space-y-[8px] min-w-0">
-                <h4 className="text-[15px] font-medium">Month by month{p.month_of_year.years ? `, ${p.month_of_year.years.first} to ${p.month_of_year.years.last}` : ''}</h4>
-                <BucketTable buckets={p.month_of_year.buckets} label="Month" />
-              </div>
-              {p.sector_month_of_year && (
-                <div className="space-y-[8px] min-w-0">
-                  <h4 className="text-[15px] font-medium">
-                    Its sector, {p.sector}{p.sector_month_of_year.members ? ` (${p.sector_month_of_year.members} stocks today)` : ''}
-                  </h4>
-                  <BucketTable buckets={p.sector_month_of_year.buckets} label="Month" />
-                  {p.sector_month_of_year.survivorship && (
-                    <p className="text-[13px] text-stone">Today's members only: stocks that left the index are not counted.</p>
-                  )}
-                </div>
-              )}
+            <div className="space-y-[8px]">
+              <h4 className="text-[15px] font-medium">
+                Month by month, beside its sector{p.month_of_year.years ? ` (${p.month_of_year.years.first} to ${p.month_of_year.years.last})` : ''}
+              </h4>
+              <SideBySide symbol={p.symbol} own={p.month_of_year.buckets} sector={p.sector_month_of_year?.buckets ?? null}
+                sectorName={p.sector ? `${p.sector}${p.sector_month_of_year?.members ? ` (${p.sector_month_of_year.members} stocks)` : ''}` : null} />
+              <p className="text-[13px] text-stone">
+                One stock's few years can be chance; its sector's record rests on many stocks.
+                {p.sector_month_of_year?.survivorship && ' The sector counts today\'s members only.'}
+              </p>
             </div>
             <div className="space-y-[8px]">
               <div className="flex flex-wrap items-end gap-[16px]">
@@ -613,6 +660,8 @@ function SecurityTab() {
 /** Market insights from the md schema, the same for every signed-in user. */
 export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [tab, setTab] = useState<Tab>('months')
+  const [gridSymbol, setGridSymbol] = useState('SPX')
+  const openMonths = (symbol: string) => { setGridSymbol(symbol); setTab('months') }
   return (
     <div className="max-w-[1400px] w-full mx-auto flex flex-col gap-[24px]">
       <div>
@@ -631,11 +680,11 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
         <h2 className="font-display text-[24px]">Explore</h2>
         <Pills label="Explore" value={tab} onChange={setTab} options={TABS} />
         <div className="bg-surface border border-stone/25 rounded-card p-[16px] md:p-[24px] min-w-0">
-          {tab === 'months' && <MonthsTab />}
+          {tab === 'months' && <MonthsTab key={gridSymbol} initial={gridSymbol} />}
           {tab === 'calendar' && <CalendarTab />}
           {tab === 'top' && <TopTab forAdvisor={forAdvisor} />}
           {tab === 'sectors' && <SectorsTab />}
-          {tab === 'security' && <SecurityTab />}
+          {tab === 'security' && <SecurityTab onOpenMonths={openMonths} />}
         </div>
       </section>
     </div>
