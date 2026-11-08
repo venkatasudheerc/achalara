@@ -79,3 +79,25 @@ This hierarchy must be reflected consistently in both the backend API routes and
 - **`openapi.yaml` is the single source of truth** for request/response shapes. If you add or change an endpoint, update `openapi.yaml` too.
 - **Docs move with the code.** Before committing a change in behaviour, run the `update-docs` skill
   (`.claude/skills/update-docs/SKILL.md`): it maps each kind of change to the docs that describe it.
+- **A new setting follows the settings beside it.** Before adding one, read how its neighbours are
+  set in `deploy/.env.example`, `deploy/docker-compose.yml` and `config.py`, and do it the same way.
+  `.env` holds only first-hand values (a user name, a password, a key); anything built from them,
+  such as a database address, is built in `docker-compose.yml` (as `DATABASE_URL` is from
+  `POSTGRES_USER` and `POSTGRES_PASSWORD`), never stored beside its parts. A credential is a name
+  and a password, listed together with the other logins. A value used in more than one place (a
+  login's name in a script, a migration and compose) is one setting with a default, never the same
+  literal written in each.
+
+## Git and pull requests
+
+- Work on a branch, push it to the `mine` remote, never to `main`; a ruleset makes `main`
+  pull-request only, and only Sai merges. Ask before pushing a branch or opening a pull request.
+- **Before every push to a branch with a pull request, check that it is still open:**
+  `gh pr view <number> --json state -q .state`. Once it is `MERGED` or `CLOSED`, commits pushed to
+  that branch reach nobody. Put the follow-up on a new branch from the latest `main`
+  (`git fetch mine && git switch -c <new> mine/main`, then `git cherry-pick` the commits) and open a
+  new pull request.
+- After a pull request is opened, tell Sai about every further commit pushed to it before it is
+  merged, so it is not merged without them.
+- One concern per branch. Run the full backend suite (and `npm run build` for frontend changes)
+  on the branch as it will merge, then scan for private data before pushing (`update-docs` § 4).
