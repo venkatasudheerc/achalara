@@ -113,10 +113,10 @@ def _adjusted_history() -> None:
         db.close()
 
 
-def _index_levels() -> None:
+def _index_levels(market: str = "US") -> None:
     db = MdSession()
     try:
-        logger.info("Index levels: %s", run_index_levels(db))
+        logger.info("Index levels (%s): %s", market, run_index_levels(db, market=market))
     except JobAlreadyRunning:
         logger.info("Index levels are already being fetched")
     except Exception:  # noqa: BLE001
@@ -160,6 +160,7 @@ JOBS = {
     CLOSES_JOB: _daily_closes,
     "md_adjusted_closes": _adjusted_history,
     "md_index_levels": _index_levels,
+    "md_index_levels_in": lambda: _index_levels("IN"),
     "md_prune_prices": _prune,
     "md_refresh_returns": _refresh_returns,
 }

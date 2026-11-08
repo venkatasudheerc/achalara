@@ -71,10 +71,19 @@ def _security_id(db: Session, symbol: str) -> Optional[str]:
     return row[0] if row else None
 
 
+def subject_code(symbol: str) -> str:
+    """The plain code of what was asked for: ``^NSEI`` and ``nsei`` are both ``NSEI``."""
+    return symbol.strip().upper().lstrip("^")
+
+
 def series(db: Session, symbol: str) -> Tuple[str, str, List[Close]]:
-    """``(kind, basis, closes)`` for a security (adjusted) or an index level."""
-    code = symbol.strip().upper()
-    security_id = _security_id(db, code)
+    """``(kind, basis, closes)`` for a security (adjusted) or an index level.
+
+    A leading ``^`` always means an index (as on Yahoo); without it a security is
+    looked for first, then an index level. Index codes are stored without the ``^``."""
+    asked_index = symbol.strip().startswith("^")
+    code = subject_code(symbol)
+    security_id = None if asked_index else _security_id(db, code)
     if security_id is not None:
         rows = (
             db.query(PriceAdjDaily.price_date, PriceAdjDaily.adj_close)

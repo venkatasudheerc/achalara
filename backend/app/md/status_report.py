@@ -17,11 +17,13 @@ from app.md.models import (
     JobRun,
     Security,
     SecurityClassification,
+    SecuritySymbol,
     PriceDailyHist,
     SourceFile,
 )
 from app.md.adjusted import coverage as adjusted_coverage
 from app.md.closes import universe
+from app.md.levels import LEVELS, describe_stale, stale_levels
 from app.md.schedule import MD_JOBS
 from app.md.base import MdBase
 
@@ -160,6 +162,21 @@ def _indices(db: Session, today: date, attention: List[str]) -> List[Dict]:
     newest = max(latest.values(), default=None)
     if newest is not None and (today - newest).days >= FILE_STALE_DAYS:
         attention.append(f"The newest index file is from {newest.isoformat()}.")
+    # An index code that is also a ticker is reached without the ^ as the security, not
+    # the index: say so, so the code can be changed in levels.py.
+    shadowed = sorted(
+        code
+        for (code,) in db.query(SecuritySymbol.symbol).filter(
+            SecuritySymbol.symbol.in_(list(LEVELS))
+        )
+    )
+    if shadowed:
+        attention.append(
+            "Index codes that are also tickers (ask for them with ^): " + ", ".join(shadowed)
+        )
+    stale = describe_stale(stale_levels(db, today))
+    if stale:
+        attention.append(stale)
     return rows
 
 

@@ -6,7 +6,7 @@ shares the app's database these use the caller's session; once it has its own,
 they open one, and a database that cannot be reached raises ``MdUnavailable``.
 """
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from sqlalchemy import func
@@ -72,6 +72,14 @@ def has_run(app_db: Session, job: str) -> bool:
     """Whether a job has ever started."""
     with _session(app_db) as db:
         return db.query(JobRun.id).filter(JobRun.job == job).first() is not None
+
+
+def stale_index_levels(app_db: Session) -> Optional[str]:
+    """A line naming the indices with no new level lately (or none at all), or None."""
+    from app.md.levels import describe_stale, stale_levels
+
+    with _session(app_db) as db:
+        return describe_stale(stale_levels(db, date.today()))
 
 
 def stocks_without_sector(app_db: Session, symbols: Iterable[str]) -> int:

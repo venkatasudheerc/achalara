@@ -724,6 +724,7 @@ export interface RsOutlook {
 export interface RsCell { month: number; day: number; value: number; mean: number; median: number; days: number }
 export interface RsCalendar {
   symbol: string; kind: string; basis: string; stat: 'mean' | 'median'
+  available?: { first: number; last: number } | null
   years: { first: number; last: number; count: number }
   cells: RsCell[]; best: RsCell[]; worst: RsCell[]; notes: string[]
 }
@@ -764,3 +765,8 @@ export interface RsMonthGrid {
   rows: RsGridYear[]; summary: Record<string, RsMonthSummary | null>; year_summary: RsMonthSummary | null
   best: RsNamedMonth | null; worst: RsNamedMonth | null; notes: string[]
 }
+export interface RsIndex {
+  code: string; display: string; name: string; country: string; currency: string
+  group: string; volatility: boolean; first_day: string | null; last_day: string | null
+}
+export interface RsIndices { indices: RsIndex[]; notes: string[] }

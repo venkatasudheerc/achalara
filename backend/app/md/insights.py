@@ -20,10 +20,12 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.md import levels
 from app.md import performance as perf
 from app.md.models import (
     US_MARKET,
     Company,
+    IndexLevelHist,
     IndexMember,
     Industry,
     Security,
@@ -76,17 +78,68 @@ SECTOR_FUNDS = {
 }
 SECTOR_NAMES = {code: name for code, name, _ in SECTORS}
 PRICE_NOTE = "Index levels leave dividends out; funds and stocks include them."
-# The VIX is a level of expected volatility, not something one owns: its "return" is a
-# change in how nervous the market is, and a rise is not a gain.
+# A volatility index is a level of expected volatility, not something one owns: its
+# "return" is a change in how nervous the market is, and a rise is not a gain.
+_MEASURES = {"VIX": "the S&P 500", "INDIAVIX": "the Nifty 50"}
 VIX_NOTE = (
-    "The VIX measures how much movement traders expect in the S&P 500 over the next "
+    "{name} measures how much movement traders expect in {market} over the next "
     "month. Its change is a shift in nervousness, not a return anyone earns; it tends "
     "to rise when stocks fall."
+)
+RUPEE_NOTE = (
+    "Levels in Indian rupees: a return in rupees, before any change in the rupee "
+    "against the dollar, and without dividends."
 )
 
 
 def _subject_notes(symbol: str) -> List[str]:
-    return [VIX_NOTE] if symbol.strip().upper() == "VIX" else []
+    """What an index needs said about it beyond its basis: volatility, a currency."""
+    info = levels.INFO.get(perf.subject_code(symbol))
+    if info is None:
+        return []
+    notes = []
+    if info.volatility:
+        name = "The VIX" if info.code == "VIX" else info.name
+        notes.append(VIX_NOTE.format(name=name, market=_MEASURES.get(info.code, "its market")))
+    if info.currency == "INR":
+        notes.append(RUPEE_NOTE)
+    elif info.currency != "USD":
+        notes.append(f"Levels in {info.currency}, before any change against the dollar.")
+    return notes
+
+
+def list_indices(db: Session) -> Dict:
+    """Every index whose level market data collects: name, country, currency, group,
+    whether it measures volatility, and the dates on file. Shown with a leading ^."""
+    spans = {
+        code: (first, last)
+        for code, first, last in db.query(
+            IndexLevelHist.symbol,
+            func.min(IndexLevelHist.price_date),
+            func.max(IndexLevelHist.price_date),
+        ).group_by(IndexLevelHist.symbol)
+    }
+    return {
+        "indices": [
+            {
+                "code": i.code,
+                "display": f"^{i.code}",
+                "name": i.name,
+                "country": i.country,
+                "currency": i.currency,
+                "group": i.group,
+                "volatility": i.volatility,
+                "first_day": spans.get(i.code, (None, None))[0],
+                "last_day": spans.get(i.code, (None, None))[1],
+            }
+            for i in levels.INDEX_LEVELS_INFO
+        ],
+        "notes": [
+            "An index is shown with a leading ^ (^SPX, ^NSEI); asking for one with the ^ "
+            "always means the index.",
+            PRICE_NOTE,
+        ],
+    }
 
 
 def _months_label(month: int) -> str:
@@ -323,10 +376,11 @@ def calendar_grid(
     notes.extend(_subject_notes(symbol))
     ranked = sorted(out, key=lambda c: c["value"])
     return {
-        "symbol": symbol.strip().upper(),
+        "symbol": perf.subject_code(symbol),
         "kind": kind,
         "basis": basis,
         "stat": stat,
+        "available": {"first": closes[0][0].year, "last": closes[-1][0].year},
         "years": {"first": min(years), "last": max(years), "count": len(years)},
         "cells": out,
         "best": list(reversed(ranked[-5:])),
@@ -432,7 +486,7 @@ def month_grid(
     notes.append(PRICE_NOTE)
     notes.extend(_subject_notes(symbol))
     return {
-        "symbol": symbol.strip().upper(),
+        "symbol": perf.subject_code(symbol),
         "kind": kind,
         "basis": basis,
         "available": available,
@@ -724,7 +778,7 @@ def security_profile(
     month = _check_month(month or today.month)
     kind, basis, closes = perf.series(db, symbol)
     label = {
-        "symbol": symbol.strip().upper(),
+        "symbol": perf.subject_code(symbol),
         "name": None,
         "sector": None,
         "industry": None,
@@ -776,11 +830,16 @@ def security_profile(
         ),
         "month_path": _month_path(closes, month, today),
         "sector_month_of_year": sector_pattern,
-        "notes": [
-            "A stock's own record is about five years: a pattern in it may be chance; "
-            "its sector's record across hundreds of stocks is sturdier.",
-            PRICE_NOTE,
-        ],
+        "notes": (
+            [
+                "A stock's own record is about five years: a pattern in it may be "
+                "chance; its sector's record across hundreds of stocks is sturdier."
+            ]
+            if kind == "security"
+            else []
+        )
+        + [PRICE_NOTE]
+        + _subject_notes(symbol),
     }
 
 
@@ -836,6 +895,14 @@ SYMBOL = {
 }
 
 TOOLS: Tuple[Tool, ...] = (
+    Tool(
+        "list_indices",
+        "Every index whose daily level is on file (US and Indian), with its name, "
+        "country, currency, whether it measures volatility, and its dates. Indices are "
+        "written with a leading ^ (^SPX, ^NSEI).",
+        _schema({}),
+        list_indices,
+    ),
     Tool(
         "this_week",
         "The latest week that has ended: index and fund returns, the 11 sectors, and the "

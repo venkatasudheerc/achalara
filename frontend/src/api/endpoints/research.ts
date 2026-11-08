@@ -1,6 +1,6 @@
 import { apiClient } from '../client'
 import type {
-  RsCalendar, RsMonth, RsMonthGrid, RsOutlook, RsProfile, RsSearch, RsSectors, RsTopPerformers, RsWeek,
+  RsCalendar, RsIndices, RsMonth, RsMonthGrid, RsOutlook, RsProfile, RsSearch, RsSectors, RsTopPerformers, RsWeek,
 } from '../types'
 
 /** Market insights: read-only, the same for every signed-in user. */
@@ -11,6 +11,7 @@ export const researchApi = {
     apiClient.get<RsOutlook>('/api/v1/research/outlook', { params: { month } }).then((r) => r.data),
   calendar: (params: { symbol: string; start_year?: number; end_year?: number; stat: 'mean' | 'median' }) =>
     apiClient.get<RsCalendar>('/api/v1/research/calendar', { params }).then((r) => r.data),
+  indices: () => apiClient.get<RsIndices>('/api/v1/research/indices').then((r) => r.data),
   monthGrid: (params: { symbol: string; start_year?: number; end_year?: number }) =>
     apiClient.get<RsMonthGrid>('/api/v1/research/month-grid', { params }).then((r) => r.data),
   topPerformers: (params: { month: number; universe: string }) =>

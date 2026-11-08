@@ -1702,6 +1702,35 @@ paths:
         '503':
           description: Market data could not be read
           content: *id001
+  /api/v1/research/indices:
+    get:
+      tags:
+      - research
+      summary: Research Indices
+      description: Every index whose level is on file, US and Indian, shown with a leading
+        ^.
+      operationId: research_indices_api_v1_research_indices_get
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          title: Achalara Session
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsIndicesResponse'
+        '401':
+          description: Not signed in
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
   /api/v1/research/month-grid:
     get:
       tags:
@@ -7524,6 +7553,9 @@ components:
         stat:
           type: string
           title: Stat
+        available:
+          $ref: '#/components/schemas/RsYearSpan'
+          nullable: true
         years:
           $ref: '#/components/schemas/RsYears'
         cells:
@@ -7634,6 +7666,66 @@ components:
       - ret
       - complete
       title: RsGridYear
+    RsIndex:
+      properties:
+        code:
+          type: string
+          title: Code
+        display:
+          type: string
+          title: Display
+        name:
+          type: string
+          title: Name
+        country:
+          type: string
+          title: Country
+        currency:
+          type: string
+          title: Currency
+        group:
+          type: string
+          title: Group
+        volatility:
+          type: boolean
+          title: Volatility
+        first_day:
+          type: string
+          format: date
+          title: First Day
+          nullable: true
+        last_day:
+          type: string
+          format: date
+          title: Last Day
+          nullable: true
+      type: object
+      required:
+      - code
+      - display
+      - name
+      - country
+      - currency
+      - group
+      - volatility
+      title: RsIndex
+    RsIndicesResponse:
+      properties:
+        indices:
+          items:
+            $ref: '#/components/schemas/RsIndex'
+          type: array
+          title: Indices
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - indices
+      - notes
+      title: RsIndicesResponse
     RsMonthGridResponse:
       properties:
         symbol:

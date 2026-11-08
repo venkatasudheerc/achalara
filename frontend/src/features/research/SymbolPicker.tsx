@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useSecuritySearch } from '@/hooks/useResearch'
+import { useIndices, useSecuritySearch } from '@/hooks/useResearch'
 import { useDebounced } from '@/features/portal/ui'
 import { displayName } from './ui'
 
@@ -10,23 +10,10 @@ export function choiceLabel(symbol: string, name?: string | null): string {
   return name ? `${displayName(name, symbol)} · ${symbol}` : symbol
 }
 
-type Match = { symbol: string; name: string | null; kind: string }
+type Match = { symbol: string; name: string | null; kind: string; group?: string }
 
-/** The market indices, which the security search does not hold. */
-export const INDEX_CHOICES: Match[] = [
-  { symbol: 'SPX', name: 'S&P 500', kind: 'index' },
-  { symbol: 'NDX', name: 'Nasdaq-100', kind: 'index' },
-  { symbol: 'DJI', name: 'Dow Jones Industrial Average', kind: 'index' },
-  { symbol: 'RUT', name: 'Russell 2000', kind: 'index' },
-  { symbol: 'RUI', name: 'Russell 1000', kind: 'index' },
-  { symbol: 'RUA', name: 'Russell 3000', kind: 'index' },
-  { symbol: 'VIX', name: 'Volatility Index (VIX)', kind: 'index' },
-]
-
-export function indexChoice(symbol: string): Choice | null {
-  const i = INDEX_CHOICES.find((m) => m.symbol === symbol)
-  return i ? { symbol: i.symbol, label: `${i.name} · ${i.symbol}` } : null
-}
+/** The page's starting choice, before the list of indices has loaded. */
+export const DEFAULT_SERIES: Choice = { symbol: '^SPX', label: 'S&P 500 · ^SPX' }
 
 /** The typed text highlighted where it appears in a ticker or a name. */
 function Marked({ text, query }: { text: string; query: string }) {
@@ -36,11 +23,14 @@ function Marked({ text, query }: { text: string; query: string }) {
   return <>{text.slice(0, at)}<span className="font-semibold text-pine">{text.slice(at, at + q.length)}</span>{text.slice(at + q.length)}</>
 }
 
-const GROUPS = [
-  { label: 'Indices', kinds: ['index'] },
-  { label: 'Stocks', kinds: ['stock', 'adr'] },
-  { label: 'ETFs and funds', kinds: ['etf', 'fund'] },
-]
+/** The heading a match is listed under: an index by its group from the list (Indices (US),
+ *  India: broad market, India: sectors and themes), a stock or fund by its kind. */
+function groupOf(m: Match): string {
+  if (m.kind === 'index') return m.group ?? 'Indices'
+  if (m.kind === 'stock' || m.kind === 'adr') return 'Stocks'
+  if (m.kind === 'etf' || m.kind === 'fund') return 'ETFs and funds'
+  return 'Other'
+}
 
 /** Choosing one index, stock or fund, the same way everywhere (Sai, 2026-11-08):
  *  - matches drop down as you type, a ticker column and a name column, grouped, the
@@ -62,15 +52,20 @@ export function SymbolPicker({ id, label, placeholder, choice, onChoose, withInd
   const typed = useDebounced(query.trim(), 200)
   const searching = choice && typed === choice.label ? '' : typed
   const search = useSecuritySearch(searching)
-  const q = searching.toLowerCase()
-  const indices = withIndices && q
-    ? INDEX_CHOICES.filter((m) => m.symbol.toLowerCase().startsWith(q) || (m.name ?? '').toLowerCase().includes(q))
+  const listed = useIndices().data?.indices ?? []
+  // An index is written ^SPX; "^nsei", "nsei" and "nifty" all find the Nifty 50.
+  const q = searching.toLowerCase().replace(/^\^/, '')
+  const indices: Match[] = withIndices && q
+    ? listed
+      .filter((i) => i.code.toLowerCase().startsWith(q) || i.name.toLowerCase().includes(q))
+      .sort((a, b) => Number(!a.code.toLowerCase().startsWith(q)) - Number(!b.code.toLowerCase().startsWith(q)))
+      .map((i) => ({ symbol: i.display, name: i.name, kind: 'index', group: i.group }))
     : []
   const results: Match[] = [...indices, ...(searching ? search.data?.results ?? [] : [])]
-  const groups = GROUPS.map((g) => ({ ...g, items: results.filter((r) => g.kinds.includes(r.kind)) }))
-  groups.push({ label: 'Other', kinds: [], items: results.filter((r) => !GROUPS.some((g) => g.kinds.includes(r.kind))) })
-  // The group holding the best match comes first: typing "spy" leads with the SPY fund.
-  groups.sort((a, b) => (a.items.length ? results.indexOf(a.items[0]) : 99) - (b.items.length ? results.indexOf(b.items[0]) : 99))
+  // Grouped under their headings, the group holding the best match first: typing "spy"
+  // leads with the SPY fund, "nifty" with India's broad market.
+  const labels = [...new Set(results.map(groupOf))]
+  const groups = labels.map((label) => ({ label, items: results.filter((r) => groupOf(r) === label) }))
   const shown = groups.flatMap((g) => g.items)
   const showList = open && searching.length > 0 && (shown.length > 0 || !search.isLoading)
 
@@ -120,7 +115,7 @@ export function SymbolPicker({ id, label, placeholder, choice, onChoose, withInd
                       <div key={m.symbol} id={`${id}-${m.symbol}`} role="option" aria-selected={i === active}
                         // mousedown, not click: it runs before the input loses focus and closes the list
                         onMouseDown={(e) => { e.preventDefault(); choose(m) }} onMouseEnter={() => setActive(i)}
-                        className={`grid [grid-template-columns:84px_minmax(0,1fr)] gap-[12px] px-[14px] py-[8px] cursor-pointer ${i === active ? 'bg-mist' : ''}`}>
+                        className={`grid [grid-template-columns:104px_minmax(0,1fr)] gap-[12px] px-[14px] py-[8px] cursor-pointer ${i === active ? 'bg-mist' : ''}`}>
                         <span className="font-mono text-[14px] text-summit-ink"><Marked text={m.symbol} query={searching} /></span>
                         <span className="truncate text-[15px] text-summit-ink"><Marked text={m.kind === 'index' ? m.name ?? '' : displayName(m.name)} query={searching} /></span>
                       </div>
