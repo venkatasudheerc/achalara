@@ -182,25 +182,6 @@ export function Segmented<T extends string>({ label, options, value, onChange }:
   )
 }
 
-export function SearchBox({ id, label, value, onChange, placeholder }: {
-  id: string; label: string; value: string; onChange: (v: string) => void; placeholder?: string
-}) {
-  return (
-    <div className="flex flex-col gap-[6px] w-full max-w-[380px]">
-      <label htmlFor={id} className="text-[13px] text-stone">{label}</label>
-      <div className="relative">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          strokeLinecap="round" className="absolute left-[14px] top-[13px] text-stone">
-          <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
-        </svg>
-        <input id={id} type="search" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
-          autoComplete="off"
-          className="w-full h-[44px] pl-[42px] pr-[14px] rounded-[10px] border border-stone/40 bg-surface text-[15px] text-summit-ink focus:outline-none focus:ring-2 focus:ring-gold" />
-      </div>
-    </div>
-  )
-}
-
 export function Controls({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-end gap-[20px]">{children}</div>
 }

@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useSecurityProfile, useSecuritySearch } from '@/hooks/useResearch'
+import { useEffect, useState } from 'react'
+import { useSecurityProfile } from '@/hooks/useResearch'
 import type { RsBucket, RsMonthPath, RsProfile } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
 import { formatDate } from '@/lib/formatters'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { Select, tone, useDebounced } from '@/features/portal/ui'
+import { Select, tone } from '@/features/portal/ui'
+import { SymbolPicker, choiceLabel, type Choice } from './SymbolPicker'
 import {
   Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, UNIVERSE_LABEL,
   displayName, notFound, pct1, unavailable,
@@ -156,142 +157,31 @@ function MonthPath({ path, name, month }: { path: RsMonthPath; name: string; mon
   )
 }
 
-type Match = { symbol: string; name: string | null; kind: string; sector: string | null; indices: string[] }
-
-/** The typed text highlighted where it appears in a ticker or a name. */
-function Marked({ text, query }: { text: string; query: string }) {
-  const q = query.trim().toLowerCase()
-  const at = q ? text.toLowerCase().indexOf(q) : -1
-  if (at < 0) return <>{text}</>
-  return <>{text.slice(0, at)}<span className="font-semibold text-pine">{text.slice(at, at + q.length)}</span>{text.slice(at + q.length)}</>
-}
-
-const GROUPS = [
-  { label: 'Stocks', kinds: ['stock', 'adr'] },
-  { label: 'ETFs and funds', kinds: ['etf', 'fund'] },
-]
-
-/** A search box whose matches drop down as you type, a ticker column and a name column,
- *  stocks and funds apart, as a quote screen lists them: arrow keys move, Enter or a
- *  click chooses, Escape closes. Choosing puts the choice in the box. */
-function SecurityCombobox({ query, onQuery, results, loading, onChoose, choiceLabel }: {
-  query: string; onQuery: (q: string) => void; results: Match[]; loading: boolean
-  onChoose: (m: Match) => void; choiceLabel: string | null
-}) {
-  const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(0)
-  const input = useRef<HTMLInputElement>(null)
-  // Grouped, but in one order for the arrow keys: the server's ranking within each group.
-  const groups = GROUPS.map((g) => ({ ...g, items: results.filter((r) => g.kinds.includes(r.kind)) }))
-  groups.push({ label: 'Other', kinds: [], items: results.filter((r) => !GROUPS.some((g) => g.kinds.includes(r.kind))) })
-  // The group holding the best match comes first: typing "spy" leads with the SPY fund.
-  groups.sort((a, b) => (a.items.length ? results.indexOf(a.items[0]) : 99) - (b.items.length ? results.indexOf(b.items[0]) : 99))
-  const shown = groups.flatMap((g) => g.items)
-  const showList = open && query.trim().length > 0 && (shown.length > 0 || !loading)
-  // A choice is made: the box lets go of the cursor, so the page reads as settled.
-  const choose = (m: Match) => { onChoose(m); setOpen(false); input.current?.blur() }
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, shown.length - 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
-    else if (e.key === 'Enter' && showList && shown[active]) { e.preventDefault(); choose(shown[active]) }
-    else if (e.key === 'Escape') setOpen(false)
-  }
-  const q = query.trim()
-  return (
-    <div className="flex flex-col gap-[6px] w-full max-w-[520px]">
-      <label htmlFor="lookup" className="text-[13px] text-stone">Company, fund or ticker</label>
-      <div className="relative">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          strokeLinecap="round" className="absolute left-[14px] top-[13px] text-stone">
-          <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
-        </svg>
-        <input ref={input} id="lookup" type="search" value={query} placeholder="Apple, Schwab, SPY" autoComplete="off"
-          role="combobox" aria-expanded={showList} aria-controls="lookup-list" aria-autocomplete="list"
-          aria-activedescendant={showList && shown[active] ? `lookup-${shown[active].symbol}` : undefined}
-          onChange={(e) => { onQuery(e.target.value); setOpen(true); setActive(0) }}
-          // Clicking in clears the last choice's name, ready for a new search; leaving the
-          // box empty puts it back.
-          onFocus={() => { if (choiceLabel && query === choiceLabel) onQuery(''); setOpen(true) }}
-          onClick={() => { if (choiceLabel && query === choiceLabel) onQuery(''); setOpen(true) }}
-          onBlur={() => { if (choiceLabel && !query.trim()) onQuery(choiceLabel); setOpen(false) }}
-          onKeyDown={onKey}
-          className="w-full h-[44px] pl-[42px] pr-[14px] rounded-[10px] border border-stone/40 bg-surface text-[15px] text-summit-ink focus:outline-none focus:ring-2 focus:ring-gold" />
-        {showList && (
-          <div id="lookup-list" role="listbox" aria-label="Matches"
-            className="absolute z-20 left-0 right-0 top-[50px] max-h-[420px] overflow-y-auto rounded-[10px] border border-stone/40 bg-surface shadow-xl py-[4px]">
-            {shown.length === 0
-              ? <div className="px-[14px] py-[10px] text-[14px] text-stone">Nothing matches “{q}”</div>
-              : groups.filter((g) => g.items.length).map((g) => (
-                <div key={g.label} role="group" aria-label={g.label}>
-                  <div className="px-[14px] pt-[10px] pb-[4px] text-[12px] font-semibold uppercase tracking-wide text-stone">{g.label}</div>
-                  {g.items.map((m) => {
-                    const i = shown.indexOf(m)
-                    return (
-                      <div key={m.symbol} id={`lookup-${m.symbol}`} role="option" aria-selected={i === active}
-                        // mousedown, not click: it runs before the input loses focus and closes the list
-                        onMouseDown={(e) => { e.preventDefault(); choose(m) }} onMouseEnter={() => setActive(i)}
-                        className={`grid [grid-template-columns:84px_minmax(0,1fr)] gap-[12px] px-[14px] py-[8px] cursor-pointer ${i === active ? 'bg-mist' : ''}`}>
-                        <span className="font-mono text-[14px] text-summit-ink"><Marked text={m.symbol} query={q} /></span>
-                        <span className="truncate text-[15px] text-summit-ink"><Marked text={displayName(m.name)} query={q} /></span>
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export type LookupChoice = { symbol: string; label: string }
-
-export function lookupLabel(symbol: string, name?: string | null): string {
-  return name ? `${displayName(name, symbol)} · ${symbol}` : symbol
-}
-
 /** The page changes only on a decision: Enter or a click in the list, or a name chosen
  *  elsewhere on the page. Typing only changes the list (Sai, 2026-11-08). */
-export function LookupTab({ query, onQuery, choice, onChoice, onOpenMonths }: {
-  query: string; onQuery: (q: string) => void
-  choice: LookupChoice | null; onChoice: (c: LookupChoice) => void
-  onOpenMonths: (symbol: string) => void
+export function LookupTab({ choice, onChoice, onOpenMonths }: {
+  choice: Choice | null; onChoice: (c: Choice) => void; onOpenMonths: (c: Choice) => void
 }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const typed = useDebounced(query.trim(), 200)
-  // The box shows the choice once made; that text is not a new search.
-  const showingChoice = choice != null && (query === choice.label || typed === choice.label)
-  const searching = showingChoice ? '' : typed
-  const search = useSecuritySearch(searching)
-  const results = searching ? search.data?.results ?? [] : []
   const chosen = choice?.symbol ?? null
-  const choose = (m: Match) => {
-    const c = { symbol: m.symbol, label: lookupLabel(m.symbol, m.name) }
-    onChoice(c)
-    onQuery(c.label)
-  }
   const profile = useSecurityProfile(chosen, month)
   const p = profile.data
   // A name chosen elsewhere arrives as its ticker; once its profile is in, name it in the box.
   useEffect(() => {
-    if (p && choice && p.symbol === choice.symbol && choice.label === choice.symbol && query === choice.symbol) {
-      const c = { symbol: p.symbol, label: lookupLabel(p.symbol, p.name) }
-      onChoice(c)
-      onQuery(c.label)
+    if (p && choice && p.symbol === choice.symbol && choice.label === choice.symbol) {
+      onChoice({ symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })
     }
-  }, [p, choice, query, onChoice, onQuery])
+  }, [p, choice, onChoice])
   const answer = p ? headline(p) : null
   const total = p ? p.last_12_months.reduce((g, m) => g * (1 + m.ret), 1) - 1 : 0
 
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
-        <SecurityCombobox query={query} onQuery={onQuery} results={results} loading={search.isLoading} onChoose={choose}
-          choiceLabel={choice?.label ?? null} />
+        <SymbolPicker id="lookup" label="Company, fund or ticker" placeholder="Apple, Schwab, SPY"
+          choice={choice} onChoose={onChoice} />
       </Controls>
 
-      {search.isError && <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />}
       {!chosen ? (
         <EmptyState title="Look up a stock or a fund"
           message="Type a company's name or a ticker, then press Enter or choose from the list: Apple, Schwab, SPY." />
@@ -303,7 +193,7 @@ export function LookupTab({ query, onQuery, choice, onChoice, onOpenMonths }: {
           <Section
             title={<>{displayName(p.name, p.symbol)} <span className="font-mono text-[20px] text-stone">{p.symbol}</span></>}
             aside={
-              <button type="button" onClick={() => onOpenMonths(p.symbol)}
+              <button type="button" onClick={() => onOpenMonths({ symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })}
                 className="h-[44px] px-[18px] rounded-[10px] border border-pine text-pine text-[15px] font-semibold hover:bg-pine hover:text-on-dark transition-colors">
                 Every month, year by year →
               </button>

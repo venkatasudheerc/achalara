@@ -153,7 +153,8 @@ Each feature directory contains its page component(s). Implemented:
   in one sentence), `HowToRead` (the caveats, closed by default), `Bars`, `DivergingRows`,
   `displayName` (company names as people say them, from SEC filings' "WATERS CORP /DE/"). Each
   view states its answer in words first, then one chart or one clean table; colour marks only gain,
-  loss and the highlighted figure. Months by year, Calendar days and the look-up share one symbol.
+  loss and the highlighted figure. Months by year and Calendar days share one chosen index or stock (`SymbolPicker` with indices);
+  the look-up keeps its own (stocks and funds).
   Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
   fractions. It describes the past: no advice or forecast wording. The luck estimate
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
@@ -179,6 +180,17 @@ data={perf.timeseries.filter(pt => {
 ```
 
 The quick-filter presets (`applyPreset`) set `DateRangeContext`; the chart section then re-filters from the already-fetched full series.
+
+### Search boxes: choosing versus filtering
+
+Sai's rule (2026-11-08): a box that **chooses one thing to load** (an index, a stock, a fund, a
+benchmark) changes the page only on a decision, never while typing. Use
+`research/SymbolPicker` (matches drop down as you type, a ticker column and a name column,
+grouped, typed letters highlighted; Enter or a click chooses; a choice releases the cursor;
+clicking back in clears the box; leaving it empty puts the choice back). The Performance page's
+benchmark box follows the same rule by hand (Enter applies, Escape restores). A box that
+**filters a list already on screen** (the portal's Holdings, Activity and Realised gains) stays
+live as you type: nothing new loads, and clearing it on a click would throw the filter away.
 
 ### Formatters (`src/lib/formatters.ts`)
 

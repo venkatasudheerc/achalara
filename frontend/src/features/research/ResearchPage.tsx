@@ -4,13 +4,14 @@ import type { RsPerformer } from '@/api/types'
 import { formatNumber } from '@/lib/formatters'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { Select, useDebounced } from '@/features/portal/ui'
+import { Select } from '@/features/portal/ui'
 import { CalendarHeatmap } from './CalendarHeatmap'
 import { GlanceCards, OverviewTab } from './Overview'
 import { MonthsTab } from './MonthsTab'
-import { LookupTab, type LookupChoice } from './LookupTab'
+import { LookupTab } from './LookupTab'
+import { SymbolPicker, indexChoice, type Choice } from './SymbolPicker'
 import {
-  Box, Controls, HowToRead, Loading, MONTHS, Pct, SearchBox, Section, Segmented, Tabs, UNIVERSES, UNIVERSE_LABEL,
+  Box, Controls, HowToRead, Loading, MONTHS, Pct, Section, Segmented, Tabs, UNIVERSES, UNIVERSE_LABEL,
   capitalise, displayName, notFound, pct1, share, subjectName, td, tdNum, th, thNum, unavailable,
 } from './ui'
 
@@ -43,10 +44,10 @@ const RANGES = [
   { value: 'all', label: 'All' },
 ] as const
 
-function CalendarTab({ symbol, onSymbol }: { symbol: string; onSymbol: (s: string) => void }) {
+function CalendarTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choice) => void }) {
   const [stat, setStat] = useState<'mean' | 'median'>('mean')
   const [range, setRange] = useState<(typeof RANGES)[number]['value']>('1950')
-  const typed = useDebounced(symbol.trim().toUpperCase(), 400)
+  const typed = choice.symbol
   const lastYear = new Date().getFullYear() - 1
   const start_year = range === 'all' ? undefined : range === '1950' ? 1950 : lastYear - 24
   const { data, isLoading, isError, error, refetch, isFetching } = useCalendarGrid({ symbol: typed, stat, start_year, end_year: lastYear })
@@ -54,7 +55,8 @@ function CalendarTab({ symbol, onSymbol }: { symbol: string; onSymbol: (s: strin
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
-        <SearchBox id="cal-symbol" label="Index or ticker" value={symbol} onChange={onSymbol} placeholder="SPX, NDX, AAPL" />
+        <SymbolPicker id="cal-symbol" label="Index, company or fund" placeholder="S&P 500, Apple, SPY"
+          choice={choice} onChoose={onChoice} withIndices />
         <Segmented label="Show" value={stat} onChange={setStat}
           options={[{ value: 'mean', label: 'Average' }, { value: 'median', label: 'Median' }]} />
         <Segmented label="Years" value={range} onChange={setRange} options={RANGES} />
@@ -268,13 +270,13 @@ function SectorsTab() {
  *  Shared by the advisor workspace (`forAdvisor`) and the family portal. */
 export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [tab, setTab] = useState<Tab>('overview')
-  // One symbol for the index-or-ticker views, so it carries from tab to tab.
-  const [symbol, setSymbol] = useState('SPX')
-  const [lookup, setLookup] = useState('')
-  const [choice, setChoice] = useState<LookupChoice | null>(null)
+  // One choice for the views of a single index or stock, so it carries from tab to tab,
+  // and one for the look-up (stocks and funds only).
+  const [series, setSeries] = useState<Choice>(indexChoice('SPX')!)
+  const [choice, setChoice] = useState<Choice | null>(null)
   // Choosing a name elsewhere on the page is a decision, so it opens the profile at once.
-  const openLookup = (s: string) => { setChoice({ symbol: s, label: s }); setLookup(s); setTab('lookup') }
-  const openMonths = (s: string) => { setSymbol(s); setTab('months') }
+  const openLookup = (s: string) => { setChoice({ symbol: s, label: s }); setTab('lookup') }
+  const openMonths = (c: Choice) => { setSeries(c); setTab('months') }
   return (
     <div className="max-w-[1280px] w-full mx-auto flex flex-col gap-[32px]">
       <div className="flex flex-col gap-[8px]">
@@ -287,11 +289,11 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
       <div className="flex flex-col gap-[24px]">
         <Tabs tabs={TABS} value={tab} onChange={setTab} />
         {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} />}
-        {tab === 'months' && <MonthsTab symbol={symbol} onSymbol={setSymbol} />}
-        {tab === 'calendar' && <CalendarTab symbol={symbol} onSymbol={setSymbol} />}
+        {tab === 'months' && <MonthsTab choice={series} onChoice={setSeries} />}
+        {tab === 'calendar' && <CalendarTab choice={series} onChoice={setSeries} />}
         {tab === 'top' && <TopTab forAdvisor={forAdvisor} onLookup={openLookup} />}
         {tab === 'sectors' && <SectorsTab />}
-        {tab === 'lookup' && <LookupTab query={lookup} onQuery={setLookup} choice={choice} onChoice={setChoice} onOpenMonths={openMonths} />}
+        {tab === 'lookup' && <LookupTab choice={choice} onChoice={setChoice} onOpenMonths={openMonths} />}
       </div>
     </div>
   )

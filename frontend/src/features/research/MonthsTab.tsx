@@ -3,10 +3,11 @@ import { useMonthGrid } from '@/hooks/useResearch'
 import type { RsMonthGrid } from '@/api/types'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { Select, useDebounced } from '@/features/portal/ui'
+import { Select } from '@/features/portal/ui'
+import { SymbolPicker, type Choice } from './SymbolPicker'
 import { MonthGrid } from './MonthGrid'
 import {
-  Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, SearchBox, Section, Segmented, capitalise,
+  Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, Segmented, capitalise,
   notFound, pct1, subjectName, unavailable,
 } from './ui'
 
@@ -36,12 +37,12 @@ function headline(grid: RsMonthGrid, stat: Stat) {
   }
 }
 
-export function MonthsTab({ symbol, onSymbol }: { symbol: string; onSymbol: (s: string) => void }) {
+export function MonthsTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choice) => void }) {
   const [stat, setStat] = useState<Stat>('mean')
   const [span, setSpan] = useState<Span>('10')
   const [from, setFrom] = useState<number | undefined>()
   const [to, setTo] = useState<number | undefined>()
-  const typed = useDebounced(symbol.trim().toUpperCase(), 400)
+  const typed = choice.symbol
   const thisYear = new Date().getFullYear()
   const params = span === 'custom' ? { start_year: from, end_year: to }
     : span === 'all' ? {} : { start_year: thisYear - Number(span) + 1 }
@@ -56,7 +57,8 @@ export function MonthsTab({ symbol, onSymbol }: { symbol: string; onSymbol: (s: 
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
-        <SearchBox id="grid-symbol" label="Index or ticker" value={symbol} onChange={onSymbol} placeholder="SPX, NDX, AAPL, SPY" />
+        <SymbolPicker id="grid-symbol" label="Index, company or fund" placeholder="S&P 500, Apple, SPY"
+          choice={choice} onChoose={onChoice} withIndices />
         <Segmented label="Show" value={stat} onChange={setStat}
           options={[{ value: 'mean', label: 'Average' }, { value: 'median', label: 'Median' }]} />
         <Segmented label="Years" value={span} onChange={choose} options={SPANS} />
