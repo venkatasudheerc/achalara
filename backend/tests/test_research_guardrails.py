@@ -64,3 +64,15 @@ def test_research_reads_go_through_read_session_only():
             continue
         assert "_read()" in body, f"{function.name} must read through _read()"
         assert "_session(" not in body and "MdSession" not in body, function.name
+
+
+def test_a_read_address_without_a_password_is_ignored():
+    """The server builds the address before the password is set: fall back, still read-only."""
+    from app.md.config import MdSettings
+
+    owner = "postgresql://owner:secret@db:5432/example"
+    reader = "postgresql://md_reader:abc123@db:5432/example"
+    unset = "postgresql://md_reader:@db:5432/example"
+    assert MdSettings(database_url=owner, md_read_database_url=reader).read_url == reader
+    assert MdSettings(database_url=owner, md_read_database_url=unset).read_url == owner
+    assert MdSettings(database_url=owner, md_read_database_url="").read_url == owner

@@ -3,7 +3,8 @@
 # research and the chatbot use. It may read the md schema and nothing else.
 # Run once per server from deploy/, after MD_READER_PASSWORD is set in .env:
 #   sudo sh create-md-reader.sh
-# Then set MD_READ_DATABASE_URL in .env and run: sudo docker compose up -d
+# Then run: sudo docker compose up -d backend (docker-compose.yml builds
+# MD_READ_DATABASE_URL from the same password).
 # The password is read from .env and never written anywhere else.
 set -eu
 cd "$(dirname "$0")"
