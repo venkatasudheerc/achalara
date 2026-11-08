@@ -100,6 +100,7 @@ class RsSectorResult(BaseModel):
     observations: int
     beat_share: float
     median_excess: float
+    median_return: float
 
 
 class RsSectorRow(BaseModel):
@@ -153,6 +154,52 @@ class RsCalendarResponse(BaseModel):
     notes: List[str]
 
 
+class RsMonthSummary(BaseModel):
+    count: int
+    mean: float
+    median: float
+    share_up: float
+    share_down: float
+    best: float
+    worst: float
+    abs_mean: float
+    abs_best: float
+    abs_worst: float
+
+
+class RsGridYear(BaseModel):
+    year: int
+    months: Dict[str, float]
+    running_month: Optional[int] = None
+    ret: float
+    complete: bool
+
+
+class RsNamedMonth(BaseModel):
+    year: int
+    month: int
+    ret: float
+
+
+class RsYearSpan(BaseModel):
+    first: int
+    last: int
+
+
+class RsMonthGridResponse(BaseModel):
+    symbol: str
+    kind: str
+    basis: str
+    available: RsYearSpan
+    years: RsYears
+    rows: List[RsGridYear]
+    summary: Dict[str, Optional[RsMonthSummary]]
+    year_summary: Optional[RsMonthSummary] = None
+    best: Optional[RsNamedMonth] = None
+    worst: Optional[RsNamedMonth] = None
+    notes: List[str]
+
+
 class RsSearchResult(BaseModel):
     symbol: str
     name: Optional[str] = None
@@ -202,6 +249,30 @@ class RsPattern(BaseModel):
     month_to_date: Optional[List[RsMonthToDate]] = None
 
 
+class RsPathDay(BaseModel):
+    day: int
+    mean: float
+    median: float
+    years: int
+
+
+class RsCurrentDay(BaseModel):
+    day: int
+    ret: float
+
+
+class RsCurrentMonth(BaseModel):
+    year: int
+    through: date
+    days: List[RsCurrentDay]
+
+
+class RsMonthPath(BaseModel):
+    typical: List[RsPathDay]
+    years: int
+    current: Optional[RsCurrentMonth] = None
+
+
 class RsProfileResponse(BaseModel):
     symbol: str
     name: Optional[str] = None
@@ -217,6 +288,7 @@ class RsProfileResponse(BaseModel):
     month: int
     month_name: str
     month_by_trading_day: RsPattern
+    month_path: RsMonthPath
     sector_month_of_year: Optional[RsPattern] = None
     notes: List[str]
 

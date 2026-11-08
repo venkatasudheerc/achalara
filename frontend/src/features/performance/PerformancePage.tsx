@@ -176,20 +176,23 @@ export function PerformancePage() {
   // Benchmark state — local to this page
   const [benchmarkTicker, setBenchmarkTicker] = useState('SPX')
   const [inputValue, setInputValue] = useState('SPX')
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tickerInput = useRef<HTMLInputElement>(null)
 
   // Fetch full benchmark history (no date filter) — client-side filtering happens in
   // filteredSeries below, same pattern as perf.timeseries.
   const { data: benchmarkData } = useBenchmark(benchmarkTicker)
 
+  // The benchmark changes only on a decision (Sai, 2026-11-08): typing changes the box,
+  // Enter applies it and lets go of the cursor, Escape or leaving it empty puts back the
+  // one in use, and clicking in clears a custom ticker ready for a new one.
   const handleTickerInput = useCallback((raw: string) => {
-    const val = raw.toUpperCase().replace(/[^A-Z0-9.\-^]/g, '')
-    setInputValue(val)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      if (val.length >= 1 && val.length <= 10) setBenchmarkTicker(val)
-    }, 500)
+    setInputValue(raw.toUpperCase().replace(/[^A-Z0-9.\-^]/g, ''))
   }, [])
+  const applyTicker = () => {
+    if (inputValue.length >= 1 && inputValue.length <= 10) setBenchmarkTicker(inputValue)
+    tickerInput.current?.blur()
+  }
+  const clearTickerForTyping = () => { if (inputValue === benchmarkTicker) setInputValue('') }
 
   // Build the returns series for the chart: filter to visible window, attach benchmark
   // via nearest-prior lookup, then rebase all three lines to 0% at the first visible point.
@@ -335,7 +338,14 @@ export function PerformancePage() {
                 <input
                   type="text"
                   value={inputValue}
+                  ref={tickerInput}
                   onChange={(e) => handleTickerInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') applyTicker()
+                    else if (e.key === 'Escape') { setInputValue(benchmarkTicker); tickerInput.current?.blur() }
+                  }}
+                  onFocus={clearTickerForTyping} onClick={clearTickerForTyping}
+                  onBlur={() => { if (!inputValue) setInputValue(benchmarkTicker) }}
                   placeholder="ticker"
                   maxLength={10}
                   className={`w-16 px-2 py-0.5 text-xs font-mono rounded border transition-colors bg-paper outline-none ${

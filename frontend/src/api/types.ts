@@ -710,7 +710,7 @@ export interface RsTopPerformers {
   month: number; month_name: string; universe: string; benchmark: RsBenchmark; min_years: number
   eligible: number; found: number; expected_by_luck: number; rows: RsPerformer[]; notes: string[]
 }
-export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number }
+export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number; median_return: number }
 export interface RsSectors {
   month: number; month_name: string; universes: string[]; benchmarks: RsBenchmark[]
   sectors: { sector_code: string; sector: string; results: Record<string, RsSectorResult> }[]
@@ -746,5 +746,21 @@ export interface RsProfile {
   kind: string; basis: string; indices: string[]; first_day: string; last_day: string
   last_12_months: { period: string; ret: number }[]
   month_of_year: RsPattern; month: number; month_name: string
-  month_by_trading_day: RsPattern; sector_month_of_year: RsPattern | null; notes: string[]
+  month_by_trading_day: RsPattern; month_path: RsMonthPath; sector_month_of_year: RsPattern | null; notes: string[]
+}
+export interface RsMonthPath {
+  typical: { day: number; mean: number; median: number; years: number }[]; years: number
+  current: { year: number; through: string; days: { day: number; ret: number }[] } | null
+}
+export interface RsMonthSummary {
+  count: number; mean: number; median: number; share_up: number; share_down: number
+  best: number; worst: number; abs_mean: number; abs_best: number; abs_worst: number
+}
+export interface RsGridYear { year: number; months: Record<string, number>; running_month: number | null; ret: number; complete: boolean }
+export interface RsNamedMonth { year: number; month: number; ret: number }
+export interface RsMonthGrid {
+  symbol: string; kind: string; basis: string
+  available: { first: number; last: number }; years: { first: number; last: number; count: number }
+  rows: RsGridYear[]; summary: Record<string, RsMonthSummary | null>; year_summary: RsMonthSummary | null
+  best: RsNamedMonth | null; worst: RsNamedMonth | null; notes: string[]
 }

@@ -17,6 +17,7 @@ from app.api.schemas.market_data import (
 )
 from app.api.schemas.research import (
     RsCalendarResponse,
+    RsMonthGridResponse,
     RsMonthResponse,
     RsOutlookResponse,
     RsProfileResponse,
@@ -76,6 +77,22 @@ def research_calendar(
         start_year=start_year,
         end_year=end_year,
         stat=stat,
+    )
+
+
+@router.get("/month-grid", response_model=RsMonthGridResponse)
+def research_month_grid(
+    symbol: str = Query("SPX"),
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+):
+    """Each month's return year by year, with each calendar month's record beneath."""
+    return _answer(
+        md_read.research,
+        "month_grid",
+        symbol=symbol,
+        start_year=start_year,
+        end_year=end_year,
     )
 
 

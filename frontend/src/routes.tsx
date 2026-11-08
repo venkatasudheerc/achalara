@@ -47,7 +47,8 @@ export function AppRoutes() {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="status" element={<StatusPage />} />
-          <Route path="research" element={<ResearchPage />} />
+          <Route path="markets" element={<ResearchPage forAdvisor />} />
+          <Route path="research" element={<Navigate to="/app/markets" replace />} />
           <Route path="market-data" element={<MarketDataPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
@@ -62,7 +63,8 @@ export function AppRoutes() {
           <Route path="activity" element={<PortalActivityPage />} />
           <Route path="realized" element={<PortalRealizedPage />} />
           <Route path="performance" element={<PortalPerformancePage />} />
-          <Route path="research" element={<ResearchPage />} />
+          <Route path="markets" element={<ResearchPage />} />
+          <Route path="research" element={<Navigate to="../markets" replace />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

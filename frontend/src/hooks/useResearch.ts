@@ -23,6 +23,13 @@ export function useCalendarGrid(params: { symbol: string; start_year?: number; e
   })
 }
 
+export function useMonthGrid(params: { symbol: string; start_year?: number; end_year?: number }) {
+  return useQuery({
+    queryKey: ['research', 'month-grid', params], queryFn: () => researchApi.monthGrid(params),
+    staleTime: FRESH, placeholderData: keepPreviousData, enabled: params.symbol.length > 0,
+  })
+}
+
 export function useTopPerformers(params: { month: number; universe: string }) {
   return useQuery({ queryKey: ['research', 'top', params], queryFn: () => researchApi.topPerformers(params), staleTime: FRESH, placeholderData: keepPreviousData })
 }

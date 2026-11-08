@@ -9,6 +9,8 @@ as JSON Schema; the chatbot's tool definitions are made from it.
 
 These read md only; the session they are given is read-only (``read.ReadSession``).
 """
+import calendar
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -29,7 +31,13 @@ from app.md.models import (
     SecuritySymbol,
 )
 from app.md.sectors import SECTORS
-from app.utils.returns import day_returns, period_returns, summarise
+from app.utils.returns import (
+    day_returns,
+    month_to_date_by_date,
+    period_returns,
+    summarise,
+    typical_month_path,
+)
 from app.utils.symbols import app_symbol
 
 # Each index's own fund: the fair benchmark for its members (a total return).
@@ -68,6 +76,17 @@ SECTOR_FUNDS = {
 }
 SECTOR_NAMES = {code: name for code, name, _ in SECTORS}
 PRICE_NOTE = "Index levels leave dividends out; funds and stocks include them."
+# The VIX is a level of expected volatility, not something one owns: its "return" is a
+# change in how nervous the market is, and a rise is not a gain.
+VIX_NOTE = (
+    "The VIX measures how much movement traders expect in the S&P 500 over the next "
+    "month. Its change is a shift in nervousness, not a return anyone earns; it tends "
+    "to rise when stocks fall."
+)
+
+
+def _subject_notes(symbol: str) -> List[str]:
+    return [VIX_NOTE] if symbol.strip().upper() == "VIX" else []
 
 
 def _months_label(month: int) -> str:
@@ -301,6 +320,7 @@ def calendar_grid(
         )
     if stat == "mean":
         notes.append("An average can rest on one large day; the median cannot.")
+    notes.extend(_subject_notes(symbol))
     ranked = sorted(out, key=lambda c: c["value"])
     return {
         "symbol": symbol.strip().upper(),
@@ -311,6 +331,121 @@ def calendar_grid(
         "cells": out,
         "best": list(reversed(ranked[-5:])),
         "worst": ranked[:5],
+        "notes": notes,
+    }
+
+
+def _month_summary(values: Sequence[float]) -> Optional[Dict]:
+    """Average, median, share up and down, best and worst, and the same by size."""
+    if not values:
+        return None
+    sizes = [abs(v) for v in values]
+    return {
+        "count": len(values),
+        "mean": sum(values) / len(values),
+        "median": median(values),
+        "share_up": sum(v > 0 for v in values) / len(values),
+        "share_down": sum(v < 0 for v in values) / len(values),
+        "best": max(values),
+        "worst": min(values),
+        "abs_mean": sum(sizes) / len(sizes),
+        "abs_best": max(sizes),
+        "abs_worst": min(sizes),
+    }
+
+
+def month_grid(
+    db: Session,
+    symbol: str,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+    today: Optional[date] = None,
+) -> Dict:
+    """Each month's return, year by year, with each calendar month's record beneath."""
+    today = today or date.today()
+    kind, basis, closes = perf.series(db, symbol)
+    months = period_returns(closes, "month", as_of=today)
+    if not months:
+        raise perf.UnknownSubject(f"No whole month on file for {symbol}")
+    available = {"first": months[0].key[0], "last": months[-1].key[0]}
+    if start_year and end_year and start_year > end_year:
+        raise ValueError("start_year is after end_year")
+    chosen = [
+        m
+        for m in months
+        if (not start_year or m.key[0] >= start_year)
+        and (not end_year or m.key[0] <= end_year)
+    ]
+    if not chosen:
+        raise ValueError(
+            f"{symbol} has months on file from {available['first']} to {available['last']}"
+        )
+    by_year: Dict[int, List] = defaultdict(list)
+    for m in chosen:
+        by_year[m.key[0]].append(m)
+    rows = []
+    for year in sorted(by_year, reverse=True):
+        on_file = by_year[year]
+        growth = 1.0
+        for m in on_file:
+            growth *= 1 + m.ret
+        ended = [m for m in on_file if not m.partial]
+        rows.append(
+            {
+                "year": year,
+                "months": {str(m.key[1]): m.ret for m in on_file},
+                "running_month": next((m.key[1] for m in on_file if m.partial), None),
+                "ret": growth - 1,
+                "complete": len(ended) == 12,
+            }
+        )
+    ended = [m for m in chosen if not m.partial]
+    summary = {
+        str(month): _month_summary([m.ret for m in ended if m.key[1] == month])
+        for month in range(1, 13)
+    }
+    years = [r["ret"] for r in rows if r["complete"]]
+    best = max(ended, key=lambda m: m.ret, default=None)
+    worst = min(ended, key=lambda m: m.ret, default=None)
+
+    def _named(m):
+        return m and {"year": m.key[0], "month": m.key[1], "ret": m.ret}
+
+    notes = [
+        "Each cell is the month's return, from the last close of the month before.",
+        "A year not whole on file shows the return of its months on file; its row is marked.",
+    ]
+    if any(r["running_month"] for r in rows):
+        notes.append(
+            "The month still running is shown in its row but left out of the record below."
+        )
+    fewest = min((s["count"] for s in summary.values() if s), default=0)
+    if fewest < 10:
+        notes.append(
+            f"Some months have only {fewest} years behind them: a few events decide "
+            "their record, so read it as what happened, not as a pattern."
+        )
+    if kind == "security":
+        notes.append(
+            "Stock and fund prices go back about five years; indices go back decades."
+        )
+    notes.append(PRICE_NOTE)
+    notes.extend(_subject_notes(symbol))
+    return {
+        "symbol": symbol.strip().upper(),
+        "kind": kind,
+        "basis": basis,
+        "available": available,
+        "years": {
+            "first": min(by_year),
+            "last": max(by_year),
+            "count": len(by_year),
+        },
+        "rows": rows,
+        "summary": summary,
+        "year_summary": _month_summary(years),
+        "best": _named(best),
+        "worst": _named(worst),
         "notes": notes,
     }
 
@@ -420,7 +555,7 @@ def top_performers(
         "rows": rows,
         "notes": [
             f"{len(found)} of {eligible} beat {bench_symbol} in every {_months_label(month)} "
-            f"on file; about {round(luck)} would by chance alone.",
+            "on file.",
             "Members are today's, so stocks that left the index are missing (survivors only).",
             "Ranked by the typical (median) margin, so one big year cannot carry a stock.",
         ],
@@ -442,6 +577,7 @@ def sector_scorecard(
     )
     results: Dict[str, Dict[str, Dict]] = defaultdict(dict)
     benchmarks = []
+    most_years = 0
     for code in universes:
         bench_symbol, bench = _benchmark_months(db, code, today)
         benchmarks.append({"universe": code, "symbol": bench_symbol, "basis": "total"})
@@ -454,29 +590,37 @@ def sector_scorecard(
             .filter(SecurityClassification.sector_code.isnot(None))
         )
         margins: Dict[str, List[float]] = defaultdict(list)
+        returns: Dict[str, List[float]] = defaultdict(list)
         stocks: Dict[str, set] = defaultdict(set)
         for sid, months in perf.monthly_returns(db, ids, today).items():
             sector = sectors.get(sid)
             if not sector:
                 continue
+            years = 0
             for k, ret in months.items():
                 if k[1] == month and k in bench:
                     margins[sector].append(ret - bench[k])
+                    returns[sector].append(ret)
                     stocks[sector].add(sid)
+                    years += 1
+            most_years = max(most_years, years)
         for sector, values in margins.items():
             results[sector][code] = {
                 "stocks": len(stocks[sector]),
                 "observations": len(values),
                 "beat_share": sum(1 for v in values if v > 0) / len(values),
                 "median_excess": median(values),
+                "median_return": median(returns[sector]),
             }
     first = universes[0]
     rows = [
         {"sector_code": code, "sector": SECTOR_NAMES.get(code, code), "results": res}
         for code, res in results.items()
     ]
+    # Ordered by the typical lead over the benchmark in the first index chosen.
     rows.sort(
-        key=lambda r: r["results"].get(first, {}).get("beat_share", -1), reverse=True
+        key=lambda r: r["results"].get(first, {}).get("median_excess", float("-inf")),
+        reverse=True,
     )
     return {
         "month": month,
@@ -485,11 +629,14 @@ def sector_scorecard(
         "benchmarks": benchmarks,
         "sectors": rows,
         "notes": [
-            "Each stock-year counts once: a sector's share is how often its stocks beat "
-            "their index's fund in that month.",
-            "A share well above 50% across hundreds of stock-years is a pattern; one "
-            "stock's handful of years is not.",
-            "Members are today's (survivors only).",
+            f"Stocks are today's members with a whole {calendar.month_name[month]} on file. "
+            f"Each counts once for every {calendar.month_name[month]} on file: up to "
+            f"{most_years} so far, more as the years go by.",
+            "Median return is what the stocks did; median lead is how far ahead of the "
+            "benchmark they finished, each the middle value across stocks and years.",
+            "A share well above 50% across many stocks is a pattern; one stock's few "
+            "years are not.",
+            "Stocks that have left the index are not counted (survivors only).",
         ],
     }
 
@@ -523,22 +670,36 @@ def find_security(db: Session, query: str, limit: int = 10) -> Dict:
                 func.lower(Company.name).like(like),
             )
         )
-        .limit(200)
+        .limit(500)
         .all()
     )
-
-    def rank(row):
-        symbol = row[1]
-        return (symbol != ticker, not symbol.startswith(ticker), len(symbol), symbol)
-
-    rows.sort(key=rank)
-    rows = rows[:limit]
-    labels = _labels(db, [r[0] for r in rows])
     indices = defaultdict(list)
     for sid, code in db.query(IndexMember.security_id, IndexMember.index_code).filter(
         IndexMember.security_id.in_([r[0] for r in rows])
     ):
         indices[sid].append(code)
+    word = re.compile(r"\b" + re.escape(text.lower()))
+
+    def rank(row):
+        """As a quote screen lists them: the exact ticker; then tickers starting with the
+        text, shortest first (APP, APPF, APPN); then names with a word starting with it
+        (Apple, not Pineapple); then any name containing it. Among names, the larger
+        company first (S&P 500, then Russell 1000)."""
+        sid, symbol, name, _, company = row
+        names = f"{name or ''} {company or ''}".lower()
+        size = 0 if "SP500" in indices[sid] else 1 if "R1000" in indices[sid] else 2
+        # A share class (BRK.B) is what someone typing its base ticker (BRK) means.
+        if symbol == ticker or re.split(r"[. ]", symbol)[0] == ticker:
+            return (0, len(symbol), size, symbol)
+        if symbol.startswith(ticker):
+            return (1, len(symbol), size, symbol)
+        if word.search(names):
+            return (2, size, len(symbol), symbol)
+        return (3, size, len(symbol), symbol)
+
+    rows.sort(key=rank)
+    rows = rows[:limit]
+    labels = _labels(db, [r[0] for r in rows])
     return {
         "query": text,
         "results": [
@@ -613,12 +774,33 @@ def security_profile(
         "month_by_trading_day": perf.seasonality(
             db, symbol, "trading_day", month=month, today=today
         ),
+        "month_path": _month_path(closes, month, today),
         "sector_month_of_year": sector_pattern,
         "notes": [
             "A stock's own record is about five years: a pattern in it may be chance; "
             "its sector's record across hundreds of stocks is sturdier.",
             PRICE_NOTE,
         ],
+    }
+
+
+def _month_path(closes, month: int, today: date) -> Dict:
+    """A month by calendar date: where the security has typically stood after each date,
+    and, when the month is this month, where it stands this year so far."""
+    typical = typical_month_path(closes, month, today)
+    current = None
+    if month == today.month:
+        path = month_to_date_by_date(closes, today.year, month)
+        if path:
+            current = {
+                "year": today.year,
+                "through": date(today.year, month, path[-1][0]),
+                "days": [{"day": d, "ret": r} for d, r in path],
+            }
+    return {
+        "typical": typical,
+        "years": max((p["years"] for p in typical), default=0),
+        "current": current,
     }
 
 
@@ -689,6 +871,20 @@ TOOLS: Tuple[Tool, ...] = (
             ["symbol"],
         ),
         calendar_grid,
+    ),
+    Tool(
+        "month_grid",
+        "Every month's return year by year for one symbol, with each calendar month's "
+        "average, median, share up and down, best and worst, and the year's return.",
+        _schema(
+            {
+                "symbol": SYMBOL,
+                "start_year": {"type": "integer"},
+                "end_year": {"type": "integer"},
+            },
+            ["symbol"],
+        ),
+        month_grid,
     ),
     Tool(
         "top_performers",

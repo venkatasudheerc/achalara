@@ -53,7 +53,7 @@ signed in; there is no auth context and nothing about the session is kept in `lo
 `useLogin` / `useLogout` clear the query cache so one user's data is never shown to the next.
 
 The portal lives at `/portal`, `/portal/holdings`, `/portal/activity`, `/portal/realized`,
-`/portal/performance` and `/portal/research`. `PortalShell` is a slim bar with the menu behind one ≡ button and the
+`/portal/performance` and `/portal/markets`. `PortalShell` is a slim bar with the menu behind one ≡ button and the
 page at full window width, with a 17px base size (the portal is being redesigned page by page to
 the "wide workspace" mockups; Home is done and reads `/api/v1/portal/home` through
 `usePortalHome`; its chart, `portal/HomeChart.tsx`, reads the performance series, whose points
@@ -138,15 +138,27 @@ Each feature directory contains its page component(s). Implemented:
 - `invitations/RequestInvitationForm` (on the public page: name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
 - `status/StatusPage` (`/app/status`) — system status for the advisor: what needs a look, daily jobs, brokerage accounts, data freshness, backup, notices received from the brokerage source, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
-- `research/ResearchPage` — market insights, one component routed at both `/app/research` (advisor
-  sidebar) and `/portal/research` (portal menu), so every size in it is an explicit pixel value.
-  Three panels (this week, this month so far, next month's record) and four tabs: Calendar
-  (`research/CalendarHeatmap`: a day × month grid, average or median, diverging colours from
-  `useChartColours().diverging`), Top performers (with a CSV built on the client), Sectors (one
-  index or two side by side) and A security (search, then its profile). Reads only
-  `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal fractions. Every
-  figure shows its basis (dividends in or out) and its sample, and each answer's `notes` are shown
-  as given. It describes the past: no advice or forecast wording.
+- `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
+  component at `/app/markets` (advisor menu) and `/portal/markets` (portal menu); the old
+  `/research` addresses redirect there. Every size is an explicit pixel value. Four cards sit above
+  the tabs (`research/Overview.tsx`, `GlanceCards`); the tabs are Overview (this week, this month
+  against a typical one, next month's record), Months by year (`MonthsTab`, a 12-month bar chart over
+  the year × month grid `MonthGrid`), Calendar days (`CalendarHeatmap`), Top performers, Sectors
+  and Stock/ETF look-up (`LookupTab`: matches drop down as you type, a ticker column and a name
+  column, stocks and funds grouped, typed letters highlighted; typing changes only the list; the page changes on a decision: Enter, a click, or a name chosen
+  elsewhere on the page, and the choice is kept across tabs; the last 12 months, the stock beside its
+  sector, and a month date by date: the typical path from `month_path.typical`, and this year's
+  so far in gold when the month is the one running, `month_path.current`). Building blocks are in `research/ui.tsx`: `Tabs` (underlined,
+  for views) apart from `Segmented` (for settings), `Section` (a card that opens with its answer
+  in one sentence), `HowToRead` (the caveats, closed by default), `Bars`, `DivergingRows`,
+  `displayName` (company names as people say them, from SEC filings' "WATERS CORP /DE/"). Each
+  view states its answer in words first, then one chart or one clean table; colour marks only gain,
+  loss and the highlighted figure. Months by year and Calendar days share one chosen index or stock (`SymbolPicker` with indices);
+  the look-up keeps its own (stocks and funds).
+  Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
+  fractions. It describes the past: no advice or forecast wording. The luck estimate
+  (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
+  members found it confusing, so `/portal/markets`, previews included, leaves it out.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
@@ -168,6 +180,17 @@ data={perf.timeseries.filter(pt => {
 ```
 
 The quick-filter presets (`applyPreset`) set `DateRangeContext`; the chart section then re-filters from the already-fetched full series.
+
+### Search boxes: choosing versus filtering
+
+Sai's rule (2026-11-08): a box that **chooses one thing to load** (an index, a stock, a fund, a
+benchmark) changes the page only on a decision, never while typing. Use
+`research/SymbolPicker` (matches drop down as you type, a ticker column and a name column,
+grouped, typed letters highlighted; Enter or a click chooses; a choice releases the cursor;
+clicking back in clears the box; leaving it empty puts the choice back). The Performance page's
+benchmark box follows the same rule by hand (Enter applies, Escape restores). A box that
+**filters a list already on screen** (the portal's Holdings, Activity and Realised gains) stays
+live as you type: nothing new loads, and clearing it on a click would throw the filter away.
 
 ### Formatters (`src/lib/formatters.ts`)
 

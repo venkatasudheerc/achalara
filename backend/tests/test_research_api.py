@@ -132,6 +132,8 @@ RESEARCH_PATHS = (
     "this-month",
     "outlook?month=11",
     "calendar?symbol=SPX&start_year=2000&end_year=2025",
+    "month-grid?symbol=AAA",
+    "month-grid?symbol=SPX&start_year=2000&end_year=2009",
     "top-performers?month=11",
     "sectors?month=11&compare=R2000",
     "securities?q=aaa",
@@ -187,7 +189,8 @@ def test_top_performers_compare_with_the_index_fund_and_say_what_luck_gives(db, 
     assert out["eligible"] == 2 and out["expected_by_luck"] == pytest.approx(
         2 * 0.5**4
     )
-    assert any("chance" in n for n in out["notes"])
+    # The luck estimate is a figure for the advisor's screen, not a note every reader sees.
+    assert not any("chance" in n for n in out["notes"])
     small = insights.top_performers(db, 11, "R2000", today=TODAY)
     assert small["benchmark"]["symbol"] == "IWM"
     with pytest.raises(ValueError):
@@ -200,6 +203,13 @@ def test_the_sector_scorecard_puts_two_indices_side_by_side(db, market):
     assert rows["IT"]["SP500"]["beat_share"] == 1.0  # AAA, every November
     assert "R2000" in rows["IT"]
     assert rows["FIN"]["SP500"]["observations"] == 4
+    assert rows["FIN"]["SP500"]["stocks"] == 1
+    it = rows["IT"]["SP500"]
+    assert it["median_return"] > it["median_excess"] > 0  # SPY also rose each November
+    # Ordered by lead over the benchmark, highest first.
+    leads = [r["results"]["SP500"]["median_excess"] for r in out["sectors"]]
+    assert leads == sorted(leads, reverse=True)
+    assert any("up to 4 so far" in n for n in out["notes"])
 
 
 def test_a_calendar_grid_says_how_thin_its_cells_are(db, market):
@@ -222,4 +232,82 @@ def test_finding_and_profiling_a_security(db, market):
     )
     assert len(profile["last_12_months"]) == 12
     assert profile["month_by_trading_day"]["buckets"]
+    path = profile["month_path"]
+    assert [d["day"] for d in path["typical"]] == list(range(1, 31))
+    assert path["years"] == 4 and path["typical"][-1]["mean"] > 0  # Novembers 2022-2025
+    current = path["current"]
+    assert current["year"] == 2026 and current["through"] == date(2026, 11, 6)
+    assert [d["day"] for d in current["days"]] == list(range(1, 7))
+    assert insights.security_profile(db, "AAA", 10, TODAY)["month_path"]["current"] is None
     assert profile["sector_month_of_year"]["survivorship"] is True
+
+
+def test_a_month_grid_runs_year_by_year_with_each_months_record(db, market):
+    grid = insights.month_grid(db, "AAA", today=TODAY)
+    # December 2021 is the first month on file and has no close before it.
+    assert [r["year"] for r in grid["rows"]] == [2026, 2025, 2024, 2023, 2022]
+    latest, whole = grid["rows"][0], grid["rows"][1]
+    assert latest["running_month"] == 11 and latest["complete"] is False
+    assert len(latest["months"]) == 11 and whole["complete"] is True
+    growth = 1.0
+    for value in whole["months"].values():
+        growth *= 1 + value
+    assert whole["ret"] == pytest.approx(growth - 1)
+    november = grid["summary"]["11"]
+    assert november["count"] == 4  # the running November is left out
+    assert november["share_up"] == 1.0 and november["share_down"] == 0.0
+    assert november["abs_best"] == pytest.approx(november["best"])
+    assert grid["best"]["month"] == 11 and grid["year_summary"]["count"] == 4
+    assert any("five years" in n for n in grid["notes"])
+
+
+def test_a_month_grid_takes_a_span_of_years(db, market):
+    grid = insights.month_grid(db, "SPX", 2000, 2009, TODAY)
+    assert grid["years"] == {"first": 2000, "last": 2009, "count": 10}
+    assert grid["available"]["first"] == 1990 and grid["basis"] == "price"
+    assert grid["summary"]["9"]["share_down"] == 1.0  # every September fell
+    assert all(r["complete"] for r in grid["rows"])
+    with pytest.raises(ValueError):
+        insights.month_grid(db, "SPX", 2010, 2000, TODAY)
+    with pytest.raises(ValueError):
+        insights.month_grid(db, "AAA", 2010, 2012, TODAY)
+
+
+def test_search_puts_a_word_match_and_a_large_company_first(db, market):
+    from app.md.models import Security, SecuritySymbol
+
+    for symbol, name in (("PNX", "Pineapple Example Holdings"), ("APX", "Apple Example Inc")):
+        security = Security(name=name, kind="stock")
+        db.add(security)
+        db.flush()
+        db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    db.flush()
+    found = [r["symbol"] for r in insights.find_security(db, "apple")["results"]]
+    assert found[:2] == ["APX", "PNX"]  # a word starting "apple" before "pineapple"
+    # Same kind of match: the S&P 500 member (AAA, BBB) before the rest.
+    # Tickers starting with the text come before names, shortest ticker first.
+    for symbol, name in (("APXL", "Long Ticker Example"), ("ZZZ", "Apx Partners Example")):
+        security = Security(name=name, kind="stock")
+        db.add(security)
+        db.flush()
+        db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    db.flush()
+    found = [r["symbol"] for r in insights.find_security(db, "apx")["results"]]
+    assert found[:3] == ["APX", "APXL", "ZZZ"]
+    names = [r["symbol"] for r in insights.find_security(db, "example corp")["results"]]
+    assert names.index("AAA") < names.index("SML") and names.index("BBB") < names.index("SML")
+
+
+def test_the_vix_says_its_change_is_not_a_return(db, market):
+    from app.md import levels
+
+    assert levels.LEVELS["VIX"] == "^VIX"
+    level = 20.0
+    for day in _weekdays(date(2015, 1, 1), date(2026, 11, 6)):
+        level = level * (1.01 if day.day < 15 else 0.99)
+        db.add(IndexLevelHist(symbol="VIX", price_date=day, close=Decimal(str(round(level, 4))), source="test", fetched_at=STAMP))
+    db.flush()
+    grid = insights.month_grid(db, "VIX", today=TODAY)
+    assert grid["kind"] == "index" and any("not a return" in n for n in grid["notes"])
+    assert any("not a return" in n for n in insights.calendar_grid(db, "VIX", today=TODAY)["notes"])
+    assert not any("not a return" in n for n in insights.month_grid(db, "SPX", today=TODAY)["notes"])
