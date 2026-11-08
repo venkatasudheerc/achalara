@@ -1702,6 +1702,62 @@ paths:
         '503':
           description: Market data could not be read
           content: *id001
+  /api/v1/research/month-grid:
+    get:
+      tags:
+      - research
+      summary: Research Month Grid
+      description: Each month's return year by year, with each calendar month's record
+        beneath.
+      operationId: research_month_grid_api_v1_research_month_grid_get
+      parameters:
+      - name: symbol
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SPX
+          title: Symbol
+      - name: start_year
+        in: query
+        required: false
+        schema:
+          type: integer
+          title: Start Year
+          nullable: true
+      - name: end_year
+        in: query
+        required: false
+        schema:
+          type: integer
+          title: End Year
+          nullable: true
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          title: Achalara Session
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsMonthGridResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
   /api/v1/research/top-performers:
     get:
       tags:
@@ -7551,6 +7607,159 @@ components:
       - basis
       - record
       title: RsIndexRecord
+    RsGridYear:
+      properties:
+        year:
+          type: integer
+          title: Year
+        months:
+          additionalProperties:
+            type: number
+          type: object
+          title: Months
+        running_month:
+          type: integer
+          title: Running Month
+          nullable: true
+        ret:
+          type: number
+          title: Ret
+        complete:
+          type: boolean
+          title: Complete
+      type: object
+      required:
+      - year
+      - months
+      - ret
+      - complete
+      title: RsGridYear
+    RsMonthGridResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        kind:
+          type: string
+          title: Kind
+        basis:
+          type: string
+          title: Basis
+        available:
+          $ref: '#/components/schemas/RsYearSpan'
+        years:
+          $ref: '#/components/schemas/RsYears'
+        rows:
+          items:
+            $ref: '#/components/schemas/RsGridYear'
+          type: array
+          title: Rows
+        summary:
+          additionalProperties:
+            $ref: '#/components/schemas/RsMonthSummary'
+            nullable: true
+          type: object
+          title: Summary
+        year_summary:
+          $ref: '#/components/schemas/RsMonthSummary'
+          nullable: true
+        best:
+          $ref: '#/components/schemas/RsNamedMonth'
+          nullable: true
+        worst:
+          $ref: '#/components/schemas/RsNamedMonth'
+          nullable: true
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - symbol
+      - kind
+      - basis
+      - available
+      - years
+      - rows
+      - summary
+      - notes
+      title: RsMonthGridResponse
+    RsMonthSummary:
+      properties:
+        count:
+          type: integer
+          title: Count
+        mean:
+          type: number
+          title: Mean
+        median:
+          type: number
+          title: Median
+        share_up:
+          type: number
+          title: Share Up
+        share_down:
+          type: number
+          title: Share Down
+        best:
+          type: number
+          title: Best
+        worst:
+          type: number
+          title: Worst
+        abs_mean:
+          type: number
+          title: Abs Mean
+        abs_best:
+          type: number
+          title: Abs Best
+        abs_worst:
+          type: number
+          title: Abs Worst
+      type: object
+      required:
+      - count
+      - mean
+      - median
+      - share_up
+      - share_down
+      - best
+      - worst
+      - abs_mean
+      - abs_best
+      - abs_worst
+      title: RsMonthSummary
+    RsNamedMonth:
+      properties:
+        year:
+          type: integer
+          title: Year
+        month:
+          type: integer
+          title: Month
+        ret:
+          type: number
+          title: Ret
+      type: object
+      required:
+      - year
+      - month
+      - ret
+      title: RsNamedMonth
+    RsYearSpan:
+      properties:
+        first:
+          type: integer
+          title: First
+        last:
+          type: integer
+          title: Last
+      type: object
+      required:
+      - first
+      - last
+      title: RsYearSpan
     RsMonthResponse:
       properties:
         as_of:

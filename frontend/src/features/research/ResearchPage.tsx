@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { isAxiosError } from 'axios'
 import {
-  useCalendarGrid, useResearchMonth, useResearchOutlook, useResearchWeek, useSecurityProfile,
+  useCalendarGrid, useMonthGrid, useResearchMonth, useResearchOutlook, useResearchWeek, useSecurityProfile,
   useSecuritySearch, useSectorScorecard, useTopPerformers,
 } from '@/hooks/useResearch'
 import type { RsBucket, RsPerformer, RsReturnRow, RsStats } from '@/api/types'
@@ -11,6 +11,7 @@ import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, Pills, Select, TextInput, tone, useDebounced } from '@/features/portal/ui'
 import { CalendarHeatmap } from './CalendarHeatmap'
+import { MonthGrid } from './MonthGrid'
 
 // The page is shared by the advisor workspace and the family portal, so every size is
 // an explicit pixel value: the portal's spacing override cannot change it.
@@ -26,9 +27,10 @@ const UNIVERSES = [
 ] as const
 const UNIVERSE_LABEL: Record<string, string> = Object.fromEntries(UNIVERSES.map((u) => [u.value, u.label]))
 
-type Tab = 'calendar' | 'top' | 'sectors' | 'security'
+type Tab = 'months' | 'calendar' | 'top' | 'sectors' | 'security'
 const TABS: { value: Tab; label: string }[] = [
-  { value: 'calendar', label: 'Calendar' },
+  { value: 'months', label: 'Months by year' },
+  { value: 'calendar', label: 'Calendar days' },
   { value: 'top', label: 'Top performers' },
   { value: 'sectors', label: 'Sectors' },
   { value: 'security', label: 'A security' },
@@ -249,6 +251,76 @@ function CalendarTab() {
               {data.years.first} to {data.years.last} ({data.years.count} years) · {data.basis === 'total' ? 'dividends included' : 'price only, dividends left out'}
             </p>
             <CalendarHeatmap grid={data} />
+            <Notes notes={data.notes} />
+          </div>
+        )}
+    </div>
+  )
+}
+
+const SPANS = [
+  { value: '10', label: 'Last 10 years' },
+  { value: '20', label: 'Last 20 years' },
+  { value: 'all', label: 'All years' },
+  { value: 'custom', label: 'Choose' },
+] as const
+type Span = (typeof SPANS)[number]['value']
+
+function MonthsTab() {
+  const [symbol, setSymbol] = useState('SPX')
+  const [stat, setStat] = useState<'mean' | 'median'>('mean')
+  const [span, setSpan] = useState<Span>('20')
+  const [from, setFrom] = useState<number | undefined>()
+  const [to, setTo] = useState<number | undefined>()
+  const typed = useDebounced(symbol.trim().toUpperCase(), 400)
+  const thisYear = new Date().getFullYear()
+  const params = span === 'custom' ? { start_year: from, end_year: to }
+    : span === 'all' ? {} : { start_year: thisYear - Number(span) + 1 }
+  const { data, isLoading, isError, error, refetch, isFetching } = useMonthGrid({ symbol: typed, ...params })
+  const years = data ? Array.from({ length: data.available.last - data.available.first + 1 }, (_, i) => data.available.last - i) : []
+  const choose = (v: Span) => {
+    if (v === 'custom' && data) { setFrom(data.years.first); setTo(data.years.last) }
+    setSpan(v)
+  }
+  return (
+    <div className="space-y-[16px]">
+      <div className="flex flex-wrap gap-[16px] items-end">
+        <div className="w-[180px]">
+          <Field label="Index or ticker" htmlFor="grid-symbol">
+            <TextInput id="grid-symbol" value={symbol} onChange={setSymbol} placeholder="SPX, AAPL, SPY" />
+          </Field>
+        </div>
+        <Pills label="Headline row" value={stat} onChange={setStat}
+          options={[{ value: 'mean', label: 'Average' }, { value: 'median', label: 'Median' }]} />
+        <Pills label="Years" value={span} onChange={choose} options={SPANS} />
+        {span === 'custom' && years.length > 0 && (
+          <>
+            <Field label="From" htmlFor="grid-from">
+              <Select id="grid-from" value={String(from ?? '')} minWidth={110}
+                onChange={(v) => { setFrom(Number(v)); if (to && Number(v) > to) setTo(Number(v)) }}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </Select>
+            </Field>
+            <Field label="To" htmlFor="grid-to">
+              <Select id="grid-to" value={String(to ?? '')} minWidth={110}
+                onChange={(v) => { setTo(Number(v)); if (from && Number(v) < from) setFrom(Number(v)) }}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </Select>
+            </Field>
+          </>
+        )}
+      </div>
+      {!typed ? <EmptyState title="Name an index or a ticker" message="SPX, NDX and RUT go back decades; a stock's record is about five years." />
+        : isLoading ? <Loading rows={12} />
+        : notFound(error) ? <EmptyState title={`Nothing on file for ${typed}`} message="Try an index (SPX, NDX, RUT) or a ticker in one of the tracked indices." />
+        : isError || !data ? <ErrorState message={unavailable(error)} onRetry={() => refetch()} />
+        : (
+          <div className={`space-y-[12px] ${isFetching ? 'opacity-70' : ''}`}>
+            <p className="text-[15px] text-stone">
+              {data.symbol}: each month's return, {data.years.first} to {data.years.last} ({data.years.count} years;
+              on file {data.available.first} to {data.available.last}) · {data.basis === 'total' ? 'dividends included' : 'price only, dividends left out'}
+            </p>
+            <MonthGrid grid={data} stat={stat} />
             <Notes notes={data.notes} />
           </div>
         )}
@@ -533,7 +605,7 @@ function SecurityTab() {
 
 /** Market insights from the md schema, the same for every signed-in user. */
 export function ResearchPage() {
-  const [tab, setTab] = useState<Tab>('calendar')
+  const [tab, setTab] = useState<Tab>('months')
   return (
     <div className="max-w-[1400px] w-full mx-auto flex flex-col gap-[24px]">
       <div>
@@ -552,6 +624,7 @@ export function ResearchPage() {
         <h2 className="font-display text-[24px]">Explore</h2>
         <Pills label="Explore" value={tab} onChange={setTab} options={TABS} />
         <div className="bg-surface border border-stone/25 rounded-card p-[16px] md:p-[24px] min-w-0">
+          {tab === 'months' && <MonthsTab />}
           {tab === 'calendar' && <CalendarTab />}
           {tab === 'top' && <TopTab />}
           {tab === 'sectors' && <SectorsTab />}

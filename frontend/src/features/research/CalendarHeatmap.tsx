@@ -1,19 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useChartColours } from '@/context/ThemeContext'
 import type { RsCalendar, RsCell } from '@/api/types'
+import { capOf, heat, signed } from './heat'
 
 const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')
 
-function mix(a: string, b: string, t: number): string {
-  const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16)
-  return '#' + [0, 1, 2]
-    .map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function signed(value: number, decimals = 2): string {
-  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(decimals)}`
-}
 
 /** Average (or median) daily change by calendar date: a diverging heatmap, loss to
  *  gain through a neutral grey, with the value printed in every cell and the days
@@ -24,16 +15,10 @@ export function CalendarHeatmap({ grid }: { grid: RsCalendar }) {
 
   const { byKey, cap } = useMemo(() => {
     const byKey = new Map(grid.cells.map((c) => [`${c.month}-${c.day}`, c]))
-    // The colour saturates at the 95th percentile, so one extreme day cannot wash out the rest.
-    const sizes = grid.cells.map((c) => Math.abs(c.value)).sort((a, b) => a - b)
-    const cap = sizes[Math.floor(sizes.length * 0.95)] || 0.001
-    return { byKey, cap }
+    return { byKey, cap: capOf(grid.cells.map((c) => c.value)) }
   }, [grid])
 
-  const fill = (value: number) => {
-    const t = Math.min(Math.abs(value) / cap, 1)
-    return mix(colours.mid, value >= 0 ? colours.gain : colours.loss, t)
-  }
+  const fill = (value: number) => heat(colours, value, cap)
 
   const describe = (c: RsCell) =>
     `${MONTHS[c.month - 1]} ${c.day}: ${grid.stat} ${signed(c.value)}% over ${c.days} ${c.days === 1 ? 'day' : 'days'}` +

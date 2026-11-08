@@ -315,6 +315,120 @@ def calendar_grid(
     }
 
 
+def _month_summary(values: Sequence[float]) -> Optional[Dict]:
+    """Average, median, share up and down, best and worst, and the same by size."""
+    if not values:
+        return None
+    sizes = [abs(v) for v in values]
+    return {
+        "count": len(values),
+        "mean": sum(values) / len(values),
+        "median": median(values),
+        "share_up": sum(v > 0 for v in values) / len(values),
+        "share_down": sum(v < 0 for v in values) / len(values),
+        "best": max(values),
+        "worst": min(values),
+        "abs_mean": sum(sizes) / len(sizes),
+        "abs_best": max(sizes),
+        "abs_worst": min(sizes),
+    }
+
+
+def month_grid(
+    db: Session,
+    symbol: str,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+    today: Optional[date] = None,
+) -> Dict:
+    """Each month's return, year by year, with each calendar month's record beneath."""
+    today = today or date.today()
+    kind, basis, closes = perf.series(db, symbol)
+    months = period_returns(closes, "month", as_of=today)
+    if not months:
+        raise perf.UnknownSubject(f"No whole month on file for {symbol}")
+    available = {"first": months[0].key[0], "last": months[-1].key[0]}
+    if start_year and end_year and start_year > end_year:
+        raise ValueError("start_year is after end_year")
+    chosen = [
+        m
+        for m in months
+        if (not start_year or m.key[0] >= start_year)
+        and (not end_year or m.key[0] <= end_year)
+    ]
+    if not chosen:
+        raise ValueError(
+            f"{symbol} has months on file from {available['first']} to {available['last']}"
+        )
+    by_year: Dict[int, List] = defaultdict(list)
+    for m in chosen:
+        by_year[m.key[0]].append(m)
+    rows = []
+    for year in sorted(by_year, reverse=True):
+        on_file = by_year[year]
+        growth = 1.0
+        for m in on_file:
+            growth *= 1 + m.ret
+        ended = [m for m in on_file if not m.partial]
+        rows.append(
+            {
+                "year": year,
+                "months": {str(m.key[1]): m.ret for m in on_file},
+                "running_month": next((m.key[1] for m in on_file if m.partial), None),
+                "ret": growth - 1,
+                "complete": len(ended) == 12,
+            }
+        )
+    ended = [m for m in chosen if not m.partial]
+    summary = {
+        str(month): _month_summary([m.ret for m in ended if m.key[1] == month])
+        for month in range(1, 13)
+    }
+    years = [r["ret"] for r in rows if r["complete"]]
+    best = max(ended, key=lambda m: m.ret, default=None)
+    worst = min(ended, key=lambda m: m.ret, default=None)
+
+    def _named(m):
+        return m and {"year": m.key[0], "month": m.key[1], "ret": m.ret}
+
+    notes = [
+        "Each cell is the month's return, from the last close of the month before.",
+        "A year not whole on file shows the return of its months on file; its row is marked.",
+    ]
+    if any(r["running_month"] for r in rows):
+        notes.append(
+            "The month still running is shown in its row but left out of the record below."
+        )
+    fewest = min((s["count"] for s in summary.values() if s), default=0)
+    if fewest < 10:
+        notes.append(
+            f"Some months have only {fewest} years behind them: a few events decide "
+            "their record, so read it as what happened, not as a pattern."
+        )
+    if kind == "security":
+        notes.append(
+            "Stock and fund prices go back about five years; indices go back decades."
+        )
+    notes.append(PRICE_NOTE)
+    return {
+        "symbol": symbol.strip().upper(),
+        "kind": kind,
+        "basis": basis,
+        "available": available,
+        "years": {
+            "first": min(by_year),
+            "last": max(by_year),
+            "count": len(by_year),
+        },
+        "rows": rows,
+        "summary": summary,
+        "year_summary": _month_summary(years),
+        "best": _named(best),
+        "worst": _named(worst),
+        "notes": notes,
+    }
+
+
 # -- across many stocks -------------------------------------------------------
 
 
@@ -689,6 +803,20 @@ TOOLS: Tuple[Tool, ...] = (
             ["symbol"],
         ),
         calendar_grid,
+    ),
+    Tool(
+        "month_grid",
+        "Every month's return year by year for one symbol, with each calendar month's "
+        "average, median, share up and down, best and worst, and the year's return.",
+        _schema(
+            {
+                "symbol": SYMBOL,
+                "start_year": {"type": "integer"},
+                "end_year": {"type": "integer"},
+            },
+            ["symbol"],
+        ),
+        month_grid,
     ),
     Tool(
         "top_performers",

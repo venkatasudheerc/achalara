@@ -748,3 +748,15 @@ export interface RsProfile {
   month_of_year: RsPattern; month: number; month_name: string
   month_by_trading_day: RsPattern; sector_month_of_year: RsPattern | null; notes: string[]
 }
+export interface RsMonthSummary {
+  count: number; mean: number; median: number; share_up: number; share_down: number
+  best: number; worst: number; abs_mean: number; abs_best: number; abs_worst: number
+}
+export interface RsGridYear { year: number; months: Record<string, number>; running_month: number | null; ret: number; complete: boolean }
+export interface RsNamedMonth { year: number; month: number; ret: number }
+export interface RsMonthGrid {
+  symbol: string; kind: string; basis: string
+  available: { first: number; last: number }; years: { first: number; last: number; count: number }
+  rows: RsGridYear[]; summary: Record<string, RsMonthSummary | null>; year_summary: RsMonthSummary | null
+  best: RsNamedMonth | null; worst: RsNamedMonth | null; notes: string[]
+}

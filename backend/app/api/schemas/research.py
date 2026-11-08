@@ -153,6 +153,52 @@ class RsCalendarResponse(BaseModel):
     notes: List[str]
 
 
+class RsMonthSummary(BaseModel):
+    count: int
+    mean: float
+    median: float
+    share_up: float
+    share_down: float
+    best: float
+    worst: float
+    abs_mean: float
+    abs_best: float
+    abs_worst: float
+
+
+class RsGridYear(BaseModel):
+    year: int
+    months: Dict[str, float]
+    running_month: Optional[int] = None
+    ret: float
+    complete: bool
+
+
+class RsNamedMonth(BaseModel):
+    year: int
+    month: int
+    ret: float
+
+
+class RsYearSpan(BaseModel):
+    first: int
+    last: int
+
+
+class RsMonthGridResponse(BaseModel):
+    symbol: str
+    kind: str
+    basis: str
+    available: RsYearSpan
+    years: RsYears
+    rows: List[RsGridYear]
+    summary: Dict[str, Optional[RsMonthSummary]]
+    year_summary: Optional[RsMonthSummary] = None
+    best: Optional[RsNamedMonth] = None
+    worst: Optional[RsNamedMonth] = None
+    notes: List[str]
+
+
 class RsSearchResult(BaseModel):
     symbol: str
     name: Optional[str] = None

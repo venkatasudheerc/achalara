@@ -132,6 +132,8 @@ RESEARCH_PATHS = (
     "this-month",
     "outlook?month=11",
     "calendar?symbol=SPX&start_year=2000&end_year=2025",
+    "month-grid?symbol=AAA",
+    "month-grid?symbol=SPX&start_year=2000&end_year=2009",
     "top-performers?month=11",
     "sectors?month=11&compare=R2000",
     "securities?q=aaa",
@@ -223,3 +225,34 @@ def test_finding_and_profiling_a_security(db, market):
     assert len(profile["last_12_months"]) == 12
     assert profile["month_by_trading_day"]["buckets"]
     assert profile["sector_month_of_year"]["survivorship"] is True
+
+
+def test_a_month_grid_runs_year_by_year_with_each_months_record(db, market):
+    grid = insights.month_grid(db, "AAA", today=TODAY)
+    # December 2021 is the first month on file and has no close before it.
+    assert [r["year"] for r in grid["rows"]] == [2026, 2025, 2024, 2023, 2022]
+    latest, whole = grid["rows"][0], grid["rows"][1]
+    assert latest["running_month"] == 11 and latest["complete"] is False
+    assert len(latest["months"]) == 11 and whole["complete"] is True
+    growth = 1.0
+    for value in whole["months"].values():
+        growth *= 1 + value
+    assert whole["ret"] == pytest.approx(growth - 1)
+    november = grid["summary"]["11"]
+    assert november["count"] == 4  # the running November is left out
+    assert november["share_up"] == 1.0 and november["share_down"] == 0.0
+    assert november["abs_best"] == pytest.approx(november["best"])
+    assert grid["best"]["month"] == 11 and grid["year_summary"]["count"] == 4
+    assert any("five years" in n for n in grid["notes"])
+
+
+def test_a_month_grid_takes_a_span_of_years(db, market):
+    grid = insights.month_grid(db, "SPX", 2000, 2009, TODAY)
+    assert grid["years"] == {"first": 2000, "last": 2009, "count": 10}
+    assert grid["available"]["first"] == 1990 and grid["basis"] == "price"
+    assert grid["summary"]["9"]["share_down"] == 1.0  # every September fell
+    assert all(r["complete"] for r in grid["rows"])
+    with pytest.raises(ValueError):
+        insights.month_grid(db, "SPX", 2010, 2000, TODAY)
+    with pytest.raises(ValueError):
+        insights.month_grid(db, "AAA", 2010, 2012, TODAY)

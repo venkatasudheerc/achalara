@@ -140,9 +140,10 @@ Each feature directory contains its page component(s). Implemented:
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
 - `research/ResearchPage` — market insights, one component routed at both `/app/research` (advisor
   sidebar) and `/portal/research` (portal menu), so every size in it is an explicit pixel value.
-  Three panels (this week, this month so far, next month's record) and four tabs: Calendar
-  (`research/CalendarHeatmap`: a day × month grid, average or median, diverging colours from
-  `useChartColours().diverging`), Top performers (with a CSV built on the client), Sectors (one
+  Three panels (this week, this month so far, next month's record) and five tabs: Months by year
+  (`research/MonthGrid`: year × month returns with each month's record beneath; symbol, average or
+  median, and years), Calendar days (`research/CalendarHeatmap`: a day × month grid, average or
+  median), both coloured by `research/heat.ts` from `useChartColours().diverging`, Top performers (with a CSV built on the client), Sectors (one
   index or two side by side) and A security (search, then its profile). Reads only
   `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal fractions. Every
   figure shows its basis (dividends in or out) and its sample, and each answer's `notes` are shown
