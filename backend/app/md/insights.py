@@ -76,6 +76,17 @@ SECTOR_FUNDS = {
 }
 SECTOR_NAMES = {code: name for code, name, _ in SECTORS}
 PRICE_NOTE = "Index levels leave dividends out; funds and stocks include them."
+# The VIX is a level of expected volatility, not something one owns: its "return" is a
+# change in how nervous the market is, and a rise is not a gain.
+VIX_NOTE = (
+    "The VIX measures how much movement traders expect in the S&P 500 over the next "
+    "month. Its change is a shift in nervousness, not a return anyone earns; it tends "
+    "to rise when stocks fall."
+)
+
+
+def _subject_notes(symbol: str) -> List[str]:
+    return [VIX_NOTE] if symbol.strip().upper() == "VIX" else []
 
 
 def _months_label(month: int) -> str:
@@ -309,6 +320,7 @@ def calendar_grid(
         )
     if stat == "mean":
         notes.append("An average can rest on one large day; the median cannot.")
+    notes.extend(_subject_notes(symbol))
     ranked = sorted(out, key=lambda c: c["value"])
     return {
         "symbol": symbol.strip().upper(),
@@ -418,6 +430,7 @@ def month_grid(
             "Stock and fund prices go back about five years; indices go back decades."
         )
     notes.append(PRICE_NOTE)
+    notes.extend(_subject_notes(symbol))
     return {
         "symbol": symbol.strip().upper(),
         "kind": kind,

@@ -30,6 +30,7 @@ LEVELS = {
     "RUI": "^RUI",  # Russell 1000
     "RUT": "^RUT",  # Russell 2000
     "RUA": "^RUA",  # Russell 3000
+    "VIX": "^VIX",  # Cboe Volatility Index: expected volatility, not a price
 }
 _EARLIEST = date(1880, 1, 1)
 _OVERLAP = timedelta(days=7)

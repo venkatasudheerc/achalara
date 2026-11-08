@@ -23,7 +23,7 @@ export const UNIVERSE_LABEL: Record<string, string> = Object.fromEntries(UNIVERS
 /** Index codes as people say them; anything else is shown as its ticker. */
 const INDEX_NAMES: Record<string, string> = {
   SPX: 'the S&P 500', NDX: 'the Nasdaq-100', DJI: 'the Dow', RUT: 'the Russell 2000',
-  RUI: 'the Russell 1000', RUA: 'the Russell 3000',
+  RUI: 'the Russell 1000', RUA: 'the Russell 3000', VIX: 'the VIX',
 }
 export function subjectName(symbol: string): string {
   return INDEX_NAMES[symbol] ?? symbol

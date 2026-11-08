@@ -20,6 +20,7 @@ export const INDEX_CHOICES: Match[] = [
   { symbol: 'RUT', name: 'Russell 2000', kind: 'index' },
   { symbol: 'RUI', name: 'Russell 1000', kind: 'index' },
   { symbol: 'RUA', name: 'Russell 3000', kind: 'index' },
+  { symbol: 'VIX', name: 'Volatility Index (VIX)', kind: 'index' },
 ]
 
 export function indexChoice(symbol: string): Choice | null {

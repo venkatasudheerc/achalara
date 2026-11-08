@@ -296,3 +296,18 @@ def test_search_puts_a_word_match_and_a_large_company_first(db, market):
     assert found[:3] == ["APX", "APXL", "ZZZ"]
     names = [r["symbol"] for r in insights.find_security(db, "example corp")["results"]]
     assert names.index("AAA") < names.index("SML") and names.index("BBB") < names.index("SML")
+
+
+def test_the_vix_says_its_change_is_not_a_return(db, market):
+    from app.md import levels
+
+    assert levels.LEVELS["VIX"] == "^VIX"
+    level = 20.0
+    for day in _weekdays(date(2015, 1, 1), date(2026, 11, 6)):
+        level = level * (1.01 if day.day < 15 else 0.99)
+        db.add(IndexLevelHist(symbol="VIX", price_date=day, close=Decimal(str(round(level, 4))), source="test", fetched_at=STAMP))
+    db.flush()
+    grid = insights.month_grid(db, "VIX", today=TODAY)
+    assert grid["kind"] == "index" and any("not a return" in n for n in grid["notes"])
+    assert any("not a return" in n for n in insights.calendar_grid(db, "VIX", today=TODAY)["notes"])
+    assert not any("not a return" in n for n in insights.month_grid(db, "SPX", today=TODAY)["notes"])

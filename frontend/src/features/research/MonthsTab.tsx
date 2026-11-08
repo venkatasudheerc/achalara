@@ -29,6 +29,15 @@ function headline(grid: RsMonthGrid, stat: Stat) {
   const worst = months.reduce((a, b) => (b.s[stat] < a.s[stat] ? b : a))
   const ups = Math.round(best.s.share_up * best.s.count)
   const span = grid.years.first === grid.years.last ? `In ${grid.years.first}` : `From ${grid.years.first} to ${grid.years.last}`
+  if (grid.symbol === 'VIX') {
+    // A rising VIX is rising fear, not a good month: say where it rose and fell.
+    return {
+      best: best.i,
+      title: `${span}, the VIX rose most in ${MONTHS[best.i]} and fell most in ${MONTHS[worst.i]}`,
+      sub: `${stat === 'mean' ? 'Average' : 'Median'} change ${pct1(best.s[stat])} in ${MONTHS[best.i]}, up in ${ups} of ${best.s.count} years; `
+        + `${pct1(worst.s[stat])} in ${MONTHS[worst.i]}.`,
+    }
+  }
   return {
     best: best.i,
     title: `${span}, ${MONTHS[best.i]} was ${subjectName(grid.symbol)}’s strongest month`,

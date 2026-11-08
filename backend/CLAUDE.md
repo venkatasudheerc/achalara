@@ -405,6 +405,9 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   same factor; never mix these with prices as traded (`price_daily_hist`).
 - **Index levels in `md` (`md/levels.py`, `md.index_level_hist`)** come from the Yahoo feed the app
   uses (`utils/yahoo_chart.py`, shared); a level is a price return, and every result says its basis.
+  The VIX is collected the same way (`levels.LEVELS`), but it is a level of expected volatility,
+  not a price: anything that shows its change says so (`insights.VIX_NOTE`) and never calls it a
+  return or a gain. It is kept out of the Overview's stock indices.
 - **Returns are computed, never stored by period,** with `utils/returns.py` (shared with the
   portfolio figures: ISO weeks, calendar months, a period from the last close before it). Ad-hoc SQL
   uses `md.day_return` (a view) and `md.week_return` / `md.month_return` (materialized, refreshed by
