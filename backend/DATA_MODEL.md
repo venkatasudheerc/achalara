@@ -554,6 +554,8 @@ Built so far: index membership, identifiers, sector and industry; prices and fun
 | `md.security_classification_hist` | history | security × source × span | what each source said: `sector_code`, `industry_id`, and its own words (`raw_sector`, `raw_industry`, `raw_code`) |
 | `md.source_file` | operations | downloaded file | the file exactly as received (gzip), `sha256`, `as_of`, `rows`; unique `(source, name, as_of)` |
 | `md.job_run` | operations | job run | `job`, start and finish, `outcome` (`ok`, `failed`), `requests`, `rows_written`, `note`; System status reads it |
+| `md.tracked_fund` | current | fund priced alongside the index members | `security_id`, `asset_group` (`benchmark`, `sector`, `broad_market`, `international`, `long_bond`, `gold`, `silver`, or any word given by hand), `added_on`, `removed_on` (the row and its prices stay), `note`. The migration adds 24 generic funds |
+| `md.price_daily_hist` | history | security × market day | prices as traded, never adjusted: `open`, `high`, `low`, `close`, `volume`, `currency`, `last_trade_at`, `source` (`webull_snapshot`). Never overwritten. Indexed on `price_date` |
 
 `md.company` also carries `sic_description`; `md.security` carries `profile_checked_at` (when
 Webull's company profile was last asked for).

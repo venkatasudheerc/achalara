@@ -389,6 +389,14 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   market, so a lookup by ticker must name one: today's jobs filter on `US_MARKET`. A security belongs
   to one market and has its own `currency`. Price tables key on the security and record the currency.
   Returns and tax lots have no currency handling, so nothing foreign may reach `perf`.
+- **Daily closes (`md/closes.py`, `md.price_daily_hist`) are prices as traded, never adjusted,** and
+  a day on file is never overwritten. Each close is dated by its own last trade (`last_trade_time`,
+  Eastern), and a close from a day not yet over (before 5 PM Eastern) is not stored. Webull's daily
+  bars are forward-adjusted with no option to turn that off, so these cannot be fetched later.
+  Who is priced: every US security ever in an index (it stays priced after leaving) and every
+  tracked fund (`md.tracked_fund`, `md-track-fund`). Snapshot requests take 100 symbols and one
+  category; a symbol Webull does not know refuses the whole request (`WebullInvalidSymbols`), so
+  it is dropped and the request repeated.
 - **Index data is never pruned.** A history limit may apply only to stock and ETF prices in `md`.
 - **The app and `md` spell tickers differently** (`BRK B`, `BRK.B`). Convert through
   `utils/symbols.py`; Webull answers `INVALID_SYMBOL` to `BRK.B`. Once `symbol_aliases` exists,
@@ -408,7 +416,7 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   industry's sector > SEC code; for industry: manual > Webull > SEC. A Webull industry's sector is
   worked out from its index members (`ishares_majority`), not written by hand.
 - By hand: `python -m app.cli md-index-membership`, `md-identifiers`, `md-classification
-  [--refresh]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
+  [--refresh]`, `md-daily-closes`, `md-track-fund [--symbol XYZ --group gold] [--remove]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
 - **The Market data page (`/app/market-data`)** reads `GET /api/v1/admin/market-data/status`
   (`app/md/status_report.py`, through `read.market_data_status`): jobs, indices, coverage, tables and
   what is not built, with its own `attention` list. It is advisor-only, because the counts include

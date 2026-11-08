@@ -13,6 +13,9 @@ Operations tables record every file fetched and every job run.
 import uuid
 
 from sqlalchemy import (
+    Index,
+    BigInteger,
+    Numeric,
     Column,
     Date,
     DateTime,
@@ -332,3 +335,52 @@ class JobRun(MdModel):
     note = Column(Text)  # what happened, or the error
 
     __table_args__ = ({"schema": SCHEMA},)
+
+
+class TrackedFund(MdModel):
+    """A fund priced alongside the index members (index members are all stocks).
+
+    A row stays when a fund stops being tracked, and so do its prices.
+    """
+
+    __tablename__ = "tracked_fund"
+    __table_args__ = {"schema": SCHEMA}
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    asset_group = Column(String(30), nullable=False)  # benchmark, sector, gold, …
+    added_on = Column(Date, nullable=False)
+    removed_on = Column(Date)  # empty while tracked
+    note = Column(String(200))
+
+
+class PriceDailyHist(MdModel):
+    """One security's prices for one market day, as traded: not adjusted.
+
+    Captured each evening from the day's snapshot, because no source gives past
+    unadjusted prices back. A day on file is never overwritten.
+    """
+
+    __tablename__ = "price_daily_hist"
+    __table_args__ = (
+        Index("ix_md_price_daily_hist_price_date", "price_date"),
+        {"schema": SCHEMA},
+    )
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    price_date = Column(Date, primary_key=True)  # the market day
+    currency = Column(String(3), nullable=False)
+    open = Column(Numeric(18, 6))
+    high = Column(Numeric(18, 6))
+    low = Column(Numeric(18, 6))
+    close = Column(Numeric(18, 6), nullable=False)
+    volume = Column(BigInteger)
+    last_trade_at = Column(DateTime(timezone=True))
+    source = Column(String(20), nullable=False)  # webull_snapshot

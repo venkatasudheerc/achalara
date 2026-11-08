@@ -12,12 +12,13 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from app.md.config import settings
 from app.db.database import SessionLocal
 from app.md.classification import run_classification
+from app.md.closes import JOB as CLOSES_JOB, run_daily_closes
 from app.md.database import MdSession
 from app.md.identifiers import run_identifiers
 from app.md.jobs import JobAlreadyRunning, close_abandoned, tracked_run
 from app.md.membership import JOB as MEMBERSHIP_JOB, run_index_membership
 from app.md.models import JobRun
-from app.md.schedule import MD_JOBS, TIMEZONE
+from app.md.schedule import MD_JOBS, TIMEZONE, in_quiet_hours
 from app.md.seed import seed_securities
 from app.services.held_symbols import held_symbols
 
@@ -84,21 +85,34 @@ def _classification() -> None:
         db.close()
 
 
+def _daily_closes() -> None:
+    db = MdSession()
+    try:
+        logger.info("Daily closes: %s", run_daily_closes(db))
+    except JobAlreadyRunning:
+        logger.info("Daily closes are already being captured")
+    except Exception:  # noqa: BLE001
+        logger.exception("Daily closes failed")
+    finally:
+        db.close()
+
+
 JOBS = {
     "md_seed_holdings": _seed,
     MEMBERSHIP_JOB: _membership,
     "md_identifiers": _identifiers,
     "md_classification": _classification,
+    CLOSES_JOB: _daily_closes,
 }
 
 
-def _missed_today() -> bool:
-    """Whether the membership job has not succeeded in the last 20 hours."""
+def _missed(job: str) -> bool:
+    """Whether ``job`` has not succeeded in the last 20 hours."""
     db = MdSession()
     try:
         last = (
             db.query(JobRun.finished_at)
-            .filter(JobRun.job == MEMBERSHIP_JOB, JobRun.outcome == "ok")
+            .filter(JobRun.job == job, JobRun.outcome == "ok")
             .order_by(JobRun.finished_at.desc())
             .first()
         )
@@ -129,12 +143,21 @@ def main() -> None:
     # Catch up once after a restart, so a deploy at 7am does not lose the day.
     start = datetime.now(timezone.utc) + timedelta(seconds=60)
     scheduler.add_job(_seed, "date", run_date=start, id="md_seed_start")
-    if _missed_today():
+    if _missed(MEMBERSHIP_JOB):
         scheduler.add_job(
             _membership,
             "date",
             run_date=start + timedelta(seconds=30),
             id="md_membership_start",
+        )
+    # A missed evening's closes can still be taken from the snapshot until the
+    # next session opens; never during the quiet hours.
+    if _missed(CLOSES_JOB) and not in_quiet_hours(datetime.now(timezone.utc)):
+        scheduler.add_job(
+            _daily_closes,
+            "date",
+            run_date=start + timedelta(seconds=60),
+            id="md_closes_start",
         )
     logger.info("Market-data worker started: %s", ", ".join(j.id for j in MD_JOBS))
     scheduler.start()

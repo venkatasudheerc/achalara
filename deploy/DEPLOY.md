@@ -220,7 +220,9 @@ The app's own daily jobs keep their UTC times.
 
 `md-worker` runs the market-data jobs, all US Eastern and listed on System status as "Market
 data: …": identifiers at 5:00 (Webull ids, SEC companies, FIGIs), held securities at 6:45, index
-membership at 7:00 Tuesday to Saturday, and sectors and industries at 10:30 PM. Set
+membership at 7:00 Tuesday to Saturday, daily closes at 8:30 PM on weekdays (the day's prices as
+traded; a day missed is lost, so the worker catches up once after a restart), and sectors and
+industries at 10:30 PM. Set
 `SEC_CONTACT_EMAIL` in `deploy/.env` (the SEC requires a contact in each request; without it SEC
 lookups are skipped). `OPENFIGI_API_KEY` is optional. The backend applies market data's migrations
 at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABASE_URL` is only for
@@ -232,6 +234,8 @@ hand, for example right after the first deploy:
 docker compose exec backend python -m app.cli md-index-membership
 docker compose exec backend python -m app.cli md-identifiers
 docker compose exec backend python -m app.cli md-classification
+docker compose exec backend python -m app.cli md-daily-closes
+docker compose exec backend python -m app.cli md-track-fund    # list; --symbol XYZ --group gold to add
 docker compose logs --tail 50 md-worker
 ```
 
