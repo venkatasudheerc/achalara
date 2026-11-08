@@ -1,7 +1,10 @@
 """When market-data jobs run. Read by the worker, and by System status for
 the next run time (the web process never runs them)."""
+from datetime import datetime, time
 from typing import Callable, List, NamedTuple
+from zoneinfo import ZoneInfo
 
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 TIMEZONE = "America/New_York"
@@ -10,7 +13,7 @@ TIMEZONE = "America/New_York"
 class MdJob(NamedTuple):
     id: str
     label: str
-    trigger: Callable[[], CronTrigger]
+    trigger: Callable[[], object]
 
 
 def _membership_trigger() -> CronTrigger:
@@ -28,6 +31,48 @@ def _identifiers_trigger() -> CronTrigger:
     return CronTrigger(hour=5, minute=0, timezone=TIMEZONE)
 
 
+def _daily_closes_trigger() -> CronTrigger:
+    # After the evening's last trade is settled; weekdays only.
+    return CronTrigger(day_of_week="mon-fri", hour=20, minute=30, timezone=TIMEZONE)
+
+
+def _adjusted_closes_trigger() -> CronTrigger:
+    # After the day's closes as traded.
+    return CronTrigger(day_of_week="mon-fri", hour=21, minute=0, timezone=TIMEZONE)
+
+
+def _index_levels_trigger() -> OrTrigger:
+    # The evening has the day; the source completes it overnight, so the
+    # morning run reads it again.
+    return OrTrigger(
+        [
+            CronTrigger(day_of_week="mon-fri", hour=21, minute=15, timezone=TIMEZONE),
+            CronTrigger(day_of_week="tue-sat", hour=6, minute=15, timezone=TIMEZONE),
+        ]
+    )
+
+
+def _prune_trigger() -> CronTrigger:
+    return CronTrigger(day_of_week="mon-fri", hour=21, minute=45, timezone=TIMEZONE)
+
+
+def _refresh_returns_trigger() -> OrTrigger:
+    # After the evening's prices and levels, and the morning's corrected levels.
+    return OrTrigger(
+        [
+            CronTrigger(day_of_week="mon-fri", hour=21, minute=50, timezone=TIMEZONE),
+            CronTrigger(day_of_week="tue-sat", hour=6, minute=30, timezone=TIMEZONE),
+        ]
+    )
+
+
+def in_quiet_hours(now: datetime) -> bool:
+    """8:30 AM to 6:00 PM Eastern on weekdays: no md job then, the client
+    screens' live prices share the Webull key."""
+    local = now.astimezone(ZoneInfo(TIMEZONE))
+    return local.weekday() < 5 and time(8, 30) <= local.time() < time(18, 0)
+
+
 def _classification_trigger() -> CronTrigger:
     # After the evening jobs; Saturday's run also refreshes older profiles.
     return CronTrigger(hour=22, minute=30, timezone=TIMEZONE)
@@ -37,6 +82,15 @@ MD_JOBS: List[MdJob] = [
     MdJob("md_seed_holdings", "Market data: held securities", _seed_trigger),
     MdJob("md_index_membership", "Market data: index membership", _membership_trigger),
     MdJob("md_identifiers", "Market data: identifiers", _identifiers_trigger),
+    MdJob("md_daily_closes", "Market data: daily closes", _daily_closes_trigger),
+    MdJob(
+        "md_adjusted_closes",
+        "Market data: adjusted history",
+        _adjusted_closes_trigger,
+    ),
+    MdJob("md_index_levels", "Market data: index levels", _index_levels_trigger),
+    MdJob("md_prune_prices", "Market data: history limit", _prune_trigger),
+    MdJob("md_refresh_returns", "Market data: return tables", _refresh_returns_trigger),
     MdJob(
         "md_classification",
         "Market data: sectors and industries",

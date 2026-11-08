@@ -17,17 +17,17 @@ from app.md.models import (
     JobRun,
     Security,
     SecurityClassification,
+    PriceDailyHist,
     SourceFile,
 )
+from app.md.adjusted import coverage as adjusted_coverage
+from app.md.closes import universe
 from app.md.schedule import MD_JOBS
 from app.md.base import MdBase
 
 STOCK_KINDS = ("stock", "adr", "preferred")
 # Planned in MARKET_DATA.md § 1; each leaves this list once its model exists.
 PLANNED_TABLES = (
-    ("tracked_fund", "3a"),
-    ("security_quote", "3a"),
-    ("price_daily_hist", "3a"),
     ("statement_hist", "4"),
     ("fundamentals", "4"),
     ("fundamentals_hist", "4"),
@@ -179,6 +179,29 @@ def _coverage(db: Session) -> Dict:
             .scalar()
         )
 
+    measures_extra = []
+    latest = db.query(func.max(PriceDailyHist.price_date)).scalar()
+    if latest is not None:
+        measures_extra.append(
+            {
+                "label": f"Close on {latest.isoformat()}",
+                "count": db.query(func.count(PriceDailyHist.security_id))
+                .filter(PriceDailyHist.price_date == latest)
+                .scalar(),
+                "of": len(universe(db)),
+                "of_label": "to price",
+            }
+        )
+    with_history, first_day = adjusted_coverage(db)
+    if with_history:
+        measures_extra.append(
+            {
+                "label": f"Adjusted history (from {first_day.isoformat()})",
+                "count": with_history,
+                "of": len(universe(db)),
+                "of_label": "to price",
+            }
+        )
     return {
         "securities": total,
         "companies": db.query(func.count(Company.id)).scalar(),
@@ -213,6 +236,7 @@ def _coverage(db: Session) -> Dict:
                 "of": stocks,
                 "of_label": "stocks",
             },
+            *measures_extra,
         ],
         "by_kind": [
             {"name": kind, "count": count}

@@ -1524,6 +1524,324 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/admin/market-data/returns:
+    get:
+      tags:
+      - admin
+      summary: Market Data Returns
+      description: 'Day, week, month, quarter or year returns side by side, with the excess over a benchmark. Securities are a total return; index levels a price return.'
+      operationId: market_data_returns_api_v1_admin_market_data_returns_get
+      parameters:
+      - name: symbols
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'Comma-separated tickers or index codes (SPX, NDX, DJI, RUI, RUT, RUA); at most 20'
+      - name: grain
+        in: query
+        required: false
+        schema:
+          type: string
+          default: month
+        description: 'day, week, month, quarter or year'
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: end
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: benchmark
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'A ticker or index code'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MdReturnsResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No prices on file for a subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: A choice that is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Market data's own database could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/market-data/seasonality:
+    get:
+      tags:
+      - admin
+      summary: Market Data Seasonality
+      description: 'How returns fall by month of year, weekday, turn of the month, or day by day within one month, with the number of years behind each figure.'
+      operationId: market_data_seasonality_api_v1_admin_market_data_seasonality_get
+      parameters:
+      - name: subject
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'A ticker, an index code, index:CODE (members today) or sector:CODE'
+      - name: by
+        in: query
+        required: false
+        schema:
+          type: string
+          default: month
+        description: 'month, weekday, turn_of_month or trading_day'
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 12
+        description: '1-12; needed for trading_day'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MdSeasonalityResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No prices on file for a subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: A choice that is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Market data's own database could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/market-data/consistent-months:
+    get:
+      tags:
+      - admin
+      summary: Market Data Consistent Months
+      description: 'Securities that beat the benchmark in this month every year on file, with how many luck alone would give and the indexs long-run result.'
+      operationId: market_data_consistent_months_api_v1_admin_market_data_consistent_months_get
+      parameters:
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 12
+      - name: benchmark
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SPY
+      - name: min_years
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 4
+          minimum: 2
+          maximum: 50
+      - name: universe
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'An index code; every priced security when empty'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MdConsistentResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No prices on file for a subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: A choice that is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Market data's own database could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/market-data/movers:
+    get:
+      tags:
+      - admin
+      summary: Market Data Movers
+      description: 'The best and worst over one week or month.'
+      operationId: market_data_movers_api_v1_admin_market_data_movers_get
+      parameters:
+      - name: grain
+        in: query
+        required: false
+        schema:
+          type: string
+          default: month
+        description: 'week or month'
+      - name: period
+        in: query
+        required: false
+        schema:
+          type: string
+        description: '2026-10 or 2026-W44; the latest that has ended when empty'
+      - name: universe
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'An index code'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MdMoversResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Advisors only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No prices on file for a subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: A choice that is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Market data's own database could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/admin/market-data/status:
     get:
       tags:
@@ -6520,6 +6838,165 @@ components:
       properties:
         name: {type: string}
         phase: {type: string}
+    MdBenchmarkRef:
+      type: object
+      required: [symbol, basis]
+      properties:
+        symbol: {type: string}
+        basis:
+          type: string
+          description: total (dividends in) or price (an index level)
+    MdPeriod:
+      type: object
+      required: [period, start, end, ret, partial]
+      properties:
+        period: {type: string}
+        start: {type: string, format: date}
+        end: {type: string, format: date}
+        ret: {type: number}
+        partial: {type: boolean}
+        excess: {type: number, nullable: true}
+    MdReturnSeries:
+      type: object
+      required: [symbol, kind, basis, first_day, periods]
+      properties:
+        symbol: {type: string}
+        kind: {type: string}
+        basis: {type: string}
+        first_day: {type: string, format: date}
+        periods:
+          type: array
+          items: {$ref: '#/components/schemas/MdPeriod'}
+    MdReturnsResponse:
+      type: object
+      required: [grain, series, unknown]
+      properties:
+        grain: {type: string}
+        benchmark:
+          allOf: [{$ref: '#/components/schemas/MdBenchmarkRef'}]
+          nullable: true
+        series:
+          type: array
+          items: {$ref: '#/components/schemas/MdReturnSeries'}
+        unknown:
+          type: array
+          items: {type: string}
+    MdStats:
+      type: object
+      required: [count, mean, median, share_up, stdev, best, worst]
+      properties:
+        count: {type: integer}
+        mean: {type: number}
+        median: {type: number}
+        share_up: {type: number}
+        stdev: {type: number}
+        best: {type: number}
+        worst: {type: number}
+    MdBucket:
+      allOf:
+      - $ref: '#/components/schemas/MdStats'
+      - type: object
+        required: [bucket, order]
+        properties:
+          bucket: {type: string}
+          order:
+            oneOf: [{type: integer}, {type: string}]
+    MdYears:
+      type: object
+      required: [first, last, count]
+      properties:
+        first: {type: integer}
+        last: {type: integer}
+        count: {type: integer}
+    MdMonthToDate:
+      type: object
+      required: [trading_day, years, mean]
+      properties:
+        trading_day: {type: integer}
+        years: {type: integer}
+        mean: {type: number}
+    MdSeasonalityResponse:
+      type: object
+      required: [subject, by, kind, basis, survivorship, buckets]
+      properties:
+        subject: {type: string}
+        by: {type: string}
+        month: {type: integer, nullable: true}
+        kind: {type: string}
+        basis: {type: string}
+        members: {type: integer, nullable: true}
+        survivorship:
+          type: boolean
+          description: True when a group uses today's members, which favours survivors
+        years:
+          allOf: [{$ref: '#/components/schemas/MdYears'}]
+          nullable: true
+        buckets:
+          type: array
+          items: {$ref: '#/components/schemas/MdBucket'}
+        month_to_date:
+          type: array
+          nullable: true
+          items: {$ref: '#/components/schemas/MdMonthToDate'}
+    MdConsistentRow:
+      type: object
+      required: [symbol, years, beat, avg_excess, median_excess, worst_excess]
+      properties:
+        symbol: {type: string}
+        years: {type: integer}
+        beat: {type: integer}
+        avg_excess: {type: number}
+        median_excess: {type: number}
+        worst_excess: {type: number}
+        other_months_beat_share: {type: number, nullable: true}
+        sector: {type: string, nullable: true}
+        sector_beat_share: {type: number, nullable: true}
+    MdLongRun:
+      allOf:
+      - $ref: '#/components/schemas/MdStats'
+      - type: object
+        required: [index, basis]
+        properties:
+          index: {type: string}
+          basis: {type: string}
+    MdConsistentResponse:
+      type: object
+      required: [month, benchmark, min_years, eligible, found, expected_by_luck, rows]
+      properties:
+        month: {type: integer}
+        benchmark: {$ref: '#/components/schemas/MdBenchmarkRef'}
+        min_years: {type: integer}
+        eligible: {type: integer}
+        found: {type: integer}
+        expected_by_luck:
+          type: number
+          description: How many would beat the benchmark every year by chance alone
+        index_long_run:
+          allOf: [{$ref: '#/components/schemas/MdLongRun'}]
+          nullable: true
+        rows:
+          type: array
+          items: {$ref: '#/components/schemas/MdConsistentRow'}
+    MdMover:
+      type: object
+      required: [symbol, ret]
+      properties:
+        symbol: {type: string}
+        ret: {type: number}
+    MdMoversResponse:
+      type: object
+      required: [grain, basis, count, best, worst]
+      properties:
+        grain: {type: string}
+        period: {type: string, nullable: true}
+        basis: {type: string}
+        count: {type: integer}
+        best:
+          type: array
+          items: {$ref: '#/components/schemas/MdMover'}
+        worst:
+          type: array
+          items: {$ref: '#/components/schemas/MdMover'}
     MarketDataStatusResponse:
       type: object
       required: [generated_at, available, own_database, attention, jobs, indices, tables, not_built]

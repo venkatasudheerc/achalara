@@ -208,6 +208,85 @@ def md_classification(refresh: bool) -> int:
     return 0
 
 
+def md_daily_closes() -> int:
+    """Capture the latest day's prices as traded, now."""
+    from app.md.closes import run_daily_closes
+    from app.md.database import MdSession
+
+    db = MdSession()
+    try:
+        print(run_daily_closes(db))
+    finally:
+        db.close()
+    return 0
+
+
+def md_adjusted_history() -> int:
+    """Fetch adjusted history now: in full for securities without it."""
+    from app.md.adjusted import run_adjusted_history
+    from app.md.database import MdSession
+
+    db = MdSession()
+    try:
+        print(run_adjusted_history(db))
+    finally:
+        db.close()
+    return 0
+
+
+def md_index_levels() -> int:
+    """Fetch index levels now: in full for an index without any."""
+    from app.md.database import MdSession
+    from app.md.levels import run_index_levels
+
+    db = MdSession()
+    try:
+        print(run_index_levels(db))
+    finally:
+        db.close()
+    return 0
+
+
+def md_refresh_returns() -> int:
+    """Refresh the stored week and month return tables now."""
+    from app.md.database import MdSession
+    from app.md.views import refresh_return_views
+
+    db = MdSession()
+    try:
+        print(refresh_return_views(db))
+    finally:
+        db.close()
+    return 0
+
+
+def md_track_fund(symbol: Optional[str], group: Optional[str], remove: bool) -> int:
+    """Track a fund (priced each evening), stop tracking one, or list them."""
+    from app.md.closes import track_fund, tracked, untrack_fund
+    from app.md.database import MdSession
+
+    db = MdSession()
+    try:
+        if symbol is None:
+            for name, asset_group in tracked(db):
+                print(f"{asset_group:15} {name}")
+            return 0
+        if remove:
+            if untrack_fund(db, symbol, date.today()):
+                print(f"{symbol} is no longer tracked; its prices stay")
+                return 0
+            print(f"{symbol} is not tracked", file=sys.stderr)
+            return 1
+        if not group:
+            print("--group is needed to track a fund", file=sys.stderr)
+            return 1
+        track_fund(db, symbol, group.strip().lower(), date.today())
+        print(f"{symbol} tracked as {group.strip().lower()}")
+    finally:
+        db.close()
+    return 0
+
+
 def md_set_sector(symbol: str, sector: Optional[str], industry: Optional[str]) -> int:
     """Set a security's sector and/or industry by hand; never overwritten by a source."""
     from app.md.classification import ClassificationService
@@ -291,7 +370,38 @@ def main(argv=None) -> int:
         "--sector", help="IT, HC, FIN, CD, CS, COM, EN, IND, MAT, RE, UT"
     )
     manual.add_argument("--industry")
+    commands.add_parser(
+        "md-daily-closes", help="market data: capture the latest day's prices now"
+    )
+    commands.add_parser(
+        "md-adjusted-history",
+        help="market data: adjusted daily closes now (in full where none are on file)",
+    )
+    commands.add_parser(
+        "md-index-levels", help="market data: index levels now (in full the first time)"
+    )
+    commands.add_parser(
+        "md-refresh-returns",
+        help="market data: refresh the stored week and month return tables now",
+    )
+    fund = commands.add_parser(
+        "md-track-fund",
+        help="market data: track a fund, stop tracking one (--remove), or list them",
+    )
+    fund.add_argument("--symbol")
+    fund.add_argument("--group", help="benchmark, sector, gold, … (any short word)")
+    fund.add_argument("--remove", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "md-daily-closes":
+        return md_daily_closes()
+    if args.command == "md-adjusted-history":
+        return md_adjusted_history()
+    if args.command == "md-index-levels":
+        return md_index_levels()
+    if args.command == "md-refresh-returns":
+        return md_refresh_returns()
+    if args.command == "md-track-fund":
+        return md_track_fund(args.symbol, args.group, args.remove)
     if args.command == "md-identifiers":
         return md_identifiers()
     if args.command == "md-classification":

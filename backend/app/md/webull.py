@@ -10,7 +10,7 @@ import http.client
 import json
 import time
 import urllib.parse
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from app.md.config import settings
 from app.utils.webull_signing import HOST, signed_headers
@@ -30,6 +30,31 @@ class WebullError(Exception):
 
 class WebullUnreachable(WebullError):
     """No answer: a timeout, a dropped connection or a reply that was not JSON."""
+
+
+class WebullInvalidSymbols(WebullError):
+    """Webull refused the whole request because it does not know some symbols."""
+
+    def __init__(self, path: str, symbols: Set[str]):
+        super().__init__(f"{path}: unknown symbols {sorted(symbols)}")
+        self.symbols = symbols
+
+
+def _invalid_symbols(raw: bytes) -> Optional[Set[str]]:
+    """The symbols an INVALID_SYMBOL reply names, e.g. ``... [ABC, XYZ].``"""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(body, dict) or body.get("error_code") != "INVALID_SYMBOL":
+        return None
+    message = str(body.get("message") or "")
+    start, end = message.find("["), message.find("]")
+    if start == -1 or end <= start:
+        return None
+    return {
+        part.strip() for part in message[start + 1 : end].split(",") if part.strip()
+    }
 
 
 class WebullClient:
@@ -82,6 +107,9 @@ class WebullClient:
         if response.status == 429:
             raise WebullRefused(path)
         if response.status != 200:
+            invalid = _invalid_symbols(raw)
+            if invalid:
+                raise WebullInvalidSymbols(path, invalid)
             raise WebullError(f"{path}: HTTP {response.status}")
         try:
             return json.loads(raw)

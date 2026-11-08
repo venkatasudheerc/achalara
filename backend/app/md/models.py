@@ -13,6 +13,9 @@ Operations tables record every file fetched and every job run.
 import uuid
 
 from sqlalchemy import (
+    Index,
+    BigInteger,
+    Numeric,
     Column,
     Date,
     DateTime,
@@ -332,3 +335,91 @@ class JobRun(MdModel):
     note = Column(Text)  # what happened, or the error
 
     __table_args__ = ({"schema": SCHEMA},)
+
+
+class TrackedFund(MdModel):
+    """A fund priced alongside the index members (index members are all stocks).
+
+    A row stays when a fund stops being tracked, and so do its prices.
+    """
+
+    __tablename__ = "tracked_fund"
+    __table_args__ = {"schema": SCHEMA}
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    asset_group = Column(String(30), nullable=False)  # benchmark, sector, gold, …
+    added_on = Column(Date, nullable=False)
+    removed_on = Column(Date)  # empty while tracked
+    note = Column(String(200))
+
+
+class PriceDailyHist(MdModel):
+    """One security's prices for one market day, as traded: not adjusted.
+
+    Captured each evening from the day's snapshot, because no source gives past
+    unadjusted prices back. A day on file is never overwritten.
+    """
+
+    __tablename__ = "price_daily_hist"
+    __table_args__ = (
+        Index("ix_md_price_daily_hist_price_date", "price_date"),
+        {"schema": SCHEMA},
+    )
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    price_date = Column(Date, primary_key=True)  # the market day
+    currency = Column(String(3), nullable=False)
+    open = Column(Numeric(18, 6))
+    high = Column(Numeric(18, 6))
+    low = Column(Numeric(18, 6))
+    close = Column(Numeric(18, 6), nullable=False)
+    volume = Column(BigInteger)
+    last_trade_at = Column(DateTime(timezone=True))
+    source = Column(String(20), nullable=False)  # webull_snapshot
+
+
+class PriceAdjDaily(MdModel):
+    """One security's close for one market day, adjusted for later splits and
+    dividends: the series every return is computed from (a total return).
+
+    Webull rewrites its whole adjusted series after each split or dividend, so
+    these rows are refreshed and rescaled, never treated as fixed. Prices as
+    traded are in ``price_daily_hist``.
+    """
+
+    __tablename__ = "price_adj_daily"
+    __table_args__ = (
+        Index("ix_md_price_adj_daily_price_date", "price_date"),
+        {"schema": SCHEMA},
+    )
+
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    price_date = Column(Date, primary_key=True)
+    adj_close = Column(Numeric(18, 6), nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class IndexLevelHist(MdModel):
+    """A market index's closing level for one market day: a price return (no
+    dividends). Linked from ``index_def.level_symbol``."""
+
+    __tablename__ = "index_level_hist"
+    __table_args__ = {"schema": SCHEMA}
+
+    symbol = Column(String(12), primary_key=True)  # SPX, NDX, DJI, RUI, RUT, RUA
+    price_date = Column(Date, primary_key=True)
+    close = Column(Numeric(18, 4), nullable=False)
+    source = Column(String(20), nullable=False)  # yahoo
+    fetched_at = Column(DateTime(timezone=True), nullable=False)

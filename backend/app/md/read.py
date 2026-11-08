@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.md import performance as md_performance
 from app.md.database import MdSession, separate
 from app.md.models import (
     JobRun,
@@ -104,3 +105,28 @@ def market_data_status(app_db: Session) -> Dict:
         return _status(app_db)
     except MdUnavailable:
         return unavailable()
+
+
+# -- performance and seasonality -------------------------------------------
+
+UnknownSubject = md_performance.UnknownSubject
+
+
+def market_returns(app_db: Session, **kwargs) -> Dict:
+    with _session(app_db) as db:
+        return md_performance.returns(db, **kwargs)
+
+
+def market_seasonality(app_db: Session, **kwargs) -> Dict:
+    with _session(app_db) as db:
+        return md_performance.seasonality(db, **kwargs)
+
+
+def consistent_months(app_db: Session, **kwargs) -> Dict:
+    with _session(app_db) as db:
+        return md_performance.consistent_months(db, **kwargs)
+
+
+def market_movers(app_db: Session, **kwargs) -> Dict:
+    with _session(app_db) as db:
+        return md_performance.movers(db, **kwargs)
