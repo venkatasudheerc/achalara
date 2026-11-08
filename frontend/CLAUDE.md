@@ -153,7 +153,9 @@ Each feature directory contains its page component(s). Implemented:
   in one sentence), `HowToRead` (the caveats, closed by default), `Bars`, `DivergingRows`,
   `displayName` (company names as people say them, from SEC filings' "WATERS CORP /DE/"). Each
   view states its answer in words first, then one chart or one clean table; colour marks only gain,
-  loss and the highlighted figure. Months by year and Calendar days share one chosen index or stock (`SymbolPicker` with indices);
+  loss and the highlighted figure. Months by year and Calendar days share one chosen index or stock (`SymbolPicker` with indices)
+  and one years control (`research/YearSpan.tsx`: 10, 20, All, Custom with From and To from the
+  years on file; Months by year starts at 10, Calendar days at 20);
   indices come from `/research/indices` (`useIndices`, `useIndexInfo` in `research/ui.tsx` for names
   and volatility), grouped as Indices (US), India: broad market and India: sectors and themes,
   shown and sent with a leading `^` (`^NSEI`) so the server always reads them as indices;

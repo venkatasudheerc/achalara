@@ -142,11 +142,17 @@ class RsYears(BaseModel):
     count: int
 
 
+class RsYearSpan(BaseModel):
+    first: int
+    last: int
+
+
 class RsCalendarResponse(BaseModel):
     symbol: str
     kind: str
     basis: str
     stat: str
+    available: Optional[RsYearSpan] = None
     years: RsYears
     cells: List[RsCell]
     best: List[RsCell]
@@ -179,11 +185,6 @@ class RsNamedMonth(BaseModel):
     year: int
     month: int
     ret: float
-
-
-class RsYearSpan(BaseModel):
-    first: int
-    last: int
 
 
 class RsMonthGridResponse(BaseModel):

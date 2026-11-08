@@ -3,21 +3,14 @@ import { useMonthGrid } from '@/hooks/useResearch'
 import type { RsMonthGrid } from '@/api/types'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { Select } from '@/features/portal/ui'
 import { SymbolPicker, type Choice } from './SymbolPicker'
 import { MonthGrid } from './MonthGrid'
+import { YearSpanControl, useYearSpan } from './YearSpan'
 import {
   Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, Segmented, capitalise,
   notFound, pct1, unavailable, useIndexInfo,
 } from './ui'
 
-const SPANS = [
-  { value: '10', label: '10' },
-  { value: '20', label: '20' },
-  { value: 'all', label: 'All' },
-  { value: 'custom', label: 'Custom' },
-] as const
-type Span = (typeof SPANS)[number]['value']
 type Stat = 'mean' | 'median'
 
 /** The answer the chart gives, in words: the strongest month, how often it rose, the weakest. */
@@ -48,19 +41,9 @@ function headline(grid: RsMonthGrid, stat: Stat, subject: string, volatility: bo
 
 export function MonthsTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choice) => void }) {
   const [stat, setStat] = useState<Stat>('mean')
-  const [span, setSpan] = useState<Span>('10')
-  const [from, setFrom] = useState<number | undefined>()
-  const [to, setTo] = useState<number | undefined>()
+  const years = useYearSpan('10')
   const typed = choice.symbol
-  const thisYear = new Date().getFullYear()
-  const params = span === 'custom' ? { start_year: from, end_year: to }
-    : span === 'all' ? {} : { start_year: thisYear - Number(span) + 1 }
-  const { data, isLoading, isError, error, refetch, isFetching } = useMonthGrid({ symbol: typed, ...params })
-  const years = data ? Array.from({ length: data.available.last - data.available.first + 1 }, (_, i) => data.available.last - i) : []
-  const choose = (v: Span) => {
-    if (v === 'custom' && data) { setFrom(data.years.first); setTo(data.years.last) }
-    setSpan(v)
-  }
+  const { data, isLoading, isError, error, refetch, isFetching } = useMonthGrid({ symbol: typed, ...years.params })
   const ix = useIndexInfo()
   const answer = data ? headline(data, stat, ix.subject(data.symbol), Boolean(ix.info(data.symbol)?.volatility)) : null
 
@@ -71,25 +54,7 @@ export function MonthsTab({ choice, onChoice }: { choice: Choice; onChoice: (c: 
           choice={choice} onChoose={onChoice} withIndices />
         <Segmented label="Show" value={stat} onChange={setStat}
           options={[{ value: 'mean', label: 'Average' }, { value: 'median', label: 'Median' }]} />
-        <Segmented label="Years" value={span} onChange={choose} options={SPANS} />
-        {span === 'custom' && years.length > 0 && (
-          <div className="flex gap-[12px]">
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="grid-from" className="text-[13px] text-stone">From</label>
-              <Select id="grid-from" value={String(from ?? '')} minWidth={110}
-                onChange={(v) => { setFrom(Number(v)); if (to && Number(v) > to) setTo(Number(v)) }}>
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </Select>
-            </div>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="grid-to" className="text-[13px] text-stone">To</label>
-              <Select id="grid-to" value={String(to ?? '')} minWidth={110}
-                onChange={(v) => { setTo(Number(v)); if (from && Number(v) < from) setFrom(Number(v)) }}>
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </Select>
-            </div>
-          </div>
-        )}
+        <YearSpanControl id="grid" state={years} available={data?.available} shown={data?.years} />
       </Controls>
 
       {!typed ? <EmptyState title="Name an index or a ticker" message="SPX, NDX and RUT go back decades; a stock's record is about five years." />

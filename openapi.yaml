@@ -7553,6 +7553,9 @@ components:
         stat:
           type: string
           title: Stat
+        available:
+          $ref: '#/components/schemas/RsYearSpan'
+          nullable: true
         years:
           $ref: '#/components/schemas/RsYears'
         cells:

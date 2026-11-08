@@ -9,6 +9,7 @@ import { CalendarHeatmap } from './CalendarHeatmap'
 import { GlanceCards, OverviewTab } from './Overview'
 import { MonthsTab } from './MonthsTab'
 import { LookupTab } from './LookupTab'
+import { YearSpanControl, useYearSpan } from './YearSpan'
 import { DEFAULT_SERIES, SymbolPicker, type Choice } from './SymbolPicker'
 import {
   Box, Controls, HowToRead, Loading, MONTHS, Pct, Section, Segmented, Tabs, UNIVERSES, UNIVERSE_LABEL,
@@ -38,19 +39,13 @@ function MonthSelect({ id, value, onChange }: { id: string; value: number; onCha
 
 // -- Calendar days ---------------------------------------------------------------
 
-const RANGES = [
-  { value: '1950', label: 'Since 1950' },
-  { value: '25', label: '25 years' },
-  { value: 'all', label: 'All' },
-] as const
 
 function CalendarTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choice) => void }) {
   const [stat, setStat] = useState<'mean' | 'median'>('mean')
-  const [range, setRange] = useState<(typeof RANGES)[number]['value']>('1950')
+  // Each date's average rests on one day a year, so the calendar starts from 20 years.
+  const years = useYearSpan('20')
   const typed = choice.symbol
-  const lastYear = new Date().getFullYear() - 1
-  const start_year = range === 'all' ? undefined : range === '1950' ? 1950 : lastYear - 24
-  const { data, isLoading, isError, error, refetch, isFetching } = useCalendarGrid({ symbol: typed, stat, start_year, end_year: lastYear })
+  const { data, isLoading, isError, error, refetch, isFetching } = useCalendarGrid({ symbol: typed, stat, ...years.params })
   const best = data?.best[0]
   const ix = useIndexInfo()
   return (
@@ -60,7 +55,7 @@ function CalendarTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choic
           choice={choice} onChoose={onChoice} withIndices />
         <Segmented label="Show" value={stat} onChange={setStat}
           options={[{ value: 'mean', label: 'Average' }, { value: 'median', label: 'Median' }]} />
-        <Segmented label="Years" value={range} onChange={setRange} options={RANGES} />
+        <YearSpanControl id="cal" state={years} available={data?.available} shown={data?.years} />
       </Controls>
       {!typed ? <EmptyState title="Name an index or a ticker" message="SPX, NDX and RUT go back decades; a stock's record is about five years." />
         : isLoading ? <Section title="Loading…"><Loading rows={10} /></Section>

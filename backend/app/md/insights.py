@@ -380,6 +380,7 @@ def calendar_grid(
         "kind": kind,
         "basis": basis,
         "stat": stat,
+        "available": {"first": closes[0][0].year, "last": closes[-1][0].year},
         "years": {"first": min(years), "last": max(years), "count": len(years)},
         "cells": out,
         "best": list(reversed(ranked[-5:])),

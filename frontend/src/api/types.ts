@@ -724,6 +724,7 @@ export interface RsOutlook {
 export interface RsCell { month: number; day: number; value: number; mean: number; median: number; days: number }
 export interface RsCalendar {
   symbol: string; kind: string; basis: string; stat: 'mean' | 'median'
+  available?: { first: number; last: number } | null
   years: { first: number; last: number; count: number }
   cells: RsCell[]; best: RsCell[]; worst: RsCell[]; notes: string[]
 }
