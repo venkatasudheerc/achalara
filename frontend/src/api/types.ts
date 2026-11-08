@@ -746,7 +746,11 @@ export interface RsProfile {
   kind: string; basis: string; indices: string[]; first_day: string; last_day: string
   last_12_months: { period: string; ret: number }[]
   month_of_year: RsPattern; month: number; month_name: string
-  month_by_trading_day: RsPattern; sector_month_of_year: RsPattern | null; notes: string[]
+  month_by_trading_day: RsPattern; month_path: RsMonthPath; sector_month_of_year: RsPattern | null; notes: string[]
+}
+export interface RsMonthPath {
+  typical: { day: number; mean: number; median: number; years: number }[]; years: number
+  current: { year: number; through: string; days: { day: number; ret: number }[] } | null
 }
 export interface RsMonthSummary {
   count: number; mean: number; median: number; share_up: number; share_down: number

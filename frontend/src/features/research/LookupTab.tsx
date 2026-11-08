@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSecurityProfile, useSecuritySearch } from '@/hooks/useResearch'
-import type { RsBucket, RsProfile } from '@/api/types'
+import type { RsBucket, RsMonthPath, RsProfile } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
 import { formatDate } from '@/lib/formatters'
 import { ErrorState } from '@/components/ErrorState'
@@ -87,37 +87,70 @@ function PairBars({ own, sector, ownLabel, sectorLabel }: {
   )
 }
 
-/** Where the stock has stood, on average, after each trading day of a month. */
-function MonthPath({ buckets, name, month }: { buckets: RsBucket[]; name: string; month: string }) {
+function ordinal(n: number): string {
+  const tens = n % 100
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'
+  return `${n}${suffix}`
+}
+
+/** Where the stock has stood after each date of a month: on average over the years on
+ *  file, and, for the month now running, this year so far. Both measured from the last
+ *  close of the month before; a weekend carries the last close forward. */
+function MonthPath({ path, name, month }: { path: RsMonthPath; name: string; month: string }) {
   const colours = useChartColours()
-  const days = [...buckets].sort((x, y) => Number(x.order) - Number(y.order))
-  const path = [0]
-  days.forEach((d) => path.push(path[path.length - 1] + d.mean))
-  const lo = Math.min(...path) - 0.005
-  const hi = Math.max(...path) + 0.005
+  const typical = path.typical
+  const current = path.current
+  const last = Math.max(typical.length ? typical[typical.length - 1].day : 0, current?.days.length ?? 0, 28)
+  const values = [0, ...typical.map((d) => d.mean), ...(current?.days.map((d) => d.ret) ?? [])]
+  const lo = Math.min(...values) - 0.005
+  const hi = Math.max(...values) + 0.005
+  const x = (day: number) => (day / last) * 1000
   const y = (v: number) => 250 - ((v - lo) / (hi - lo)) * 230 - 10
-  const points = path.map((v, i) => `${(i / Math.max(path.length - 1, 1)) * 1000},${y(v)}`).join(' ')
-  const end = path[path.length - 1]
-  const thin = days.filter((d) => d.count < Math.max(...days.map((x) => x.count)))
+  const line = (pts: { day: number; v: number }[]) => [{ day: 0, v: 0 }, ...pts].map((p) => `${x(p.day)},${y(p.v)}`).join(' ')
+  const end = typical.length ? typical[typical.length - 1].mean : null
+  const now = current?.days.length ? current.days[current.days.length - 1].ret : null
+  const thin = typical.filter((d) => d.years < path.years).map((d) => d.day)
+  const ticks = [1, 10, 20, last]
   return (
     <div className="flex flex-col gap-[8px]">
-      <div className="rounded-[10px] bg-paper px-[16px] pt-[12px] pb-[8px]">
-        <div className="flex justify-end items-baseline gap-[8px] pb-[4px]">
-          <span className="text-[13px] text-stone">By day {days.length}</span>
-          <span className={`font-mono text-[20px] ${tone(end)}`}>{pct1(end)}</span>
-        </div>
-        <svg role="img" aria-label={`${name}'s average running change through ${month}, ending ${pct1(end)} after ${days.length} trading days`}
-          viewBox="0 0 1000 260" width="100%" height="240" preserveAspectRatio="none">
+      <div className="flex flex-wrap gap-x-[24px] gap-y-[8px] items-baseline">
+        <span className="inline-flex items-baseline gap-[8px] text-[14px] text-stone">
+          <span className="w-[18px] h-[3px] rounded self-center" style={{ background: colours.primary }} />
+          A typical {month}{end != null && <>, by the {ordinal(last)}: <span className={`font-mono text-[18px] ${tone(end)}`}>{pct1(end)}</span></>}
+        </span>
+        {current && now != null && (
+          <span className="inline-flex items-baseline gap-[8px] text-[14px] text-stone">
+            <span className="w-[18px] h-[3px] rounded self-center" style={{ background: colours.gold }} />
+            {month} {current.year} so far, through the {ordinal(current.days.length)}:{' '}
+            <span className={`font-mono text-[18px] ${tone(now)}`}>{pct1(now)}</span>
+          </span>
+        )}
+      </div>
+      <div className="rounded-[10px] bg-paper px-[16px] pt-[16px] pb-[8px]">
+        <svg role="img" viewBox="0 0 1000 260" width="100%" height="240" preserveAspectRatio="none"
+          aria-label={`${name} through ${month}, by date: typically ${end != null ? pct1(end) : 'unknown'} by the month's end${current && now != null ? `; this year ${pct1(now)} so far` : ''}`}>
           <line x1="0" x2="1000" y1={y(0)} y2={y(0)} stroke={colours.zero} strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-          <polyline points={points} fill="none" stroke={colours.primary} strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          {typical.length > 0 && (
+            <polyline points={line(typical.map((d) => ({ day: d.day, v: d.mean })))} fill="none" stroke={colours.primary}
+              strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          )}
+          {current && (
+            <polyline points={line(current.days.map((d) => ({ day: d.day, v: d.ret })))} fill="none" stroke={colours.gold}
+              strokeWidth="3.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          )}
         </svg>
-        <div className="flex justify-between text-[12px] text-stone pt-[4px]">
-          <span>Start</span><span>Day {Math.ceil(days.length / 2)}</span><span>Day {days.length}</span>
+        <div className="relative h-[18px] text-[12px] text-stone">
+          {ticks.map((t) => (
+            // The last label ends at the right edge rather than centring past it.
+            <span key={t} className={`absolute whitespace-nowrap ${t === last ? '-translate-x-full' : '-translate-x-1/2'}`}
+              style={{ left: `${(t / last) * 100}%` }}>{MONTHS_SHORT[MONTHS.indexOf(month)]} {t}</span>
+          ))}
         </div>
       </div>
       <p className="text-[13px] text-stone">
-        Built from {Math.max(...days.map((d) => d.count))} {month}s.
-        {thin.length > 0 && ` The last ${thin.length === 1 ? 'day comes' : `${thin.length} days come`} from fewer years, since months differ in length.`}
+        The typical line is the average of {path.years} {month}s, each measured from the last close of the month before.
+        Weekends and holidays carry the last close forward.
+        {thin.length > 0 && ` The ${thin.map(ordinal).join(' and ')} come from fewer years, since not every ${month} has them.`}
       </p>
     </div>
   )
@@ -210,8 +243,8 @@ export function LookupTab({ query, onQuery, onOpenMonths }: {
             <div className="flex flex-col gap-[14px]">
               <div className="flex flex-wrap items-end justify-between gap-[12px]">
                 <div>
-                  <h3 className="text-[18px] font-semibold">A typical {MONTHS[month - 1]}, day by day</h3>
-                  <p className="text-[14px] text-stone mt-[4px]">Where {displayName(p.name, p.symbol)} has stood, on average, after each trading day of the month</p>
+                  <h3 className="text-[18px] font-semibold">{MONTHS[month - 1]}, date by date</h3>
+                  <p className="text-[14px] text-stone mt-[4px]">Where {displayName(p.name, p.symbol)} has stood after each date of the month</p>
                 </div>
                 <div className="flex flex-col gap-[6px]">
                   <label htmlFor="lookup-month" className="text-[13px] text-stone">Month</label>
@@ -220,8 +253,8 @@ export function LookupTab({ query, onQuery, onOpenMonths }: {
                   </Select>
                 </div>
               </div>
-              {p.month_by_trading_day.buckets.length > 0
-                ? <MonthPath buckets={p.month_by_trading_day.buckets} name={displayName(p.name, p.symbol)} month={MONTHS[month - 1]} />
+              {p.month_path.typical.length > 0 || p.month_path.current
+                ? <MonthPath path={p.month_path} name={displayName(p.name, p.symbol)} month={MONTHS[month - 1]} />
                 : <p className="text-[15px] text-stone">No whole {MONTHS[month - 1]} on file yet.</p>}
             </div>
 

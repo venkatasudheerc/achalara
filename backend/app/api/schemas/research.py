@@ -249,6 +249,30 @@ class RsPattern(BaseModel):
     month_to_date: Optional[List[RsMonthToDate]] = None
 
 
+class RsPathDay(BaseModel):
+    day: int
+    mean: float
+    median: float
+    years: int
+
+
+class RsCurrentDay(BaseModel):
+    day: int
+    ret: float
+
+
+class RsCurrentMonth(BaseModel):
+    year: int
+    through: date
+    days: List[RsCurrentDay]
+
+
+class RsMonthPath(BaseModel):
+    typical: List[RsPathDay]
+    years: int
+    current: Optional[RsCurrentMonth] = None
+
+
 class RsProfileResponse(BaseModel):
     symbol: str
     name: Optional[str] = None
@@ -264,6 +288,7 @@ class RsProfileResponse(BaseModel):
     month: int
     month_name: str
     month_by_trading_day: RsPattern
+    month_path: RsMonthPath
     sector_month_of_year: Optional[RsPattern] = None
     notes: List[str]
 

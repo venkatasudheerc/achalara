@@ -145,7 +145,8 @@ Each feature directory contains its page component(s). Implemented:
   against a typical one, next month's record), Months by year (`MonthsTab`, a 12-month bar chart over
   the year × month grid `MonthGrid`), Calendar days (`CalendarHeatmap`), Top performers, Sectors
   and Stock/ETF look-up (`LookupTab`: opens as you type; the last 12 months, the stock beside its
-  sector, a typical month day by day). Building blocks are in `research/ui.tsx`: `Tabs` (underlined,
+  sector, and a month date by date: the typical path from `month_path.typical`, and this year's
+  so far in gold when the month is the one running, `month_path.current`). Building blocks are in `research/ui.tsx`: `Tabs` (underlined,
   for views) apart from `Segmented` (for settings), `Section` (a card that opens with its answer
   in one sentence), `HowToRead` (the caveats, closed by default), `Bars`, `DivergingRows`,
   `displayName` (company names as people say them, from SEC filings' "WATERS CORP /DE/"). Each

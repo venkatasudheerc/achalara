@@ -232,6 +232,13 @@ def test_finding_and_profiling_a_security(db, market):
     )
     assert len(profile["last_12_months"]) == 12
     assert profile["month_by_trading_day"]["buckets"]
+    path = profile["month_path"]
+    assert [d["day"] for d in path["typical"]] == list(range(1, 31))
+    assert path["years"] == 4 and path["typical"][-1]["mean"] > 0  # Novembers 2022-2025
+    current = path["current"]
+    assert current["year"] == 2026 and current["through"] == date(2026, 11, 6)
+    assert [d["day"] for d in current["days"]] == list(range(1, 7))
+    assert insights.security_profile(db, "AAA", 10, TODAY)["month_path"]["current"] is None
     assert profile["sector_month_of_year"]["survivorship"] is True
 
 

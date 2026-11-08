@@ -7,11 +7,13 @@ from app.utils.returns import (
     compound,
     day_returns,
     excess,
+    month_to_date_by_date,
     period_key,
     period_returns,
     seasonality,
     summarise,
     turn_of_month,
+    typical_month_path,
 )
 
 
@@ -109,3 +111,43 @@ def test_a_month_only_partly_on_file_gives_no_day_places():
     rows = day_returns(closes)
     assert [r.day for r in rows] == [date(2021, 12, 1), date(2021, 12, 2)]
     assert rows[0].trading_day_of_month == 1
+
+
+def _weekday_closes(first, last, step):
+    """A close every weekday, rising by ``step`` each day."""
+    from datetime import timedelta
+
+    closes, day, value = [], first, 100.0
+    while day <= last:
+        if day.weekday() < 5:
+            value *= 1 + step
+            closes.append((day, value))
+        day += timedelta(days=1)
+    return closes
+
+
+def test_a_month_by_calendar_date_carries_the_weekend_forward():
+    closes = [
+        (date(2026, 10, 30), 100.0),  # Friday, October's last close
+        (date(2026, 11, 2), 102.0),  # Monday: November 1 is a Sunday
+        (date(2026, 11, 3), 101.0),
+        (date(2026, 11, 6), 104.0),  # Friday
+    ]
+    path = dict(month_to_date_by_date(closes, 2026, 11))
+    assert path[1] == 0.0  # before the month's first trade
+    assert path[2] == pytest.approx(0.02)
+    assert path[4] == pytest.approx(0.01)  # Wednesday with no close: Tuesday's
+    assert path[6] == pytest.approx(0.04)
+    assert max(path) == 6  # nothing past the last close on file
+    assert month_to_date_by_date(closes[1:], 2026, 11) is None  # no close before
+
+
+def test_a_typical_month_by_date_averages_whole_months_only():
+    closes = _weekday_closes(date(2023, 10, 1), date(2026, 11, 6), 0.001)
+    path = typical_month_path(closes, 11, as_of=date(2026, 11, 8))
+    assert [p["day"] for p in path] == list(range(1, 31))
+    assert {p["years"] for p in path} == {3}  # 2023-2025; the running 2026 is left out
+    assert path[-1]["mean"] > path[10]["mean"] > 0
+    # A month cut short on file is not whole and is left out.
+    short = [c for c in closes if c[0] <= date(2025, 11, 14)]
+    assert {p["years"] for p in typical_month_path(short, 11, date(2026, 11, 8))} == {2}

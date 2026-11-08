@@ -181,3 +181,53 @@ def compound(returns: Iterable[float]) -> float:
     for ret in returns:
         total *= 1 + ret
     return total - 1
+
+
+def month_to_date_by_date(
+    closes: Sequence[Close], year: int, month: int
+) -> Optional[List[Tuple[int, float]]]:
+    """Where a series stood after each calendar date of one month, from the last close
+    of the month before: ``[(day, return), ...]``. A weekend or holiday carries the last
+    close forward; a date before the month's first trade is 0. Dates after the last
+    close on file are left out. None when no close before the month is on file, or the
+    month has no close at all."""
+    first = date(year, month, 1)
+    ordered = sorted(closes)
+    before = [c for d, c in ordered if d < first]
+    inside = [(d, c) for d, c in ordered if d.year == year and d.month == month]
+    if not before or not before[-1] or not inside:
+        return None
+    start = before[-1]
+    out, i, current = [], 0, start
+    for day in range(1, inside[-1][0].day + 1):
+        while i < len(inside) and inside[i][0].day <= day:
+            current = inside[i][1]
+            i += 1
+        out.append((day, current / start - 1))
+    return out
+
+
+def typical_month_path(
+    closes: Sequence[Close], month: int, as_of: date
+) -> List[Dict]:
+    """For each calendar date of ``month``: where the series has stood, on average and
+    at the median, across every whole such month on file, and in how many years.
+    The month still running at ``as_of`` is left out."""
+    by_day: Dict[int, List[float]] = {}
+    years = sorted({d.year for d, _ in closes})
+    for year in years:
+        if still_running((year, month), "month", as_of) or date(year, month, 1) > as_of:
+            continue
+        path = month_to_date_by_date(closes, year, month)
+        # Only a month on file to its end: its last close falls in its last trading days.
+        if not path or path[-1][0] < calendar.monthrange(year, month)[1] - 4:
+            continue
+        for day, ret in path:
+            by_day.setdefault(day, []).append(ret)
+        # Carry the month's end to its last dates (a last trade before a weekend).
+        for day in range(path[-1][0] + 1, calendar.monthrange(year, month)[1] + 1):
+            by_day.setdefault(day, []).append(path[-1][1])
+    return [
+        {"day": d, "mean": mean(v), "median": median(v), "years": len(v)}
+        for d, v in sorted(by_day.items())
+    ]

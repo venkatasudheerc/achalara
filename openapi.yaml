@@ -7979,6 +7979,78 @@ components:
       - period
       - ret
       title: RsPeriodReturn
+    RsCurrentDay:
+      properties:
+        day:
+          type: integer
+          title: Day
+        ret:
+          type: number
+          title: Ret
+      type: object
+      required:
+      - day
+      - ret
+      title: RsCurrentDay
+    RsCurrentMonth:
+      properties:
+        year:
+          type: integer
+          title: Year
+        through:
+          type: string
+          format: date
+          title: Through
+        days:
+          items:
+            $ref: '#/components/schemas/RsCurrentDay'
+          type: array
+          title: Days
+      type: object
+      required:
+      - year
+      - through
+      - days
+      title: RsCurrentMonth
+    RsMonthPath:
+      properties:
+        typical:
+          items:
+            $ref: '#/components/schemas/RsPathDay'
+          type: array
+          title: Typical
+        years:
+          type: integer
+          title: Years
+        current:
+          $ref: '#/components/schemas/RsCurrentMonth'
+          nullable: true
+      type: object
+      required:
+      - typical
+      - years
+      title: RsMonthPath
+    RsPathDay:
+      properties:
+        day:
+          type: integer
+          title: Day
+        mean:
+          type: number
+          title: Mean
+        median:
+          type: number
+          title: Median
+        years:
+          type: integer
+          title: Years
+      type: object
+      required:
+      - day
+      - mean
+      - median
+      - years
+      title: RsPathDay
     RsProfileResponse:
       properties:
         symbol:
@@ -8030,6 +8102,8 @@ components:
           title: Month Name
         month_by_trading_day:
           $ref: '#/components/schemas/RsPattern'
+        month_path:
+          $ref: '#/components/schemas/RsMonthPath'
         sector_month_of_year:
           allOf:
           - $ref: '#/components/schemas/RsPattern'
@@ -8052,6 +8126,7 @@ components:
       - month
       - month_name
       - month_by_trading_day
+      - month_path
       - notes
       title: RsProfileResponse
     RsReturnRow:

@@ -31,7 +31,13 @@ from app.md.models import (
     SecuritySymbol,
 )
 from app.md.sectors import SECTORS
-from app.utils.returns import day_returns, period_returns, summarise
+from app.utils.returns import (
+    day_returns,
+    month_to_date_by_date,
+    period_returns,
+    summarise,
+    typical_month_path,
+)
 from app.utils.symbols import app_symbol
 
 # Each index's own fund: the fair benchmark for its members (a total return).
@@ -755,12 +761,33 @@ def security_profile(
         "month_by_trading_day": perf.seasonality(
             db, symbol, "trading_day", month=month, today=today
         ),
+        "month_path": _month_path(closes, month, today),
         "sector_month_of_year": sector_pattern,
         "notes": [
             "A stock's own record is about five years: a pattern in it may be chance; "
             "its sector's record across hundreds of stocks is sturdier.",
             PRICE_NOTE,
         ],
+    }
+
+
+def _month_path(closes, month: int, today: date) -> Dict:
+    """A month by calendar date: where the security has typically stood after each date,
+    and, when the month is this month, where it stands this year so far."""
+    typical = typical_month_path(closes, month, today)
+    current = None
+    if month == today.month:
+        path = month_to_date_by_date(closes, today.year, month)
+        if path:
+            current = {
+                "year": today.year,
+                "through": date(today.year, month, path[-1][0]),
+                "days": [{"day": d, "ret": r} for d, r in path],
+            }
+    return {
+        "typical": typical,
+        "years": max((p["years"] for p in typical), default=0),
+        "current": current,
     }
 
 
