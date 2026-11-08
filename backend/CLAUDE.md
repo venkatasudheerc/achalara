@@ -434,7 +434,7 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   worked out from its index members (`ishares_majority`), not written by hand.
 - By hand: `python -m app.cli md-index-membership`, `md-identifiers [--names-only]`, `md-classification
   [--refresh]`, `md-daily-closes`, `md-adjusted-history`, `md-index-levels`, `md-refresh-returns`,
-  `md-track-fund [--symbol XYZ --group gold] [--remove]`, and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
+  `md-track-fund [--symbol XYZ --group gold] [--remove]`, `md-track-fund --file app/md/tracked_funds.txt [--apply]` (the list of tracked funds; each ticker is checked with Webull first, so a typo never becomes a security, and nothing changes without `--apply`), and `md-set-sector --symbol XYZ --sector IT --industry "…"` (never overwritten).
 - **The Market data page (`/app/market-data`)** reads `GET /api/v1/admin/market-data/status`
   (`app/md/status_report.py`, through `read.market_data_status`): jobs, indices, coverage, tables and
   what is not built, with its own `attention` list. It is advisor-only, because the counts include
