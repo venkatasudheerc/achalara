@@ -231,19 +231,20 @@ at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABAS
 giving market data a database of its own; left empty, it shares the app's.
 
 **The read-only login for research (once per server).** The Research page reads market data
-through `md_reader`, a login that may read the `md` schema and nothing else. Without it research
-still runs in read-only sessions, but as the owner login. To create it, set `MD_READER_PASSWORD`
-in `deploy/.env` (a long random value), then:
+through `md_reader`, a login that may read the `md` schema and nothing else. Until it exists,
+research still runs in read-only sessions, but as the owner login. Only its password goes in
+`deploy/.env`; `docker-compose.yml` builds the address (`MD_READ_DATABASE_URL`) from it. Use
+letters and digits only, since the password sits inside that address:
 
 ```sh
 cd /srv/achalara/deploy
+echo "MD_READER_PASSWORD=$(openssl rand -hex 24)" | sudo tee -a .env > /dev/null
 sudo sh create-md-reader.sh
-# add to deploy/.env, with the same password and your POSTGRES_DB:
-#   MD_READ_DATABASE_URL=postgresql://md_reader:<password>@db:5432/<POSTGRES_DB>
 sudo docker compose up -d backend
 ```
 
-Running the script again only resets the password.
+To change the password, edit `MD_READER_PASSWORD`, run the script again (it only resets the
+password) and restart the backend.
 Its state is on the **Market data** page in the advisor workspace (`/app/market-data`). To run it by
 hand, for example right after the first deploy:
 

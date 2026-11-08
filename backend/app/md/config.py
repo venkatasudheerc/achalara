@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 # backend/app/md/config.py → backend/.env, as for the app.
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
@@ -18,8 +19,10 @@ class MdSettings(BaseSettings):
 
     # Market data's own database; empty means it shares the app's.
     md_database_url: str = ""
-    # The read-only login research uses (role md_reader). Empty: research still
-    # reads through read-only sessions, on md's own login.
+    # The read-only login research uses (role md_reader). On the server it is built
+    # by docker-compose.yml from MD_READER_PASSWORD. Empty, or with no password
+    # (that one not set yet): research still reads through read-only sessions, on
+    # md's own login.
     md_read_database_url: str = ""
     database_url: str = ""
     log_level: str = "INFO"
@@ -54,7 +57,9 @@ class MdSettings(BaseSettings):
     @property
     def read_url(self) -> str:
         """Where research reads md: the read-only login when set, else md's own."""
-        return self.md_read_database_url or self.url
+        if self.md_read_database_url and make_url(self.md_read_database_url).password:
+            return self.md_read_database_url
+        return self.url
 
     @property
     def separate(self) -> bool:

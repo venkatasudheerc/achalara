@@ -449,8 +449,9 @@ must never change anything. Two independent layers hold this; keep both.
 - **Research reads `md` only through `md.database.ReadSession`.** Its engine makes every
   transaction read-only (`default_transaction_read_only=on`; `PRAGMA query_only` in SQLite) and
   connects as `MD_READ_DATABASE_URL` when set: the `md_reader` login, which has `SELECT` on the
-  `md` schema and no rights at all on `public` or `perf`. Unset, it uses `md`'s own URL, still
-  read-only. Every function in `read.py`'s research section opens it through `_read()`.
+  `md` schema and no rights at all on `public` or `perf`. On the server `docker-compose.yml` builds
+  that address from `MD_READER_PASSWORD`. Unset, or with no password in it, it uses `md`'s own
+  URL, still read-only (`MdSettings.read_url`). Every function in `read.py`'s research section opens it through `_read()`.
 - **Never use `MdSession`, `SessionLocal`, `get_db` or an engine** in `md/performance.py`,
   `md/insights.py` or `api/routes/research.py`, and never join client data into research.
   `tests/test_research_guardrails.py` scans for this and checks a write is refused.
