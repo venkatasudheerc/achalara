@@ -261,6 +261,38 @@ def md_refresh_returns() -> int:
     return 0
 
 
+def md_track_fund_list(path: str, apply: bool) -> int:
+    """Check a list of funds with Webull; with ``apply``, track the ones it knows."""
+    from app.md.closes import read_fund_list, track_fund_list
+    from app.md.database import MdSession
+    from app.md.webull import WebullClient, WebullError
+
+    webull = WebullClient()
+    if not webull.configured():
+        print("Webull is not configured; nothing checked", file=sys.stderr)
+        return 1
+    with open(path, encoding="utf-8") as handle:
+        entries = read_fund_list(handle)
+    db = MdSession()
+    try:
+        report = track_fund_list(db, webull, entries, date.today(), apply=apply)
+    except WebullError as exc:
+        print(f"Webull could not be asked ({exc}); nothing added", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+    print(f"{len(entries)} in the list")
+    print(f"Already tracked ({len(report['already_tracked'])}): {' '.join(report['already_tracked'])}")
+    print(f"Webull lists as ETFs ({len(report['to_add'])}): {' '.join(report['to_add'])}")
+    print(f"Webull does not list as ETFs, not added ({len(report['unknown'])}): {' '.join(report['unknown'])}")
+    if apply:
+        print(f"Added ({len(report['added'])}). Their history loads on the next adjusted-history "
+              "run, or now with: python -m app.cli md-adjusted-history")
+    else:
+        print("Nothing changed. Run again with --apply to add them.")
+    return 0
+
+
 def md_track_fund(symbol: Optional[str], group: Optional[str], remove: bool) -> int:
     """Track a fund (priced each evening), stop tracking one, or list them."""
     from app.md.closes import track_fund, tracked, untrack_fund
@@ -397,6 +429,11 @@ def main(argv=None) -> int:
     fund.add_argument("--symbol")
     fund.add_argument("--group", help="benchmark, sector, gold, … (any short word)")
     fund.add_argument("--remove", action="store_true")
+    fund.add_argument(
+        "--file",
+        help="a list of 'SYMBOL group  # note' lines: checked with Webull; nothing changes without --apply",
+    )
+    fund.add_argument("--apply", action="store_true", help="with --file: track the ones Webull knows")
     args = parser.parse_args(argv)
     if args.command == "md-daily-closes":
         return md_daily_closes()
@@ -407,6 +444,8 @@ def main(argv=None) -> int:
     if args.command == "md-refresh-returns":
         return md_refresh_returns()
     if args.command == "md-track-fund":
+        if args.file:
+            return md_track_fund_list(args.file, args.apply)
         return md_track_fund(args.symbol, args.group, args.remove)
     if args.command == "md-identifiers":
         return md_identifiers(names_only=args.names_only)

@@ -287,3 +287,30 @@ def test_the_market_data_page_shows_the_latest_day(db):
 )
 def test_quiet_hours(when, quiet):
     assert in_quiet_hours(when) is quiet
+
+
+def test_a_fund_list_is_checked_with_webull_before_anything_is_added(db):
+    from app.md.closes import read_fund_list, track_fund_list
+
+    track_fund(db, "SPY", "benchmark", FRIDAY)
+    entries = read_fund_list([
+        "# a comment line",
+        "SPY   benchmark",
+        "SCHD  Dividend   # an example dividend fund",
+        "VOO   broad_market",
+        "TYPO  sector",
+        "",
+    ])
+    assert entries[1] == ("SCHD", "dividend", "an example dividend fund")
+    webull = FakeSnapshots({"SCHD": 80, "VOO": 500}, known={"US_ETF": {"SCHD", "VOO"}})
+    preview = track_fund_list(db, webull, entries, FRIDAY)
+    assert preview == {"already_tracked": ["SPY"], "to_add": ["SCHD", "VOO"], "unknown": ["TYPO"], "added": []}
+    assert {s for s, _ in tracked(db)} == {"SPY"}  # a preview changes nothing
+    done = track_fund_list(db, webull, entries, FRIDAY, apply=True)
+    assert done["added"] == ["SCHD", "VOO"]
+    assert dict(tracked(db)) == {"SPY": "benchmark", "SCHD": "dividend", "VOO": "broad_market"}
+    # The typo never became a security.
+    assert db.query(SecuritySymbol).filter(SecuritySymbol.symbol == "TYPO").count() == 0
+    assert webull.requests <= 4  # 100 tickers a request, retried once without the unknown
+    with pytest.raises(ValueError):
+        read_fund_list(["SCHD"])

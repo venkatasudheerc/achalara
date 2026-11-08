@@ -294,3 +294,71 @@ def tracked(db: Session) -> Iterable[Tuple[str, str]]:
         .order_by(TrackedFund.asset_group, SecuritySymbol.symbol)
         .all()
     )
+
+
+def check_funds(webull: WebullClient, symbols: Iterable[str]) -> Tuple[List[str], List[str]]:
+    """Which symbols Webull knows as US ETFs, asked 100 at a time: ``(known, unknown)``.
+    A ticker Webull does not list as an ETF (a typo, a stock) comes back unknown."""
+    wanted = {webull_symbol(app_symbol(s)): app_symbol(s) for s in symbols}
+    known: List[str] = []
+    unknown: List[str] = []
+    names = sorted(wanted)
+    for start in range(0, len(names), BATCH):
+        batch = names[start : start + BATCH]
+        while batch:
+            try:
+                rows = webull.get(PATH, {"symbols": ",".join(batch), "category": "US_ETF"})
+            except WebullInvalidSymbols as refused:
+                gone = [s for s in batch if s in refused.symbols]
+                if not gone:
+                    raise
+                unknown += [wanted[s] for s in gone]
+                batch = [s for s in batch if s not in refused.symbols]
+                continue
+            answered = {item.get("symbol") for item in rows if isinstance(item, dict)}
+            known += [wanted[s] for s in batch if s in answered]
+            unknown += [wanted[s] for s in batch if s not in answered]
+            break
+    return sorted(known), sorted(unknown)
+
+
+def read_fund_list(lines: Iterable[str]) -> List[Tuple[str, str, Optional[str]]]:
+    """``(symbol, group, note)`` from lines like ``SCHD  dividend  # Schwab US Dividend``;
+    blank lines and lines starting with ``#`` are skipped."""
+    entries = []
+    for raw in lines:
+        text, _, note = raw.partition("#")
+        parts = text.split()
+        if not parts:
+            continue
+        if len(parts) != 2:
+            raise ValueError(f"Expected 'SYMBOL group', got: {raw.strip()}")
+        entries.append((app_symbol(parts[0]), parts[1].lower(), note.strip() or None))
+    return entries
+
+
+def track_fund_list(
+    db: Session,
+    webull: WebullClient,
+    entries: List[Tuple[str, str, Optional[str]]],
+    today: date,
+    apply: bool = False,
+) -> Dict[str, List[str]]:
+    """Check a list of funds with Webull and, with ``apply``, track the ones it knows.
+    Nothing is added for a ticker Webull does not list as an ETF, so a typo never
+    becomes a security priced every night."""
+    already = {symbol for symbol, _ in tracked(db)}
+    new = [e for e in entries if e[0] not in already]
+    known, unknown = check_funds(webull, [symbol for symbol, _, _ in new]) if new else ([], [])
+    added: List[str] = []
+    if apply:
+        for symbol, group, note in new:
+            if symbol in known:
+                track_fund(db, symbol, group, today, note)
+                added.append(symbol)
+    return {
+        "already_tracked": sorted(e[0] for e in entries if e[0] in already),
+        "to_add": sorted(known),
+        "unknown": sorted(unknown),
+        "added": sorted(added),
+    }

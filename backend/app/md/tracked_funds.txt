@@ -1,0 +1,169 @@
+# The funds market data tracks: priced every evening, with adjusted history.
+# Format: SYMBOL  group  # note. Add or remove a line, then on the server:
+#   python -m app.cli md-track-fund --file app/md/tracked_funds.txt          (preview, changes nothing)
+#   python -m app.cli md-track-fund --file app/md/tracked_funds.txt --apply  (adds what Webull lists as ETFs)
+# Removing a line does not stop tracking; use: md-track-fund --symbol XYZ --remove
+# Kept to large, widely held funds on purpose: every tracked fund is collected every night.
+
+# -- tracked since market data began ---------------------------------------
+SPY   benchmark      # S&P 500
+QQQ   benchmark      # Nasdaq-100
+DIA   benchmark      # Dow Jones Industrial Average
+AGG   benchmark      # US aggregate bonds
+IVV   broad_market   # S&P 500
+IWB   broad_market   # Russell 1000
+IWM   broad_market   # Russell 2000
+VTI   broad_market   # US total stock market
+EFA   international  # developed markets
+EEM   international  # emerging markets
+TLT   long_bond      # 20+ year Treasuries
+GLD   gold           # gold
+SLV   silver         # silver
+XLB   sector         # materials
+XLC   sector         # communication services
+XLE   sector         # energy
+XLF   sector         # financials
+XLI   sector         # industrials
+XLK   sector         # information technology
+XLP   sector         # consumer staples
+XLRE  sector         # real estate
+XLU   sector         # utilities
+XLV   sector         # health care
+XLY   sector         # consumer discretionary
+
+# -- US broad market --------------------------------------------------------
+VOO   broad_market   # S&P 500
+SPYM  broad_market   # S&P 500 (formerly SPLG)
+ITOT  broad_market   # US total stock market
+SCHB  broad_market   # US broad market
+SCHX  broad_market   # US large cap
+VV    broad_market   # US large cap
+RSP   broad_market   # S&P 500 equal weight
+QQQM  broad_market   # Nasdaq-100
+
+# -- US mid and small caps --------------------------------------------------
+MDY   size           # S&P MidCap 400
+IJH   size           # S&P MidCap 400
+VO    size           # US mid cap
+IJR   size           # S&P SmallCap 600
+VB    size           # US small cap
+SCHA  size           # US small cap
+VXF   size           # US extended market
+
+# -- growth and value -------------------------------------------------------
+VUG   growth         # US large growth
+IWF   growth         # Russell 1000 growth
+SCHG  growth         # US large growth
+MGK   growth         # US mega cap growth
+SPYG  growth         # S&P 500 growth
+IWO   growth         # Russell 2000 growth
+VBK   growth         # US small growth
+VTV   value          # US large value
+IWD   value          # Russell 1000 value
+SCHV  value          # US large value
+SPYV  value          # S&P 500 value
+IWN   value          # Russell 2000 value
+VBR   value          # US small value
+
+# -- dividend and income ----------------------------------------------------
+SCHD  dividend       # US dividend equity
+VYM   dividend       # high dividend yield
+VIG   dividend       # dividend appreciation
+DGRO  dividend       # dividend growth
+HDV   dividend       # high dividend
+DVY   dividend       # select dividend
+SDY   dividend       # dividend aristocrats (S&P High Yield Dividend)
+NOBL  dividend       # S&P 500 dividend aristocrats
+SPYD  dividend       # S&P 500 high dividend
+JEPI  income         # equity premium income (covered calls)
+JEPQ  income         # Nasdaq equity premium income (covered calls)
+
+# -- international ----------------------------------------------------------
+VXUS  international  # total international stock
+IXUS  international  # total international stock
+VEA   international  # developed markets
+IEFA  international  # developed markets
+SCHF  international  # developed markets
+VEU   international  # all-world ex-US
+VGK   international  # Europe
+EWJ   international  # Japan
+VWO   international  # emerging markets
+IEMG  international  # emerging markets
+INDA  international  # India
+MCHI  international  # China
+FXI   international  # China large cap
+EWZ   international  # Brazil
+ACWI  global         # all-country world
+VT    global         # total world stock
+
+# -- bonds ------------------------------------------------------------------
+BND   bond           # US total bond market
+BNDX  bond           # international bonds (hedged)
+IEF   bond           # 7-10 year Treasuries
+SHY   bond           # 1-3 year Treasuries
+GOVT  bond           # US Treasuries
+VGSH  bond           # short-term Treasuries
+VGIT  bond           # intermediate Treasuries
+VGLT  bond           # long-term Treasuries
+SGOV  bond           # 0-3 month Treasury bills
+BIL   bond           # 1-3 month Treasury bills
+TIP   bond           # inflation-protected Treasuries
+VTIP  bond           # short-term inflation-protected
+LQD   bond           # investment-grade corporates
+VCIT  bond           # intermediate corporates
+VCSH  bond           # short-term corporates
+HYG   bond           # high-yield corporates
+JNK   bond           # high-yield corporates
+MUB   bond           # municipal bonds
+MBB   bond           # mortgage-backed bonds
+EMB   bond           # emerging-market bonds
+
+# -- sectors and industries, beyond the Select Sector funds ------------------
+VGT   sector         # information technology
+VHT   sector         # health care
+VFH   sector         # financials
+VDE   sector         # energy
+VIS   sector         # industrials
+VDC   sector         # consumer staples
+VCR   sector         # consumer discretionary
+VPU   sector         # utilities
+VAW   sector         # materials
+VOX   sector         # communication services
+SMH   industry       # semiconductors
+SOXX  industry       # semiconductors
+IGV   industry       # software
+IBB   industry       # biotechnology
+XBI   industry       # biotechnology (equal weight)
+KRE   industry       # regional banks
+KBE   industry       # banks
+ITA   industry       # aerospace and defense
+XHB   industry       # homebuilders
+XRT   industry       # retail
+CIBR  industry       # cybersecurity
+
+# -- themes -----------------------------------------------------------------
+ARKK  theme          # disruptive innovation
+ICLN  theme          # clean energy
+TAN   theme          # solar
+LIT   theme          # lithium and batteries
+URA   theme          # uranium
+BOTZ  theme          # robotics and AI
+
+# -- real estate --------------------------------------------------------------
+VNQ   real_estate    # US REITs
+SCHH  real_estate    # US REITs
+IYR   real_estate    # US real estate
+
+# -- commodities --------------------------------------------------------------
+IAU   gold           # gold
+GDX   gold           # gold miners
+GDXJ  gold           # junior gold miners
+DBC   commodity      # broad commodities
+PDBC  commodity      # broad commodities
+USO   commodity      # crude oil
+CPER  commodity      # copper
+
+# -- crypto -------------------------------------------------------------------
+IBIT  crypto         # bitcoin
+FBTC  crypto         # bitcoin
+ETHA  crypto         # ether
