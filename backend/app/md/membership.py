@@ -247,6 +247,8 @@ class MembershipService:
                 source=source,
             )
         )
+        # Written now, so a second line for the same ticker in this file finds it.
+        self.db.flush()
         return security
 
     # -- the check -------------------------------------------------------

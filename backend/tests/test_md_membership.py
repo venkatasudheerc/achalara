@@ -220,6 +220,29 @@ def test_a_first_run_fills_every_index_and_keeps_each_file(db, indices, files):
     assert run.outcome == "ok" and run.requests == 4
 
 
+def test_a_ticker_a_file_lists_twice_is_one_security(db, indices, files):
+    """A fund file can list one ticker on two lines (two lots, or two spellings of a
+    share class). It is one security, and the run must not fail on it."""
+    files["IWM"] = ishares_csv(
+        "Oct 15, 2026",
+        [
+            stock("EEE"),
+            stock("EEE"),
+            stock("FFF"),
+            ("GGG B", "GGG CLASS B", "Industrials", "Equity"),
+            ("GGG.B", "GGG CLASS B", "Industrials", "Equity"),
+        ],
+    )
+    outcome = run_index_membership(db)
+
+    assert outcome.refused == {}
+    assert members(db, "R2000") == ["EEE", "FFF", "GGG.B"]
+    assert db.query(SecuritySymbol).filter(SecuritySymbol.symbol == "EEE").count() == 1
+    assert db.query(Security).count() == 7
+    (run,) = db.query(JobRun).filter(JobRun.job == JOB).all()
+    assert run.outcome == "ok"
+
+
 def test_a_later_file_closes_leavers_and_opens_joiners(db, indices, files):
     run_index_membership(db)
     files["IVV"] = ishares_csv(
@@ -359,3 +382,24 @@ def test_system_status_lists_market_data_jobs_and_a_failure(client, db, indices,
     assert jobs["md_index_membership"]["last_ok"] is False
     assert jobs["md_index_membership"]["next_run_at"] is not None
     assert "Market data: index membership failed on its last run." in body["attention"]
+
+
+def test_a_run_left_running_by_a_stopped_process_is_closed(db):
+    from datetime import datetime, timezone
+
+    from app.md.jobs import close_abandoned
+
+    started = datetime(2026, 11, 7, 21, 0, tzinfo=timezone.utc)
+    db.add_all(
+        [
+            JobRun(job="md_identifiers", started_at=started, outcome="running"),
+            JobRun(job="md_identifiers", started_at=started, outcome="ok"),
+        ]
+    )
+    db.commit()
+    assert close_abandoned(db) == 1
+    outcomes = sorted(r.outcome for r in db.query(JobRun))
+    assert outcomes == ["failed", "ok"]
+    closed = db.query(JobRun).filter(JobRun.outcome == "failed").one()
+    assert closed.note.startswith("Interrupted") and closed.finished_at is not None
+    assert close_abandoned(db) == 0
