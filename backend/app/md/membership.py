@@ -230,7 +230,11 @@ class MembershipService:
             .first()
         )
         if known is not None:
-            return self.db.get(Security, known.security_id)
+            security = self.db.get(Security, known.security_id)
+            # A security added from holdings is named by its ticker until a file names it.
+            if security.name == holding.symbol and holding.name:
+                security.name = holding.name
+            return security
         security = Security(
             name=holding.name or holding.symbol,
             kind=holding.kind,

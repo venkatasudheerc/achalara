@@ -9,7 +9,7 @@ import logging
 import time
 import urllib.error
 from datetime import date
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,7 @@ class IdentifierService:
         self.notes: List[str] = []
         self.requests = 0
         self.rows = 0
+        self._webull_names: Dict[str, str] = {}  # security id -> Webull's name
 
     def run(self, today: date) -> str:
         with tracked_run(self.db, JOB) as run:
@@ -60,6 +61,9 @@ class IdentifierService:
                 run.outcome = "failed"
             self._sec_companies()
             self._sec_submissions()
+            named = fill_names(self.db, self._webull_names)
+            if named:
+                self.notes.append(f"Named {named} securities known only by ticker")
             self._figis()
             run.requests = self.requests + self.webull.requests
             run.rows_written = self.rows
@@ -98,6 +102,9 @@ class IdentifierService:
                     if not symbol or not webull_id:
                         continue
                     known = by_webull.get(webull_id)
+                    target = known or securities.get(symbols.get(symbol))
+                    if target is not None and row.get("name"):
+                        self._webull_names[target.id] = str(row["name"]).strip()
                     if known is not None:
                         current = self.db.get(SecuritySymbol, known.id)
                         if (
@@ -274,3 +281,28 @@ class IdentifierService:
 
 def run_identifiers(db: Session, today: date) -> str:
     return IdentifierService(db).run(today)
+
+
+def fill_names(db: Session, webull_names: Optional[Dict[str, str]] = None) -> int:
+    """Name the securities still named by their ticker; how many were named.
+
+    A security first added from holdings or the fund list carries its ticker as
+    its name. It takes its SEC company's name, or failing that Webull's. A name
+    that is not the ticker (an index file's, or one set by hand) is never
+    replaced.
+    """
+    webull_names = webull_names or {}
+    rows = (
+        db.query(Security, SecuritySymbol.symbol, Company.name)
+        .join(SecuritySymbol, SecuritySymbol.security_id == Security.id)
+        .outerjoin(Company, Company.id == Security.company_id)
+        .filter(Security.name == SecuritySymbol.symbol)
+    )
+    named = 0
+    for security, symbol, company_name in rows:
+        name = (company_name or "").strip() or webull_names.get(security.id, "").strip()
+        if name and name.upper() != symbol.upper():
+            security.name = name[:255]
+            named += 1
+    db.commit()
+    return named
