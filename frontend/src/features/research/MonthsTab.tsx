@@ -8,7 +8,7 @@ import { SymbolPicker, type Choice } from './SymbolPicker'
 import { MonthGrid } from './MonthGrid'
 import {
   Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, Segmented, capitalise,
-  notFound, pct1, subjectName, unavailable,
+  notFound, pct1, unavailable, useIndexInfo,
 } from './ui'
 
 const SPANS = [
@@ -21,7 +21,7 @@ type Span = (typeof SPANS)[number]['value']
 type Stat = 'mean' | 'median'
 
 /** The answer the chart gives, in words: the strongest month, how often it rose, the weakest. */
-function headline(grid: RsMonthGrid, stat: Stat) {
+function headline(grid: RsMonthGrid, stat: Stat, subject: string, volatility: boolean) {
   const months = Array.from({ length: 12 }, (_, i) => ({ i, s: grid.summary[String(i + 1)] }))
     .filter((m): m is { i: number; s: NonNullable<typeof m.s> } => m.s != null)
   if (!months.length) return null
@@ -29,18 +29,18 @@ function headline(grid: RsMonthGrid, stat: Stat) {
   const worst = months.reduce((a, b) => (b.s[stat] < a.s[stat] ? b : a))
   const ups = Math.round(best.s.share_up * best.s.count)
   const span = grid.years.first === grid.years.last ? `In ${grid.years.first}` : `From ${grid.years.first} to ${grid.years.last}`
-  if (grid.symbol === 'VIX') {
-    // A rising VIX is rising fear, not a good month: say where it rose and fell.
+  if (volatility) {
+    // A rising volatility index is rising fear, not a good month: say where it rose and fell.
     return {
       best: best.i,
-      title: `${span}, the VIX rose most in ${MONTHS[best.i]} and fell most in ${MONTHS[worst.i]}`,
+      title: `${span}, ${subject} rose most in ${MONTHS[best.i]} and fell most in ${MONTHS[worst.i]}`,
       sub: `${stat === 'mean' ? 'Average' : 'Median'} change ${pct1(best.s[stat])} in ${MONTHS[best.i]}, up in ${ups} of ${best.s.count} years; `
         + `${pct1(worst.s[stat])} in ${MONTHS[worst.i]}.`,
     }
   }
   return {
     best: best.i,
-    title: `${span}, ${MONTHS[best.i]} was ${subjectName(grid.symbol)}’s strongest month`,
+    title: `${span}, ${MONTHS[best.i]} was ${subject}’s strongest month`,
     sub: `${stat === 'mean' ? 'Average' : 'Median'} ${pct1(best.s[stat])}, up in ${ups} of ${best.s.count} years. `
       + `${MONTHS[worst.i]} was the weakest: ${pct1(worst.s[stat])}.`,
   }
@@ -61,7 +61,8 @@ export function MonthsTab({ choice, onChoice }: { choice: Choice; onChoice: (c: 
     if (v === 'custom' && data) { setFrom(data.years.first); setTo(data.years.last) }
     setSpan(v)
   }
-  const answer = data ? headline(data, stat) : null
+  const ix = useIndexInfo()
+  const answer = data ? headline(data, stat, ix.subject(data.symbol), Boolean(ix.info(data.symbol)?.volatility)) : null
 
   return (
     <div className="flex flex-col gap-[24px]">
@@ -97,9 +98,9 @@ export function MonthsTab({ choice, onChoice }: { choice: Choice; onChoice: (c: 
         : isError || !data ? <ErrorState message={unavailable(error)} onRetry={() => refetch()} />
         : (
           <div className={isFetching ? 'opacity-70 transition-opacity' : ''}>
-            <Section title={answer ? answer.title : capitalise(subjectName(data.symbol))} sub={answer?.sub}>
+            <Section title={answer ? answer.title : capitalise(ix.subject(data.symbol))} sub={answer?.sub}>
               <Bars
-                ariaLabel={`${stat === 'mean' ? 'Average' : 'Median'} monthly change of ${subjectName(data.symbol)}, ${data.years.first} to ${data.years.last}, by month`}
+                ariaLabel={`${stat === 'mean' ? 'Average' : 'Median'} monthly change of ${ix.subject(data.symbol)}, ${data.years.first} to ${data.years.last}, by month`}
                 bars={MONTHS_SHORT.map((m, i) => {
                   const s = data.summary[String(i + 1)]
                   return {

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { isAxiosError } from 'axios'
 import { Skeleton } from '@/components/Skeleton'
 import { formatPercent } from '@/lib/formatters'
+import { useIndices } from '@/hooks/useResearch'
+import type { RsIndex } from '@/api/types'
 import { tone } from '@/features/portal/ui'
 
 // Shared by every tab of Market patterns. The page is used in both the advisor workspace
@@ -20,14 +22,28 @@ export const UNIVERSES = [
 ] as const
 export const UNIVERSE_LABEL: Record<string, string> = Object.fromEntries(UNIVERSES.map((u) => [u.value, u.label]))
 
-/** Index codes as people say them; anything else is shown as its ticker. */
+/** The US indices as people say them, until the list of indices has loaded. */
 const INDEX_NAMES: Record<string, string> = {
   SPX: 'the S&P 500', NDX: 'the Nasdaq-100', DJI: 'the Dow', RUT: 'the Russell 2000',
   RUI: 'the Russell 1000', RUA: 'the Russell 3000', VIX: 'the VIX',
 }
-export function subjectName(symbol: string): string {
-  return INDEX_NAMES[symbol] ?? symbol
+
+/** What the page knows about an index (name, currency, volatility) from the list the
+ *  server keeps; a symbol may come with or without its ^. */
+export function useIndexInfo() {
+  const { data } = useIndices()
+  const byCode = new Map((data?.indices ?? []).map((i) => [i.code, i]))
+  const info = (symbol: string): RsIndex | undefined => byCode.get(symbol.replace(/^\^/, '').toUpperCase())
+  /** "the S&P 500", "the Nifty 50", "the VIX"; a stock or fund keeps its ticker. */
+  const subject = (symbol: string): string => {
+    const code = symbol.replace(/^\^/, '').toUpperCase()
+    if (code === 'VIX') return 'the VIX'
+    const i = byCode.get(code)
+    return i ? `the ${i.name}` : INDEX_NAMES[code] ?? symbol
+  }
+  return { info, subject }
 }
+
 const SMALL_WORDS = new Set(['OF', 'AND', 'THE', 'FOR', 'NEW'])
 /** Words that stay as written however long they are. */
 const KEEP: Record<string, string> = {

@@ -154,6 +154,9 @@ Each feature directory contains its page component(s). Implemented:
   `displayName` (company names as people say them, from SEC filings' "WATERS CORP /DE/"). Each
   view states its answer in words first, then one chart or one clean table; colour marks only gain,
   loss and the highlighted figure. Months by year and Calendar days share one chosen index or stock (`SymbolPicker` with indices);
+  indices come from `/research/indices` (`useIndices`, `useIndexInfo` in `research/ui.tsx` for names
+  and volatility), grouped as Indices (US), India: broad market and India: sectors and themes,
+  shown and sent with a leading `^` (`^NSEI`) so the server always reads them as indices;
   the look-up keeps its own (stocks and funds).
   Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
   fractions. It describes the past: no advice or forecast wording. The luck estimate

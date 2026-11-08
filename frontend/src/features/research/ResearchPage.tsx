@@ -9,10 +9,10 @@ import { CalendarHeatmap } from './CalendarHeatmap'
 import { GlanceCards, OverviewTab } from './Overview'
 import { MonthsTab } from './MonthsTab'
 import { LookupTab } from './LookupTab'
-import { SymbolPicker, indexChoice, type Choice } from './SymbolPicker'
+import { DEFAULT_SERIES, SymbolPicker, type Choice } from './SymbolPicker'
 import {
   Box, Controls, HowToRead, Loading, MONTHS, Pct, Section, Segmented, Tabs, UNIVERSES, UNIVERSE_LABEL,
-  capitalise, displayName, notFound, pct1, share, subjectName, td, tdNum, th, thNum, unavailable,
+  capitalise, displayName, notFound, pct1, share, td, tdNum, th, thNum, unavailable, useIndexInfo,
 } from './ui'
 
 type Tab = 'overview' | 'months' | 'calendar' | 'top' | 'sectors' | 'lookup'
@@ -52,6 +52,7 @@ function CalendarTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choic
   const start_year = range === 'all' ? undefined : range === '1950' ? 1950 : lastYear - 24
   const { data, isLoading, isError, error, refetch, isFetching } = useCalendarGrid({ symbol: typed, stat, start_year, end_year: lastYear })
   const best = data?.best[0]
+  const ix = useIndexInfo()
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
@@ -68,7 +69,7 @@ function CalendarTab({ choice, onChoice }: { choice: Choice; onChoice: (c: Choic
         : (
           <div className={isFetching ? 'opacity-70 transition-opacity' : ''}>
             <Section
-              title={`${capitalise(subjectName(data.symbol))}, date by date through the year`}
+              title={`${capitalise(ix.subject(data.symbol))}, date by date through the year`}
               sub={<>{data.stat === 'mean' ? 'Average' : 'Median'} change on each date, {data.years.first} to {data.years.last}.
                 {best && <> The strongest date: {MONTHS[best.month - 1]} {best.day}, <span className="font-mono">{pct1(best.value)}</span> over {best.days} years.</>}</>}>
               <CalendarHeatmap grid={data} />
@@ -272,7 +273,7 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [tab, setTab] = useState<Tab>('overview')
   // One choice for the views of a single index or stock, so it carries from tab to tab,
   // and one for the look-up (stocks and funds only).
-  const [series, setSeries] = useState<Choice>(indexChoice('SPX')!)
+  const [series, setSeries] = useState<Choice>(DEFAULT_SERIES)
   const [choice, setChoice] = useState<Choice | null>(null)
   // Choosing a name elsewhere on the page is a decision, so it opens the profile at once.
   const openLookup = (s: string) => { setChoice({ symbol: s, label: s }); setTab('lookup') }

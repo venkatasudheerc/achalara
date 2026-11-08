@@ -200,6 +200,23 @@ class RsMonthGridResponse(BaseModel):
     notes: List[str]
 
 
+class RsIndex(BaseModel):
+    code: str
+    display: str
+    name: str
+    country: str
+    currency: str
+    group: str
+    volatility: bool
+    first_day: Optional[date] = None
+    last_day: Optional[date] = None
+
+
+class RsIndicesResponse(BaseModel):
+    indices: List[RsIndex]
+    notes: List[str]
+
+
 class RsSearchResult(BaseModel):
     symbol: str
     name: Optional[str] = None

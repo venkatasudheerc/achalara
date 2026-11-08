@@ -6,10 +6,10 @@ import { formatDate } from '@/lib/formatters'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
 import { Select, tone } from '@/features/portal/ui'
-import { INDEX_CHOICES, SymbolPicker, choiceLabel, type Choice } from './SymbolPicker'
+import { SymbolPicker, choiceLabel, type Choice } from './SymbolPicker'
 import {
   Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, UNIVERSE_LABEL,
-  displayName, notFound, pct1, subjectName, unavailable,
+  displayName, notFound, pct1, unavailable, useIndexInfo,
 } from './ui'
 
 /** The one index worth naming: the S&P 500 if it is in it, else the largest it is in. */
@@ -18,27 +18,29 @@ function biggestIndex(indices: string[]): string | null {
   return first ? `In the ${UNIVERSE_LABEL[first] ?? first}` : null
 }
 
-/** What people call it: an index by its name (S&P 500), a company or fund by its own. */
-function nameOf(p: { symbol: string; name: string | null }): string {
-  return INDEX_CHOICES.find((m) => m.symbol === p.symbol)?.name ?? displayName(p.name, p.symbol)
+type IndexInfo = ReturnType<typeof useIndexInfo>
+
+/** What people call it: an index by its name (S&P 500, Nifty 50), a company or fund by its own. */
+function nameOf(p: { symbol: string; name: string | null }, ix: IndexInfo): string {
+  return ix.info(p.symbol)?.name ?? displayName(p.name, p.symbol)
 }
 
 const byMonth = (buckets: RsBucket[]) => new Map(buckets.map((b) => [Number(b.order), b]))
 
 /** The strongest month in plain words, and whether its sector shared it. */
-function headline(p: RsProfile) {
+function headline(p: RsProfile, ix: IndexInfo) {
   const own = p.month_of_year.buckets
   if (!own.length) return null
   const best = own.reduce((a, b) => (b.mean > a.mean ? b : a))
   const month = MONTHS[Number(best.order) - 1]
   const ups = Math.round(best.share_up * best.count)
   // "the S&P 500's" in a sentence; a company or fund by its own name.
-  const name = p.kind === 'index' ? subjectName(p.symbol) : nameOf(p)
+  const name = p.kind === 'index' ? ix.subject(p.symbol) : nameOf(p, ix)
   const sector = p.sector_month_of_year ? byMonth(p.sector_month_of_year.buckets).get(Number(best.order)) : undefined
   const sectorUps = sector ? Math.round(sector.share_up * sector.count) : 0
-  if (p.symbol === 'VIX') {
-    // A rising VIX is rising fear, not a good month.
-    return { title: `The VIX has risen most in ${month}: up in ${ups} of ${best.count} years, by ${pct1(best.mean)} on average`, sub: undefined }
+  if (ix.info(p.symbol)?.volatility) {
+    // A rising volatility index is rising fear, not a good month.
+    return { title: `${name.charAt(0).toUpperCase()}${name.slice(1)} has risen most in ${month}: up in ${ups} of ${best.count} years, by ${pct1(best.mean)} on average`, sub: undefined }
   }
   return {
     title: `${month} has been ${name}’s strongest month: up in ${ups} of ${best.count} years, by ${pct1(best.mean)} on average`,
@@ -184,7 +186,8 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
     const label = choiceLabel(p.symbol, p.name)
     if (label !== choice.label) onChoice({ symbol: p.symbol, label })
   }, [p, choice, onChoice])
-  const answer = p ? headline(p) : null
+  const ix = useIndexInfo()
+  const answer = p ? headline(p, ix) : null
   const total = p ? p.last_12_months.reduce((g, m) => g * (1 + m.ret), 1) - 1 : 0
 
   return (
@@ -203,9 +206,11 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
         : profile.isError || !p ? <ErrorState message={unavailable(profile.error)} onRetry={() => profile.refetch()} />
         : (
           <Section
-            title={nameOf(p) !== p.symbol ? <>{nameOf(p)} <span className="font-mono text-[20px] text-stone">{p.symbol}</span></> : p.symbol}
+            title={nameOf(p, ix) !== p.symbol ? <>{nameOf(p, ix)} <span className="font-mono text-[20px] text-stone">{p.kind === 'index' ? `^${p.symbol}` : p.symbol}</span></> : p.symbol}
             aside={
-              <button type="button" onClick={() => onOpenMonths({ symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })}
+              <button type="button" onClick={() => onOpenMonths(p.kind === 'index'
+                  ? { symbol: `^${p.symbol}`, label: `${nameOf(p, ix)} · ^${p.symbol}` }
+                  : { symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })}
                 className="h-[44px] px-[18px] rounded-[10px] border border-pine text-pine text-[15px] font-semibold hover:bg-pine hover:text-on-dark transition-colors">
                 Every month, year by year →
               </button>
@@ -234,9 +239,9 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
             </div>
 
             <div className="flex flex-col gap-[14px]">
-              <h3 className="text-[18px] font-semibold">{p.sector ? `Each month, ${nameOf(p)} beside its sector` : `${nameOf(p)}, month by month`}</h3>
+              <h3 className="text-[18px] font-semibold">{p.sector ? `Each month, ${nameOf(p, ix)} beside its sector` : `${nameOf(p, ix)}, month by month`}</h3>
               <PairBars own={p.month_of_year.buckets} sector={p.sector_month_of_year?.buckets ?? null}
-                ownLabel={nameOf(p)} sectorLabel={p.sector} />
+                ownLabel={nameOf(p, ix)} sectorLabel={p.sector} />
               <p className="text-[13px] text-stone">
                 Average change in each month{p.month_of_year.years ? `, ${p.month_of_year.years.first} to ${p.month_of_year.years.last}` : ''}.
                 {p.sector_month_of_year?.members ? ` The sector’s figures rest on ${p.sector_month_of_year.members} stocks.` : ''}
@@ -247,7 +252,7 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
               <div className="flex flex-wrap items-end justify-between gap-[12px]">
                 <div>
                   <h3 className="text-[18px] font-semibold">{MONTHS[month - 1]}, date by date</h3>
-                  <p className="text-[14px] text-stone mt-[4px]">Where {nameOf(p)} has stood after each date of the month</p>
+                  <p className="text-[14px] text-stone mt-[4px]">Where {nameOf(p, ix)} has stood after each date of the month</p>
                 </div>
                 <div className="flex flex-col gap-[6px]">
                   <label htmlFor="lookup-month" className="text-[13px] text-stone">Month</label>
@@ -257,7 +262,7 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
                 </div>
               </div>
               {p.month_path.typical.length > 0 || p.month_path.current
-                ? <MonthPath path={p.month_path} name={nameOf(p)} month={MONTHS[month - 1]} />
+                ? <MonthPath path={p.month_path} name={nameOf(p, ix)} month={MONTHS[month - 1]} />
                 : <p className="text-[15px] text-stone">No whole {MONTHS[month - 1]} on file yet.</p>}
             </div>
 

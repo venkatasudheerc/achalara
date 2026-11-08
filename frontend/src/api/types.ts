@@ -764,3 +764,8 @@ export interface RsMonthGrid {
   rows: RsGridYear[]; summary: Record<string, RsMonthSummary | null>; year_summary: RsMonthSummary | null
   best: RsNamedMonth | null; worst: RsNamedMonth | null; notes: string[]
 }
+export interface RsIndex {
+  code: string; display: string; name: string; country: string; currency: string
+  group: string; volatility: boolean; first_day: string | null; last_day: string | null
+}
+export interface RsIndices { indices: RsIndex[]; notes: string[] }

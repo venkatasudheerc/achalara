@@ -17,6 +17,7 @@ from app.api.schemas.market_data import (
 )
 from app.api.schemas.research import (
     RsCalendarResponse,
+    RsIndicesResponse,
     RsMonthGridResponse,
     RsMonthResponse,
     RsOutlookResponse,
@@ -78,6 +79,12 @@ def research_calendar(
         end_year=end_year,
         stat=stat,
     )
+
+
+@router.get("/indices", response_model=RsIndicesResponse)
+def research_indices():
+    """Every index whose level is on file, US and Indian, shown with a leading ^."""
+    return _answer(md_read.research, "list_indices")
 
 
 @router.get("/month-grid", response_model=RsMonthGridResponse)

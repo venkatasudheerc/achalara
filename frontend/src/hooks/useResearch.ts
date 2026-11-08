@@ -23,6 +23,11 @@ export function useCalendarGrid(params: { symbol: string; start_year?: number; e
   })
 }
 
+/** Every index on file, US and Indian; it changes only when an index is added. */
+export function useIndices() {
+  return useQuery({ queryKey: ['research', 'indices'], queryFn: researchApi.indices, staleTime: 24 * 60 * 60_000 })
+}
+
 export function useMonthGrid(params: { symbol: string; start_year?: number; end_year?: number }) {
   return useQuery({
     queryKey: ['research', 'month-grid', params], queryFn: () => researchApi.monthGrid(params),

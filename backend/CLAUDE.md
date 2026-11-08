@@ -387,7 +387,8 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
 - **`md` has its own migrations** (`migrations_md/`, run with `alembic -n md ...`). Its version
   table is inside the schema, so a dump of `md` carries it. A new `md` table goes there, never in
   `migrations/`. The backend applies both histories at start.
-- **The model holds any market (`md.market`); every feed is American.** A ticker is unique within a
+- **The model holds any market (`md.market`); every securities feed is American** (index levels also
+  include Indian indices, in rupees; no Indian security is collected). A ticker is unique within a
   market, so a lookup by ticker must name one: today's jobs filter on `US_MARKET`. A security belongs
   to one market and has its own `currency`. Price tables key on the security and record the currency.
   Returns and tax lots have no currency handling, so nothing foreign may reach `perf`.
@@ -405,9 +406,18 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   same factor; never mix these with prices as traded (`price_daily_hist`).
 - **Index levels in `md` (`md/levels.py`, `md.index_level_hist`)** come from the Yahoo feed the app
   uses (`utils/yahoo_chart.py`, shared); a level is a price return, and every result says its basis.
-  The VIX is collected the same way (`levels.LEVELS`), but it is a level of expected volatility,
-  not a price: anything that shows its change says so (`insights.VIX_NOTE`) and never calls it a
-  return or a gain. It is kept out of the Overview's stock indices.
+  **One list of indices: `levels.INDEX_LEVELS_INFO`** (code, Yahoo symbol, name, country,
+  currency, group, volatility); `LEVELS` is derived from it, and `/api/v1/research/indices` serves
+  it to the page, so add an index there only, and only if Yahoo serves its history. It holds the
+  US indices and 21 NSE indices (Nifty 50, Nifty 500 as Yahoo's `^CRSLDX`, Nifty Financial
+  Services as `NIFTY_FIN_SERVICE.NS`, India VIX…). An index is **shown and asked for with a
+  leading `^`** (`^SPX`, `^NSEI`) and **stored without it**: `performance.series` treats `^X` as
+  the index always, and plain `X` as a security first, then an index; the Market data page
+  flags an index code that is also a ticker. Results say what an index is
+  (`insights._subject_notes`): an `INR` level is a return in rupees, before currency moves; a
+  volatility index (VIX, India VIX) is expected volatility, never called a return or a gain.
+  Indian closes are final after 5 PM US Eastern like the rest, so the 6:15 AM run leaves a day
+  to the 9:15 PM run. Volatility indices stay out of the Overview's stock indices.
 - **Returns are computed, never stored by period,** with `utils/returns.py` (shared with the
   portfolio figures: ISO weeks, calendar months, a period from the last close before it). Ad-hoc SQL
   uses `md.day_return` (a view) and `md.week_return` / `md.month_return` (materialized, refreshed by

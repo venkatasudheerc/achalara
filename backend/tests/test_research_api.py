@@ -311,3 +311,60 @@ def test_the_vix_says_its_change_is_not_a_return(db, market):
     assert grid["kind"] == "index" and any("not a return" in n for n in grid["notes"])
     assert any("not a return" in n for n in insights.calendar_grid(db, "VIX", today=TODAY)["notes"])
     assert not any("not a return" in n for n in insights.month_grid(db, "SPX", today=TODAY)["notes"])
+
+
+def test_the_index_registry_lists_us_and_indian_levels():
+    from app.md import levels
+
+    codes = [i.code for i in levels.INDEX_LEVELS_INFO]
+    assert len(codes) == len(set(codes)) and all(len(c) <= 12 for c in codes)
+    assert {c: levels.LEVELS[c] for c in ("SPX", "NDX", "DJI", "RUI", "RUT", "RUA", "VIX")} == {
+        "SPX": "^GSPC", "NDX": "^NDX", "DJI": "^DJI", "RUI": "^RUI", "RUT": "^RUT", "RUA": "^RUA", "VIX": "^VIX"
+    }
+    assert levels.LEVELS["CNX500"] == "^CRSLDX"  # Yahoo serves Nifty 500 under this symbol
+    india = [i for i in levels.INDEX_LEVELS_INFO if i.country == "IN"]
+    assert len(india) == 21 and {i.currency for i in india} == {"INR"}
+    assert {i.code for i in levels.INDEX_LEVELS_INFO if i.volatility} == {"VIX", "INDIAVIX"}
+
+
+def _level(db, code, start=date(2015, 1, 1)):
+    value = 1000.0
+    for day in _weekdays(start, date(2026, 11, 6)):
+        value *= 1.0004
+        db.add(IndexLevelHist(symbol=code, price_date=day, close=Decimal(str(round(value, 4))), source="test", fetched_at=STAMP))
+    db.flush()
+
+
+def test_an_indian_index_says_its_level_is_in_rupees(db, market):
+    _level(db, "NSEI")
+    _level(db, "INDIAVIX")
+    grid = insights.month_grid(db, "^NSEI", today=TODAY)
+    assert grid["symbol"] == "NSEI" and grid["kind"] == "index"
+    assert any("Indian rupees" in n for n in grid["notes"])
+    assert any("Indian rupees" in n for n in insights.calendar_grid(db, "NSEI", today=TODAY)["notes"])
+    assert any("Indian rupees" in n for n in insights.security_profile(db, "^NSEI", 11, TODAY)["notes"])
+    vix = insights.month_grid(db, "INDIAVIX", today=TODAY)["notes"]
+    assert any("the Nifty 50" in n and "not a return" in n for n in vix)
+    assert not any("rupees" in n for n in insights.month_grid(db, "SPX", today=TODAY)["notes"])
+
+
+def test_a_caret_always_means_the_index_even_when_a_stock_shares_the_code(db, market):
+    _level(db, "NSEI")
+    _security(db, "NSEI", member=None)  # a stock that happens to trade under the code
+    assert insights.month_grid(db, "NSEI", today=TODAY)["kind"] == "security"
+    assert insights.month_grid(db, "^NSEI", today=TODAY)["kind"] == "index"
+    from app.md.status_report import _indices
+
+    attention = []
+    _indices(db, TODAY, attention)
+    assert any("NSEI" in line and "^" in line for line in attention)
+
+
+def test_a_family_member_reads_the_list_of_indices(as_family_member, market, db):
+    _level(db, "NSEI")
+    db.commit()
+    body = as_family_member.get("/api/v1/research/indices").json()
+    by_code = {i["code"]: i for i in body["indices"]}
+    assert by_code["NSEI"]["display"] == "^NSEI" and by_code["NSEI"]["currency"] == "INR"
+    assert by_code["NSEI"]["group"] == "India: broad market" and by_code["NSEI"]["first_day"]
+    assert by_code["SPX"]["group"] == "Indices (US)" and by_code["INDIAVIX"]["volatility"]

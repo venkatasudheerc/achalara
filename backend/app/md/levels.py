@@ -7,6 +7,7 @@ A first run loads everything the source has (the S&P 500 from 1927); each run
 after reads the last week again, so a late correction is taken.
 """
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -22,16 +23,61 @@ logger = logging.getLogger(__name__)
 
 JOB = "md_index_levels"
 SOURCE = "yahoo"
+
+
+@dataclass(frozen=True)
+class IndexLevel:
+    """One index whose daily level market data collects. ``code`` is ours (shown with a
+    leading ``^``, stored without it); ``source`` is Yahoo's symbol."""
+
+    code: str
+    source: str
+    name: str
+    country: str  # ISO 3166: US, IN
+    currency: str  # the level's currency: a return is in it, before any currency move
+    group: str  # how the page groups it
+    volatility: bool = False  # expected volatility, not a price
+
+
+US = "Indices (US)"
+IN_BROAD = "India: broad market"
+IN_SECTOR = "India: sectors and themes"
+
+# The one list of index levels. Add an index here only; Yahoo must serve its history
+# (several Indian sector indices are served for today only and are left out).
+INDEX_LEVELS_INFO = (
+    IndexLevel("SPX", "^GSPC", "S&P 500", "US", "USD", US),
+    IndexLevel("NDX", "^NDX", "Nasdaq-100", "US", "USD", US),
+    IndexLevel("DJI", "^DJI", "Dow Jones Industrial Average", "US", "USD", US),
+    IndexLevel("RUI", "^RUI", "Russell 1000", "US", "USD", US),
+    IndexLevel("RUT", "^RUT", "Russell 2000", "US", "USD", US),
+    IndexLevel("RUA", "^RUA", "Russell 3000", "US", "USD", US),
+    IndexLevel("VIX", "^VIX", "Volatility Index (VIX)", "US", "USD", US, volatility=True),
+    IndexLevel("NSEI", "^NSEI", "Nifty 50", "IN", "INR", IN_BROAD),
+    IndexLevel("NSMIDCP", "^NSMIDCP", "Nifty Next 50", "IN", "INR", IN_BROAD),
+    IndexLevel("CNX100", "^CNX100", "Nifty 100", "IN", "INR", IN_BROAD),
+    IndexLevel("CNX200", "^CNX200", "Nifty 200", "IN", "INR", IN_BROAD),
+    IndexLevel("CNX500", "^CRSLDX", "Nifty 500", "IN", "INR", IN_BROAD),
+    IndexLevel("NSEMDCP50", "^NSEMDCP50", "Nifty Midcap 50", "IN", "INR", IN_BROAD),
+    IndexLevel("INDIAVIX", "^INDIAVIX", "India VIX", "IN", "INR", IN_BROAD, volatility=True),
+    IndexLevel("NSEBANK", "^NSEBANK", "Nifty Bank", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXIT", "^CNXIT", "Nifty IT", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXAUTO", "^CNXAUTO", "Nifty Auto", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXFMCG", "^CNXFMCG", "Nifty FMCG", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXPHARMA", "^CNXPHARMA", "Nifty Pharma", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXMETAL", "^CNXMETAL", "Nifty Metal", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXREALTY", "^CNXREALTY", "Nifty Realty", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXENERGY", "^CNXENERGY", "Nifty Energy", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXFIN", "NIFTY_FIN_SERVICE.NS", "Nifty Financial Services", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXPSUBANK", "^CNXPSUBANK", "Nifty PSU Bank", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXINFRA", "^CNXINFRA", "Nifty Infrastructure", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXPSE", "^CNXPSE", "Nifty PSE", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXMNC", "^CNXMNC", "Nifty MNC", "IN", "INR", IN_SECTOR),
+    IndexLevel("CNXCONSUM", "^CNXCONSUM", "Nifty India Consumption", "IN", "INR", IN_SECTOR),
+)
+INFO = {level.code: level for level in INDEX_LEVELS_INFO}
 # Our code for each index level, and the source's symbol.
-LEVELS = {
-    "SPX": "^GSPC",
-    "NDX": "^NDX",
-    "DJI": "^DJI",
-    "RUI": "^RUI",  # Russell 1000
-    "RUT": "^RUT",  # Russell 2000
-    "RUA": "^RUA",  # Russell 3000
-    "VIX": "^VIX",  # Cboe Volatility Index: expected volatility, not a price
-}
+LEVELS = {level.code: level.source for level in INDEX_LEVELS_INFO}
 _EARLIEST = date(1880, 1, 1)
 _OVERLAP = timedelta(days=7)
 MARKET_ZONE = ZoneInfo("America/New_York")
