@@ -181,6 +181,13 @@ class StatusService:
             last = runs.get(job.id)
             if last is not None and last.outcome == "failed":
                 attention.append(f"{job.label} failed on its last run.")
+            if job.id == "md_index_levels" and last is not None:
+                try:
+                    stale = md_read.stale_index_levels(self.db)
+                except md_read.MdUnavailable:
+                    stale = None
+                if stale:
+                    attention.append(stale)
             next_run = job.trigger().get_next_fire_time(None, now)
             rows.append(
                 {

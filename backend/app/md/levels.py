@@ -9,7 +9,7 @@ after reads the last week again, so a late correction is taken.
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
@@ -147,3 +147,47 @@ class IndexLevelService:
 
 def run_index_levels(db: Session, now: Optional[datetime] = None) -> str:
     return IndexLevelService(db).run(now)
+
+
+STALE_AFTER_MARKET_DAYS = 4  # longer than the longest regular break, in either market
+
+
+def _weekdays_between(earlier: date, later: date) -> int:
+    """Weekdays after ``earlier`` up to and including ``later``."""
+    days, day = 0, earlier
+    while day < later:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            days += 1
+    return days
+
+
+def stale_levels(db: Session, today: date) -> List[Tuple[str, Optional[date]]]:
+    """Indices with no new level for more than ``STALE_AFTER_MARKET_DAYS`` weekdays, or none
+    at all: ``(name, latest day or None)``. A source can stop sending one index while the
+    run as a whole still succeeds; this is how that is noticed."""
+    latest = dict(
+        db.query(IndexLevelHist.symbol, func.max(IndexLevelHist.price_date)).group_by(
+            IndexLevelHist.symbol
+        )
+    )
+    out = []
+    for level in INDEX_LEVELS_INFO:
+        day = latest.get(level.code)
+        if day is None or _weekdays_between(day, today) > STALE_AFTER_MARKET_DAYS:
+            out.append((level.name, day))
+    return out
+
+
+def describe_stale(stale: List[Tuple[str, Optional[date]]]) -> Optional[str]:
+    """One plain line for a status page or an alert, or None when every index is current."""
+    if not stale:
+        return None
+    missing = [name for name, day in stale if day is None]
+    old = [f"{name} (since {day.isoformat()})" for name, day in stale if day is not None]
+    parts = []
+    if old:
+        parts.append("No new index level: " + ", ".join(old))
+    if missing:
+        parts.append("No index levels on file yet: " + ", ".join(missing))
+    return ". ".join(parts) + "."

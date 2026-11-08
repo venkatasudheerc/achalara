@@ -96,3 +96,24 @@ def test_one_index_failing_leaves_the_others(db):
     run = db.query(JobRun).filter(JobRun.job == levels.JOB).one()
     assert run.outcome == "failed" and "could not be read: NDX" in note
     assert run.requests == len(levels.LEVELS) - 1
+
+
+def test_an_index_that_stops_updating_is_named(db):
+    from datetime import date as day_
+
+    from app.md.levels import describe_stale, stale_levels, INDEX_LEVELS_INFO
+
+    friday = day_(2026, 11, 6)
+    for level in INDEX_LEVELS_INFO:
+        if level.code != "CNXREALTY":
+            db.add(IndexLevelHist(symbol=level.code, price_date=friday, close=1, source="test", fetched_at=datetime(2026, 11, 6)))
+    db.add(IndexLevelHist(symbol="CNXREALTY", price_date=day_(2026, 10, 30), close=1, source="test", fetched_at=datetime(2026, 11, 6)))
+    db.flush()
+    # The weekend and two quiet weekdays are normal: nothing to say on Wednesday.
+    assert [n for n, _ in stale_levels(db, day_(2026, 11, 11)) if n != "Nifty Realty"] == []
+    line = describe_stale(stale_levels(db, day_(2026, 11, 9)))
+    assert line == "No new index level: Nifty Realty (since 2026-10-30)."
+    # Five weekdays after Friday, every index is stale.
+    assert len(stale_levels(db, day_(2026, 11, 13))) == len(INDEX_LEVELS_INFO)
+    db.query(IndexLevelHist).filter(IndexLevelHist.symbol == "NSEI").delete()
+    assert "No index levels on file yet: Nifty 50" in describe_stale(stale_levels(db, day_(2026, 11, 9)))

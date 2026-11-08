@@ -418,6 +418,9 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   volatility index (VIX, India VIX) is expected volatility, never called a return or a gain.
   Indian closes are final after 5 PM US Eastern like the rest, so the 6:15 AM run leaves a day
   to the 9:15 PM run. Volatility indices stay out of the Overview's stock indices.
+  Yahoo is free and unofficial: an index can stop arriving while the run still succeeds, so
+  `levels.stale_levels` names any index with no new level for more than 4 weekdays (or none at
+  all) on the Market data page and on System status, and so in the alerts.
 - **Returns are computed, never stored by period,** with `utils/returns.py` (shared with the
   portfolio figures: ISO weeks, calendar months, a period from the last close before it). Ad-hoc SQL
   uses `md.day_return` (a view) and `md.week_return` / `md.month_return` (materialized, refreshed by

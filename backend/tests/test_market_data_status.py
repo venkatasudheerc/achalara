@@ -162,3 +162,20 @@ def test_a_separate_database_that_is_down_is_reported_not_raised(client, monkeyp
 
 def test_it_is_not_open_to_the_public(anon_client):
     assert anon_client.get(URL).status_code == 401
+
+
+def test_an_index_with_no_new_level_reaches_system_status_and_so_the_alerts(client, db):
+    from datetime import date, timedelta
+
+    from app.md.levels import INDEX_LEVELS_INFO
+    from app.md.models import IndexLevelHist
+
+    _run(db, "md_index_levels", NOW - timedelta(hours=2), "ok")
+    recent, old = date.today() - timedelta(days=1), date.today() - timedelta(days=30)
+    for level in INDEX_LEVELS_INFO:
+        day = old if level.code == "CNXREALTY" else recent
+        db.add(IndexLevelHist(symbol=level.code, price_date=day, close=1, source="test", fetched_at=NOW))
+    db.commit()
+    attention = client.get("/api/v1/admin/status").json()["attention"]
+    assert f"No new index level: Nifty Realty (since {old.isoformat()})." in attention
+    assert f"No new index level: Nifty Realty (since {old.isoformat()})." in build_status(db, False, NOW)["attention"]

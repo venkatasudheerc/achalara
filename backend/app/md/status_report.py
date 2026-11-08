@@ -23,7 +23,7 @@ from app.md.models import (
 )
 from app.md.adjusted import coverage as adjusted_coverage
 from app.md.closes import universe
-from app.md.levels import LEVELS
+from app.md.levels import LEVELS, describe_stale, stale_levels
 from app.md.schedule import MD_JOBS
 from app.md.base import MdBase
 
@@ -174,6 +174,9 @@ def _indices(db: Session, today: date, attention: List[str]) -> List[Dict]:
         attention.append(
             "Index codes that are also tickers (ask for them with ^): " + ", ".join(shadowed)
         )
+    stale = describe_stale(stale_levels(db, today))
+    if stale:
+        attention.append(stale)
     return rows
 
 
