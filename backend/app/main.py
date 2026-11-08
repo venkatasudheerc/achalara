@@ -22,18 +22,19 @@ from app.models import (  # noqa: F401  — side-effect imports to register mode
 )
 from app.api.deps import require_access
 from app.api.routes import (
-    auth,
-    clients,
     accounts,
-    strategies,
-    sleeves,
-    trades,
     admin,
+    auth,
     benchmarks,
+    clients,
     connections,
     invitations,
     performance,
     portal,
+    research,
+    sleeves,
+    strategies,
+    trades,
 )
 
 # Configure logging
@@ -115,6 +116,10 @@ app.include_router(
 )
 app.include_router(
     admin.router, prefix="/api/v1/admin", tags=["admin"], dependencies=_guarded
+)
+# Market insights: shared reference data every signed-in user may read.
+app.include_router(
+    research.router, prefix="/api/v1/research", tags=["research"], dependencies=_guarded
 )
 app.include_router(
     invitations.router,

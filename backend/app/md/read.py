@@ -7,12 +7,13 @@ they open one, and a database that cannot be reached raises ``MdUnavailable``.
 """
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Iterable, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.md import insights as md_insights
 from app.md import performance as md_performance
 from app.md.database import MdSession, ReadSession, separate
 from app.md.models import (
@@ -107,6 +108,15 @@ def market_data_status(app_db: Session) -> Dict:
         return unavailable()
 
 
+def research_tools() -> List[Dict]:
+    """The research functions a chatbot may call: name, description, parameters.
+    Reads nothing."""
+    return [
+        {"name": t.name, "description": t.description, "parameters": t.parameters}
+        for t in md_insights.TOOLS
+    ]
+
+
 # -- research: read-only, through ReadSession only ---------------------------
 #
 # Everything below is for research and (later) the chatbot. It reads md only
@@ -146,3 +156,12 @@ def consistent_months(**kwargs) -> Dict:
 def market_movers(**kwargs) -> Dict:
     with _read() as db:
         return md_performance.movers(db, **kwargs)
+
+
+def research(name: str, **kwargs) -> Dict:
+    """Run one research function from the registry by name."""
+    tool = md_insights.TOOLS_BY_NAME.get(name)
+    if tool is None:
+        raise ValueError(f"Unknown research function {name}")
+    with _read() as db:
+        return tool.run(db, **kwargs)

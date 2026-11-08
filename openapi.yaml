@@ -1524,51 +1524,459 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/admin/market-data/returns:
+  /api/v1/research/this-week:
     get:
       tags:
-      - admin
-      summary: Market Data Returns
-      description: 'Day, week, month, quarter or year returns side by side, with the excess over a benchmark. Securities are a total return; index levels a price return.'
-      operationId: market_data_returns_api_v1_admin_market_data_returns_get
+      - research
+      summary: Research This Week
+      description: 'The latest week that has ended: indices, funds, sectors, best and worst.'
+      operationId: research_this_week_api_v1_research_this_week_get
       parameters:
-      - name: symbols
-        in: query
-        required: true
-        schema:
-          type: string
-        description: 'Comma-separated tickers or index codes (SPX, NDX, DJI, RUI, RUT, RUA); at most 20'
-      - name: grain
-        in: query
-        required: false
-        schema:
-          type: string
-          default: month
-        description: 'day, week, month, quarter or year'
-      - name: start
-        in: query
-        required: false
-        schema:
-          type: string
-          format: date
-      - name: end
-        in: query
-        required: false
-        schema:
-          type: string
-          format: date
-      - name: benchmark
-        in: query
-        required: false
-        schema:
-          type: string
-        description: 'A ticker or index code'
       - name: achalara_session
         in: cookie
         required: false
         schema:
           type: string
           nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsWeekResponse'
+        '422':
+          description: A choice that is not allowed
+          content: &id001
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/this-month:
+    get:
+      tags:
+      - research
+      summary: Research This Month
+      description: This month so far against how the same month has usually gone.
+      operationId: research_this_month_api_v1_research_this_month_get
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsMonthResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/outlook:
+    get:
+      tags:
+      - research
+      summary: Research Outlook
+      description: How a calendar month has gone in the past (next month when not given).
+      operationId: research_outlook_api_v1_research_outlook_get
+      parameters:
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 12
+          minimum: 1
+          nullable: true
+          title: Month
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsOutlookResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/calendar:
+    get:
+      tags:
+      - research
+      summary: Research Calendar
+      description: Average or median daily change by calendar date, with days behind each cell.
+      operationId: research_calendar_api_v1_research_calendar_get
+      parameters:
+      - name: symbol
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SPX
+          title: Symbol
+      - name: start_year
+        in: query
+        required: false
+        schema:
+          type: integer
+          nullable: true
+          title: Start Year
+      - name: end_year
+        in: query
+        required: false
+        schema:
+          type: integer
+          nullable: true
+          title: End Year
+      - name: stat
+        in: query
+        required: false
+        schema:
+          type: string
+          description: mean or median
+          default: mean
+          title: Stat
+        description: mean or median
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsCalendarResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/top-performers:
+    get:
+      tags:
+      - research
+      summary: Research Top Performers
+      description: Members that beat their index's fund in this month every year on file.
+      operationId: research_top_performers_api_v1_research_top_performers_get
+      parameters:
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          maximum: 12
+          minimum: 1
+          title: Month
+      - name: universe
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SP500
+          title: Universe
+      - name: min_years
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 2
+          default: 4
+          title: Min Years
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 25
+          title: Limit
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsTopPerformersResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/sectors:
+    get:
+      tags:
+      - research
+      summary: Research Sectors
+      description: Each sector's beat rate in a month, for one index or two side by side.
+      operationId: research_sectors_api_v1_research_sectors_get
+      parameters:
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          maximum: 12
+          minimum: 1
+          title: Month
+      - name: universe
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SP500
+          title: Universe
+      - name: compare
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Compare
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsSectorsResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/securities:
+    get:
+      tags:
+      - research
+      summary: Research Find
+      description: Find securities by ticker or company name.
+      operationId: research_find_api_v1_research_securities_get
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsSearchResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/securities/{symbol}:
+    get:
+      tags:
+      - research
+      summary: Research Profile
+      description: One security's profile, month-of-year pattern and one month day by day.
+      operationId: research_profile_api_v1_research_securities__symbol__get
+      parameters:
+      - name: symbol
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Symbol
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 12
+          minimum: 1
+          nullable: true
+          title: Month
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsProfileResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/returns:
+    get:
+      tags:
+      - research
+      summary: Research Returns
+      description: Returns side by side, with the excess over a benchmark.
+      operationId: research_returns_api_v1_research_returns_get
+      parameters:
+      - name: symbols
+        in: query
+        required: true
+        schema:
+          type: string
+          description: 'Comma-separated: tickers or index codes'
+          title: Symbols
+        description: 'Comma-separated: tickers or index codes'
+      - name: grain
+        in: query
+        required: false
+        schema:
+          type: string
+          default: month
+          title: Grain
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+          title: Start
+      - name: end
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          nullable: true
+          title: End
+      - name: benchmark
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Benchmark
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
       responses:
         '200':
           description: Successful Response
@@ -1576,71 +1984,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MdReturnsResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Advisors only
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: No prices on file for a subject
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '422':
           description: A choice that is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
         '503':
-          description: Market data's own database could not be read
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/admin/market-data/seasonality:
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/seasonality:
     get:
       tags:
-      - admin
-      summary: Market Data Seasonality
-      description: 'How returns fall by month of year, weekday, turn of the month, or day by day within one month, with the number of years behind each figure.'
-      operationId: market_data_seasonality_api_v1_admin_market_data_seasonality_get
+      - research
+      summary: Research Seasonality
+      description: How returns fall by month, weekday, turn of the month or day by day.
+      operationId: research_seasonality_api_v1_research_seasonality_get
       parameters:
       - name: subject
         in: query
         required: true
         schema:
           type: string
-        description: 'A ticker, an index code, index:CODE (members today) or sector:CODE'
+          description: A ticker, an index code, index:CODE or sector:CODE
+          title: Subject
+        description: A ticker, an index code, index:CODE or sector:CODE
       - name: by
         in: query
         required: false
         schema:
           type: string
+          description: month | weekday | turn_of_month | trading_day
           default: month
-        description: 'month, weekday, turn_of_month or trading_day'
+          title: By
+        description: month | weekday | turn_of_month | trading_day
       - name: month
         in: query
         required: false
         schema:
           type: integer
-          minimum: 1
           maximum: 12
-        description: '1-12; needed for trading_day'
+          minimum: 1
+          nullable: true
+          title: Month
       - name: achalara_session
         in: cookie
         required: false
         schema:
           type: string
           nullable: true
+          title: Achalara Session
       responses:
         '200':
           description: Successful Response
@@ -1648,85 +2044,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MdSeasonalityResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Advisors only
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: No prices on file for a subject
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '422':
           description: A choice that is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
         '503':
-          description: Market data's own database could not be read
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/admin/market-data/consistent-months:
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/consistent-months:
     get:
       tags:
-      - admin
-      summary: Market Data Consistent Months
-      description: 'Securities that beat the benchmark in this month every year on file, with how many luck alone would give and the indexs long-run result.'
-      operationId: market_data_consistent_months_api_v1_admin_market_data_consistent_months_get
+      - research
+      summary: Research Consistent Months
+      description: Securities that beat a chosen benchmark in this month every year on file.
+      operationId: research_consistent_months_api_v1_research_consistent_months_get
       parameters:
       - name: month
         in: query
         required: true
         schema:
           type: integer
-          minimum: 1
           maximum: 12
+          minimum: 1
+          title: Month
       - name: benchmark
         in: query
         required: false
         schema:
           type: string
           default: SPY
+          title: Benchmark
       - name: min_years
         in: query
         required: false
         schema:
           type: integer
-          default: 4
-          minimum: 2
           maximum: 50
+          minimum: 2
+          default: 4
+          title: Min Years
       - name: universe
         in: query
         required: false
         schema:
           type: string
-        description: 'An index code; every priced security when empty'
+          nullable: true
+          description: An index code; all priced when empty
+          title: Universe
+        description: An index code; all priced when empty
       - name: limit
         in: query
         required: false
         schema:
           type: integer
-          default: 50
-          minimum: 1
           maximum: 500
+          minimum: 1
+          default: 50
+          title: Limit
       - name: achalara_session
         in: cookie
         required: false
         schema:
           type: string
           nullable: true
+          title: Achalara Session
       responses:
         '200':
           description: Successful Response
@@ -1734,77 +2120,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MdConsistentResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Advisors only
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: No prices on file for a subject
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '422':
           description: A choice that is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
         '503':
-          description: Market data's own database could not be read
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/admin/market-data/movers:
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/movers:
     get:
       tags:
-      - admin
-      summary: Market Data Movers
-      description: 'The best and worst over one week or month.'
-      operationId: market_data_movers_api_v1_admin_market_data_movers_get
+      - research
+      summary: Research Movers
+      description: The best and worst over one week or month.
+      operationId: research_movers_api_v1_research_movers_get
       parameters:
       - name: grain
         in: query
         required: false
         schema:
           type: string
+          description: week | month
           default: month
-        description: 'week or month'
+          title: Grain
+        description: week | month
       - name: period
         in: query
         required: false
         schema:
           type: string
-        description: '2026-10 or 2026-W44; the latest that has ended when empty'
+          nullable: true
+          description: 2026-10 or 2026-W44; latest ended
+          title: Period
+        description: 2026-10 or 2026-W44; latest ended
       - name: universe
         in: query
         required: false
         schema:
           type: string
-        description: 'An index code'
+          nullable: true
+          title: Universe
       - name: limit
         in: query
         required: false
         schema:
           type: integer
-          default: 20
-          minimum: 1
           maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
       - name: achalara_session
         in: cookie
         required: false
         schema:
           type: string
           nullable: true
+          title: Achalara Session
       responses:
         '200':
           description: Successful Response
@@ -1812,36 +2188,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MdMoversResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Advisors only
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: No prices on file for a subject
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '422':
           description: A choice that is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
         '503':
-          description: Market data's own database could not be read
+          description: Market data could not be read
+          content: *id001
+  /api/v1/research/tools:
+    get:
+      tags:
+      - research
+      summary: Research Tools
+      description: 'Every research function with its description and parameters (JSON Schema):
+
+        the list a chatbot''s tools are made from.'
+      operationId: research_tools_api_v1_research_tools_get
+      parameters:
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: array
+                items:
+                  $ref: '#/components/schemas/RsTool'
+                title: Response Research Tools Api V1 Research Tools Get
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
   /api/v1/admin/market-data/status:
     get:
       tags:
@@ -6997,6 +7394,776 @@ components:
         worst:
           type: array
           items: {$ref: '#/components/schemas/MdMover'}
+    RsBenchmark:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        basis:
+          type: string
+          title: Basis
+        universe:
+          type: string
+          nullable: true
+          title: Universe
+      type: object
+      required:
+      - symbol
+      - basis
+      title: RsBenchmark
+    RsBucket:
+      properties:
+        bucket:
+          type: string
+          title: Bucket
+        order:
+          anyOf:
+          - type: integer
+          - type: string
+          title: Order
+        count:
+          type: integer
+          title: Count
+        mean:
+          type: number
+          title: Mean
+        median:
+          type: number
+          title: Median
+        share_up:
+          type: number
+          title: Share Up
+        stdev:
+          type: number
+          title: Stdev
+        best:
+          type: number
+          title: Best
+        worst:
+          type: number
+          title: Worst
+      type: object
+      required:
+      - bucket
+      - order
+      - count
+      - mean
+      - median
+      - share_up
+      - stdev
+      - best
+      - worst
+      title: RsBucket
+    RsCalendarResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        kind:
+          type: string
+          title: Kind
+        basis:
+          type: string
+          title: Basis
+        stat:
+          type: string
+          title: Stat
+        years:
+          $ref: '#/components/schemas/RsYears'
+        cells:
+          items:
+            $ref: '#/components/schemas/RsCell'
+          type: array
+          title: Cells
+        best:
+          items:
+            $ref: '#/components/schemas/RsCell'
+          type: array
+          title: Best
+        worst:
+          items:
+            $ref: '#/components/schemas/RsCell'
+          type: array
+          title: Worst
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - symbol
+      - kind
+      - basis
+      - stat
+      - years
+      - cells
+      - best
+      - worst
+      - notes
+      title: RsCalendarResponse
+    RsCell:
+      properties:
+        month:
+          type: integer
+          title: Month
+        day:
+          type: integer
+          title: Day
+        value:
+          type: number
+          title: Value
+        mean:
+          type: number
+          title: Mean
+        median:
+          type: number
+          title: Median
+        days:
+          type: integer
+          title: Days
+      type: object
+      required:
+      - month
+      - day
+      - value
+      - mean
+      - median
+      - days
+      title: RsCell
+    RsIndexRecord:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        label:
+          type: string
+          title: Label
+        basis:
+          type: string
+          title: Basis
+        record:
+          $ref: '#/components/schemas/RsStats'
+      type: object
+      required:
+      - symbol
+      - label
+      - basis
+      - record
+      title: RsIndexRecord
+    RsMonthResponse:
+      properties:
+        as_of:
+          type: string
+          format: date
+          nullable: true
+          title: As Of
+        month:
+          type: string
+          title: Month
+        month_name:
+          type: string
+          title: Month Name
+        rows:
+          items:
+            $ref: '#/components/schemas/RsMonthRow'
+          type: array
+          title: Rows
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - month
+      - month_name
+      - rows
+      - notes
+      title: RsMonthResponse
+    RsMonthRow:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        label:
+          type: string
+          title: Label
+        kind:
+          type: string
+          title: Kind
+        basis:
+          type: string
+          title: Basis
+        month_to_date:
+          type: number
+          nullable: true
+          title: Month To Date
+        record:
+          allOf:
+          - $ref: '#/components/schemas/RsStats'
+          nullable: true
+      type: object
+      required:
+      - symbol
+      - label
+      - kind
+      - basis
+      title: RsMonthRow
+    RsMonthToDate:
+      properties:
+        trading_day:
+          type: integer
+          title: Trading Day
+        years:
+          type: integer
+          title: Years
+        mean:
+          type: number
+          title: Mean
+      type: object
+      required:
+      - trading_day
+      - years
+      - mean
+      title: RsMonthToDate
+    RsMover:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        ret:
+          type: number
+          title: Ret
+      type: object
+      required:
+      - symbol
+      - ret
+      title: RsMover
+    RsOutlookResponse:
+      properties:
+        month:
+          type: integer
+          title: Month
+        month_name:
+          type: string
+          title: Month Name
+        indices:
+          items:
+            $ref: '#/components/schemas/RsIndexRecord'
+          type: array
+          title: Indices
+        sectors:
+          $ref: '#/components/schemas/RsSectorsResponse'
+        steadiest:
+          $ref: '#/components/schemas/RsTopPerformersResponse'
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - month
+      - month_name
+      - indices
+      - sectors
+      - steadiest
+      - notes
+      title: RsOutlookResponse
+    RsPattern:
+      properties:
+        subject:
+          type: string
+          title: Subject
+        by:
+          type: string
+          title: By
+        month:
+          type: integer
+          nullable: true
+          title: Month
+        kind:
+          type: string
+          title: Kind
+        basis:
+          type: string
+          title: Basis
+        members:
+          type: integer
+          nullable: true
+          title: Members
+        survivorship:
+          type: boolean
+          title: Survivorship
+        years:
+          allOf:
+          - $ref: '#/components/schemas/RsYears'
+          nullable: true
+        buckets:
+          items:
+            $ref: '#/components/schemas/RsBucket'
+          type: array
+          title: Buckets
+        month_to_date:
+          items:
+            $ref: '#/components/schemas/RsMonthToDate'
+          type: array
+          nullable: true
+          title: Month To Date
+      type: object
+      required:
+      - subject
+      - by
+      - kind
+      - basis
+      - survivorship
+      - buckets
+      title: RsPattern
+    RsPerformerRow:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        name:
+          type: string
+          nullable: true
+          title: Name
+        sector:
+          type: string
+          nullable: true
+          title: Sector
+        industry:
+          type: string
+          nullable: true
+          title: Industry
+        years:
+          type: integer
+          title: Years
+        median_excess:
+          type: number
+          title: Median Excess
+        worst_excess:
+          type: number
+          title: Worst Excess
+        median_return:
+          type: number
+          title: Median Return
+      type: object
+      required:
+      - symbol
+      - years
+      - median_excess
+      - worst_excess
+      - median_return
+      title: RsPerformerRow
+    RsPeriodReturn:
+      properties:
+        period:
+          type: string
+          title: Period
+        ret:
+          type: number
+          title: Ret
+      type: object
+      required:
+      - period
+      - ret
+      title: RsPeriodReturn
+    RsProfileResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        name:
+          type: string
+          nullable: true
+          title: Name
+        sector:
+          type: string
+          nullable: true
+          title: Sector
+        industry:
+          type: string
+          nullable: true
+          title: Industry
+        kind:
+          type: string
+          title: Kind
+        basis:
+          type: string
+          title: Basis
+        indices:
+          items:
+            type: string
+          type: array
+          title: Indices
+        first_day:
+          type: string
+          format: date
+          title: First Day
+        last_day:
+          type: string
+          format: date
+          title: Last Day
+        last_12_months:
+          items:
+            $ref: '#/components/schemas/RsPeriodReturn'
+          type: array
+          title: Last 12 Months
+        month_of_year:
+          $ref: '#/components/schemas/RsPattern'
+        month:
+          type: integer
+          title: Month
+        month_name:
+          type: string
+          title: Month Name
+        month_by_trading_day:
+          $ref: '#/components/schemas/RsPattern'
+        sector_month_of_year:
+          allOf:
+          - $ref: '#/components/schemas/RsPattern'
+          nullable: true
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - symbol
+      - kind
+      - basis
+      - indices
+      - first_day
+      - last_day
+      - last_12_months
+      - month_of_year
+      - month
+      - month_name
+      - month_by_trading_day
+      - notes
+      title: RsProfileResponse
+    RsReturnRow:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        label:
+          type: string
+          title: Label
+        basis:
+          type: string
+          title: Basis
+        ret:
+          type: number
+          title: Ret
+      type: object
+      required:
+      - symbol
+      - label
+      - basis
+      - ret
+      title: RsReturnRow
+    RsSearchResponse:
+      properties:
+        query:
+          type: string
+          title: Query
+        results:
+          items:
+            $ref: '#/components/schemas/RsSearchResult'
+          type: array
+          title: Results
+      type: object
+      required:
+      - query
+      - results
+      title: RsSearchResponse
+    RsSearchResult:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        name:
+          type: string
+          nullable: true
+          title: Name
+        kind:
+          type: string
+          title: Kind
+        sector:
+          type: string
+          nullable: true
+          title: Sector
+        indices:
+          items:
+            type: string
+          type: array
+          title: Indices
+      type: object
+      required:
+      - symbol
+      - kind
+      - indices
+      title: RsSearchResult
+    RsSectorResult:
+      properties:
+        stocks:
+          type: integer
+          title: Stocks
+        observations:
+          type: integer
+          title: Observations
+        beat_share:
+          type: number
+          title: Beat Share
+        median_excess:
+          type: number
+          title: Median Excess
+      type: object
+      required:
+      - stocks
+      - observations
+      - beat_share
+      - median_excess
+      title: RsSectorResult
+    RsSectorRow:
+      properties:
+        sector_code:
+          type: string
+          title: Sector Code
+        sector:
+          type: string
+          title: Sector
+        results:
+          additionalProperties:
+            $ref: '#/components/schemas/RsSectorResult'
+          type: object
+          title: Results
+      type: object
+      required:
+      - sector_code
+      - sector
+      - results
+      title: RsSectorRow
+    RsSectorsResponse:
+      properties:
+        month:
+          type: integer
+          title: Month
+        month_name:
+          type: string
+          title: Month Name
+        universes:
+          items:
+            type: string
+          type: array
+          title: Universes
+        benchmarks:
+          items:
+            $ref: '#/components/schemas/RsBenchmark'
+          type: array
+          title: Benchmarks
+        sectors:
+          items:
+            $ref: '#/components/schemas/RsSectorRow'
+          type: array
+          title: Sectors
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - month
+      - month_name
+      - universes
+      - benchmarks
+      - sectors
+      - notes
+      title: RsSectorsResponse
+    RsStats:
+      properties:
+        count:
+          type: integer
+          title: Count
+        mean:
+          type: number
+          title: Mean
+        median:
+          type: number
+          title: Median
+        share_up:
+          type: number
+          title: Share Up
+        best:
+          type: number
+          title: Best
+        worst:
+          type: number
+          title: Worst
+        first_year:
+          type: integer
+          nullable: true
+          title: First Year
+        last_year:
+          type: integer
+          nullable: true
+          title: Last Year
+      type: object
+      required:
+      - count
+      - mean
+      - median
+      - share_up
+      - best
+      - worst
+      title: RsStats
+    RsTool:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        parameters:
+          type: object
+          title: Parameters
+      type: object
+      required:
+      - name
+      - description
+      - parameters
+      title: RsTool
+    RsTopPerformersResponse:
+      properties:
+        month:
+          type: integer
+          title: Month
+        month_name:
+          type: string
+          title: Month Name
+        universe:
+          type: string
+          title: Universe
+        benchmark:
+          $ref: '#/components/schemas/RsBenchmark'
+        min_years:
+          type: integer
+          title: Min Years
+        eligible:
+          type: integer
+          title: Eligible
+        found:
+          type: integer
+          title: Found
+        expected_by_luck:
+          type: number
+          title: Expected By Luck
+        rows:
+          items:
+            $ref: '#/components/schemas/RsPerformerRow'
+          type: array
+          title: Rows
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - month
+      - month_name
+      - universe
+      - benchmark
+      - min_years
+      - eligible
+      - found
+      - expected_by_luck
+      - rows
+      - notes
+      title: RsTopPerformersResponse
+    RsWeekResponse:
+      properties:
+        as_of:
+          type: string
+          format: date
+          title: As Of
+        period:
+          type: string
+          title: Period
+        start:
+          type: string
+          format: date
+          title: Start
+        end:
+          type: string
+          format: date
+          title: End
+        indices:
+          items:
+            $ref: '#/components/schemas/RsReturnRow'
+          type: array
+          title: Indices
+        funds:
+          items:
+            $ref: '#/components/schemas/RsReturnRow'
+          type: array
+          title: Funds
+        sectors:
+          items:
+            $ref: '#/components/schemas/RsReturnRow'
+          type: array
+          title: Sectors
+        best:
+          items:
+            $ref: '#/components/schemas/RsMover'
+          type: array
+          title: Best
+        worst:
+          items:
+            $ref: '#/components/schemas/RsMover'
+          type: array
+          title: Worst
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - as_of
+      - period
+      - start
+      - end
+      - indices
+      - funds
+      - sectors
+      - best
+      - worst
+      - notes
+      title: RsWeekResponse
+    RsYears:
+      properties:
+        first:
+          type: integer
+          title: First
+        last:
+          type: integer
+          title: Last
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - first
+      - last
+      - count
+      title: RsYears
     MarketDataStatusResponse:
       type: object
       required: [generated_at, available, own_database, attention, jobs, indices, tables, not_built]
