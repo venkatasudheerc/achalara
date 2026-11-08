@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useSecurityProfile, useSecuritySearch } from '@/hooks/useResearch'
 import type { RsBucket, RsMonthPath, RsProfile } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
@@ -174,12 +174,13 @@ const GROUPS = [
 /** A search box whose matches drop down as you type, a ticker column and a name column,
  *  stocks and funds apart, as a quote screen lists them: arrow keys move, Enter or a
  *  click chooses, Escape closes. Choosing puts the choice in the box. */
-function SecurityCombobox({ query, onQuery, results, loading, onChoose }: {
+function SecurityCombobox({ query, onQuery, results, loading, onChoose, choiceLabel }: {
   query: string; onQuery: (q: string) => void; results: Match[]; loading: boolean
-  onChoose: (m: Match) => void
+  onChoose: (m: Match) => void; choiceLabel: string | null
 }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
+  const input = useRef<HTMLInputElement>(null)
   // Grouped, but in one order for the arrow keys: the server's ranking within each group.
   const groups = GROUPS.map((g) => ({ ...g, items: results.filter((r) => g.kinds.includes(r.kind)) }))
   groups.push({ label: 'Other', kinds: [], items: results.filter((r) => !GROUPS.some((g) => g.kinds.includes(r.kind))) })
@@ -187,7 +188,8 @@ function SecurityCombobox({ query, onQuery, results, loading, onChoose }: {
   groups.sort((a, b) => (a.items.length ? results.indexOf(a.items[0]) : 99) - (b.items.length ? results.indexOf(b.items[0]) : 99))
   const shown = groups.flatMap((g) => g.items)
   const showList = open && query.trim().length > 0 && (shown.length > 0 || !loading)
-  const choose = (m: Match) => { onChoose(m); setOpen(false) }
+  // A choice is made: the box lets go of the cursor, so the page reads as settled.
+  const choose = (m: Match) => { onChoose(m); setOpen(false); input.current?.blur() }
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, shown.length - 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
@@ -203,11 +205,16 @@ function SecurityCombobox({ query, onQuery, results, loading, onChoose }: {
           strokeLinecap="round" className="absolute left-[14px] top-[13px] text-stone">
           <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
         </svg>
-        <input id="lookup" type="search" value={query} placeholder="Apple, Schwab, SPY" autoComplete="off"
+        <input ref={input} id="lookup" type="search" value={query} placeholder="Apple, Schwab, SPY" autoComplete="off"
           role="combobox" aria-expanded={showList} aria-controls="lookup-list" aria-autocomplete="list"
           aria-activedescendant={showList && shown[active] ? `lookup-${shown[active].symbol}` : undefined}
           onChange={(e) => { onQuery(e.target.value); setOpen(true); setActive(0) }}
-          onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onKeyDown={onKey}
+          // Clicking in clears the last choice's name, ready for a new search; leaving the
+          // box empty puts it back.
+          onFocus={() => { if (choiceLabel && query === choiceLabel) onQuery(''); setOpen(true) }}
+          onClick={() => { if (choiceLabel && query === choiceLabel) onQuery(''); setOpen(true) }}
+          onBlur={() => { if (choiceLabel && !query.trim()) onQuery(choiceLabel); setOpen(false) }}
+          onKeyDown={onKey}
           className="w-full h-[44px] pl-[42px] pr-[14px] rounded-[10px] border border-stone/40 bg-surface text-[15px] text-summit-ink focus:outline-none focus:ring-2 focus:ring-gold" />
         {showList && (
           <div id="lookup-list" role="listbox" aria-label="Matches"
@@ -280,7 +287,8 @@ export function LookupTab({ query, onQuery, choice, onChoice, onOpenMonths }: {
   return (
     <div className="flex flex-col gap-[24px]">
       <Controls>
-        <SecurityCombobox query={query} onQuery={onQuery} results={results} loading={search.isLoading} onChoose={choose} />
+        <SecurityCombobox query={query} onQuery={onQuery} results={results} loading={search.isLoading} onChoose={choose}
+          choiceLabel={choice?.label ?? null} />
       </Controls>
 
       {search.isError && <ErrorState message={unavailable(search.error)} onRetry={() => search.refetch()} />}
