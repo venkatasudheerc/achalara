@@ -167,10 +167,12 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
   const profile = useSecurityProfile(chosen, month)
   const p = profile.data
   // A name chosen elsewhere arrives as its ticker; once its profile is in, name it in the box.
+  // Only when the name differs: a fund with no name on file keeps its ticker, and setting
+  // the same label again would loop and undo any later choice.
   useEffect(() => {
-    if (p && choice && p.symbol === choice.symbol && choice.label === choice.symbol) {
-      onChoice({ symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })
-    }
+    if (!p || !choice || p.symbol !== choice.symbol || choice.label !== choice.symbol) return
+    const label = choiceLabel(p.symbol, p.name)
+    if (label !== choice.label) onChoice({ symbol: p.symbol, label })
   }, [p, choice, onChoice])
   const answer = p ? headline(p) : null
   const total = p ? p.last_12_months.reduce((g, m) => g * (1 + m.ret), 1) - 1 : 0
@@ -191,7 +193,7 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
         : profile.isError || !p ? <ErrorState message={unavailable(profile.error)} onRetry={() => profile.refetch()} />
         : (
           <Section
-            title={<>{displayName(p.name, p.symbol)} <span className="font-mono text-[20px] text-stone">{p.symbol}</span></>}
+            title={p.name ? <>{displayName(p.name, p.symbol)} <span className="font-mono text-[20px] text-stone">{p.symbol}</span></> : p.symbol}
             aside={
               <button type="button" onClick={() => onOpenMonths({ symbol: p.symbol, label: choiceLabel(p.symbol, p.name) })}
                 className="h-[44px] px-[18px] rounded-[10px] border border-pine text-pine text-[15px] font-semibold hover:bg-pine hover:text-on-dark transition-colors">
