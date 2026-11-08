@@ -28,6 +28,7 @@ limits, user-visible screens.
 | A route or its request/response | `openapi.yaml` (the contract test enforces it), then `cd frontend && npm run gen:api`; the router table in `backend/CLAUDE.md` if a prefix is new |
 | A service's rule (performance, tax lots, sync, access, portal) | The matching section of `backend/CLAUDE.md` |
 | `backend/app/md/**` (market data) | `docs/MARKET_DATA.md` *(local)* (plan status, design, schedule, Webull budget, troubleshooting, limitations); `backend/CLAUDE.md` § "Market data"; `backend/DATA_MODEL.md` § "The `md` schema" |
+| Research, `md/insights.py` (`TOOLS`), `ReadSession` or the `md_reader` grants | `backend/CLAUDE.md` § "Research and chatbot guardrails"; `openapi.yaml`; `frontend/CLAUDE.md` (Research page); `docs/MARKET_DATA.md` *(local)* |
 | A scheduled job or its time (`services/scheduler.py`, `md/schedule.py`) | `deploy/DEPLOY.md` § Routine; `docs/MARKET_DATA.md` § 5 *(local)* for md jobs; the System status notes in `backend/CLAUDE.md` |
 | A setting in `app/config.py` | `deploy/.env.example` (name only, empty value) and `deploy/DEPLOY.md`; `backend/.env.example` if it exists |
 | `deploy/**` (compose, Caddy, backup) | `deploy/DEPLOY.md` |

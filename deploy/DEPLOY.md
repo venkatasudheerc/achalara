@@ -229,6 +229,21 @@ at 10:30 PM. Set
 lookups are skipped). `OPENFIGI_API_KEY` is optional. The backend applies market data's migrations
 at start too (`alembic -n md upgrade head`, a history of their own). `MD_DATABASE_URL` is only for
 giving market data a database of its own; left empty, it shares the app's.
+
+**The read-only login for research (once per server).** The Research page reads market data
+through `md_reader`, a login that may read the `md` schema and nothing else. Without it research
+still runs in read-only sessions, but as the owner login. To create it, set `MD_READER_PASSWORD`
+in `deploy/.env` (a long random value), then:
+
+```sh
+cd /srv/achalara/deploy
+sudo sh create-md-reader.sh
+# add to deploy/.env, with the same password and your POSTGRES_DB:
+#   MD_READ_DATABASE_URL=postgresql://md_reader:<password>@db:5432/<POSTGRES_DB>
+sudo docker compose up -d backend
+```
+
+Running the script again only resets the password.
 Its state is on the **Market data** page in the advisor workspace (`/app/market-data`). To run it by
 hand, for example right after the first deploy:
 

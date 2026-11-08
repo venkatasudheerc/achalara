@@ -13,7 +13,7 @@ from app.services.auth_service import SESSION_COOKIE, AuthService
 # Read routes under /clients/{client_id} that stay with the advisor.
 _ADVISOR_ONLY_SUFFIXES = ("/connections", "/account-access")
 # Routes outside any client that every signed-in user may read.
-_SHARED_READ_PREFIXES = ("/api/v1/benchmarks",)
+_SHARED_READ_PREFIXES = ("/api/v1/benchmarks", "/api/v1/research")
 
 
 def get_current_user(

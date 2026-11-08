@@ -423,3 +423,32 @@ def test_a_webull_timeout_on_the_list_leaves_the_rest_of_the_job(
     )
     note = IdentifierService(db, Silent()).run(DAY)
     assert "not read" in note and reached == ["sec"]
+
+
+def test_a_security_known_only_by_its_ticker_is_named(db):
+    from app.md.identifiers import fill_names
+    from app.md.models import Company
+
+    company = Company(name="EXAMPLE HOLDINGS CORP", cik="0000000001")
+    db.add(company)
+    db.flush()
+    by_sec = Security(name="AAA", kind="stock", company_id=company.id)
+    by_webull = Security(name="BBB", kind="etf")
+    named_already = Security(name="Hand-set name", kind="stock", company_id=company.id)
+    nameless = Security(name="CCC", kind="stock")
+    db.add_all([by_sec, by_webull, named_already, nameless])
+    db.flush()
+    for security, symbol in (
+        (by_sec, "AAA"),
+        (by_webull, "BBB"),
+        (named_already, "DDD"),
+        (nameless, "CCC"),
+    ):
+        db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    db.flush()
+    assert fill_names(db, {by_webull.id: "Example Fund Trust"}) == 2
+    assert by_sec.name == "EXAMPLE HOLDINGS CORP"  # the SEC company's name first
+    assert by_webull.name == "Example Fund Trust"
+    assert named_already.name == "Hand-set name"  # never replaced
+    assert nameless.name == "CCC"  # nothing to go on
+    assert fill_names(db) == 0

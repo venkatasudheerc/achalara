@@ -1,0 +1,225 @@
+"""Research for every signed-in user: what a client login may read, and the insights."""
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+import pytest
+from fastapi.testclient import TestClient
+from app.main import app
+from app.md import insights
+from app.md.models import (
+    IndexDef,
+    IndexLevelHist,
+    IndexMember,
+    IndexMemberHist,
+    PriceAdjDaily,
+    Security,
+    SecurityClassification,
+    SecuritySymbol,
+)
+from app.models.client import Client
+from app.services.auth_service import AuthService
+
+TODAY = date(2026, 11, 8)  # a Sunday: the week of 2-6 November has ended
+STAMP = datetime(2026, 11, 8)
+ADVISOR = ("research-advisor@example.com", "Correct-Horse-Battery-9")
+CLIENT_PASSWORD = "Another-Long-Passphrase-7"
+
+
+def _weekdays(first, last):
+    day = first
+    while day <= last:
+        if day.weekday() < 5:
+            yield day
+        day += timedelta(days=1)
+
+
+def _security(db, symbol, kind="stock", sector="IT", member="SP500", nov_boost=0.0):
+    security = Security(name=f"{symbol} Example Corp", kind=kind)
+    db.add(security)
+    db.flush()
+    db.add(SecuritySymbol(security_id=security.id, symbol=symbol))
+    if member:
+        db.add(IndexMember(index_code=member, security_id=security.id, since=TODAY))
+        db.add(
+            IndexMemberHist(
+                index_code=member, security_id=security.id, valid_from=TODAY
+            )
+        )
+    if sector:
+        db.add(
+            SecurityClassification(
+                security_id=security.id, sector_code=sector, as_of=TODAY
+            )
+        )
+    close = 100.0
+    for day in _weekdays(date(2021, 12, 1), date(2026, 11, 6)):
+        step = 0.0005 + (nov_boost if day.month == 11 else 0.0)
+        close *= 1 + step
+        db.add(
+            PriceAdjDaily(
+                security_id=security.id,
+                price_date=day,
+                adj_close=Decimal(str(round(close, 4))),
+                fetched_at=STAMP,
+            )
+        )
+    db.flush()
+    return security
+
+
+@pytest.fixture
+def market(db):
+    for code in ("SP500", "R2000"):
+        db.add(IndexDef(code=code, name=code, owner="Example", method="fund_file"))
+    db.flush()
+    _security(db, "AAA", nov_boost=0.004)  # beats SPY every November
+    _security(db, "BBB", sector="FIN")
+    _security(db, "SPY", kind="etf", sector=None, member=None)
+    _security(db, "IWM", kind="etf", sector=None, member=None)
+    _security(db, "SML", sector="IT", member="R2000")
+    level = 1000.0
+    for day in _weekdays(date(1990, 1, 1), date(2026, 11, 6)):
+        level *= 1.0003 if day.month != 9 else 0.9995
+        db.add(
+            IndexLevelHist(
+                symbol="SPX",
+                price_date=day,
+                close=Decimal(str(round(level, 4))),
+                source="test",
+                fetched_at=STAMP,
+            )
+        )
+    db.flush()
+
+
+@pytest.fixture
+def as_family_member(db, anon_client, monkeypatch):
+    """A second browser, signed in as a client through a real invite."""
+    from app.md import insights as module
+
+    monkeypatch.setattr(module, "date", _FixedDate)
+    AuthService(db).create_advisor(ADVISOR[0], "Ada Advisor", ADVISOR[1])
+    member = Client(name="Example Family Member", email="member@example.com")
+    db.add(member)
+    db.commit()
+    advisor = anon_client  # on the test database
+    assert (
+        advisor.post(
+            "/api/v1/auth/login", json={"email": ADVISOR[0], "password": ADVISOR[1]}
+        ).status_code
+        == 200
+    )
+    link = advisor.post("/api/v1/auth/invites", json={"client_id": member.id}).json()
+    browser = TestClient(app)
+    assert (
+        browser.post(
+            f"/api/v1/auth/links/{link['token']}/accept",
+            json={"password": CLIENT_PASSWORD},
+        ).status_code
+        == 200
+    )
+    return browser
+
+
+class _FixedDate(date):
+    @classmethod
+    def today(cls):
+        return TODAY
+
+
+RESEARCH_PATHS = (
+    "this-week",
+    "this-month",
+    "outlook?month=11",
+    "calendar?symbol=SPX&start_year=2000&end_year=2025",
+    "top-performers?month=11",
+    "sectors?month=11&compare=R2000",
+    "securities?q=aaa",
+    "securities/AAA?month=11",
+    "returns?symbols=AAA,SPX",
+    "seasonality?subject=SPX",
+    "movers?grain=week&universe=SP500",
+    "tools",
+)
+
+
+def test_a_family_member_reads_every_research_route(as_family_member, market):
+    for path in RESEARCH_PATHS:
+        response = as_family_member.get(f"/api/v1/research/{path}")
+        assert response.status_code == 200, (path, response.text[:200])
+
+
+def test_a_family_member_cannot_reach_the_operations_pages(as_family_member):
+    for path in ("/api/v1/admin/market-data/status", "/api/v1/admin/status"):
+        assert as_family_member.get(path).status_code == 403, path
+
+
+def test_research_is_not_open_to_the_public(anon_client):
+    for path in ("this-week", "tools", "securities/AAA"):
+        assert anon_client.get(f"/api/v1/research/{path}").status_code == 401
+
+
+def test_the_tool_list_describes_every_function(as_family_member):
+    tools = as_family_member.get("/api/v1/research/tools").json()
+    names = {t["name"] for t in tools}
+    assert names == {t.name for t in insights.TOOLS}
+    for tool in tools:
+        assert tool["description"]
+        assert tool["parameters"]["type"] == "object"
+        assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_this_week_reports_the_week_that_ended(db, market):
+    week = insights.this_week(db, TODAY)
+    assert week["period"] == "2026-W45" and week["end"] == date(2026, 11, 6)
+    assert {r["symbol"] for r in week["indices"]} == {"SPX"}
+    assert any("dividends" in n for n in week["notes"])
+
+
+def test_top_performers_compare_with_the_index_fund_and_say_what_luck_gives(db, market):
+    out = insights.top_performers(db, 11, "SP500", today=TODAY)
+    assert out["benchmark"]["symbol"] == "SPY"
+    assert [r["symbol"] for r in out["rows"]] == ["AAA"]
+    row = out["rows"][0]
+    assert (
+        row["sector"] == "Information Technology" and row["name"] == "AAA Example Corp"
+    )
+    assert out["eligible"] == 2 and out["expected_by_luck"] == pytest.approx(
+        2 * 0.5**4
+    )
+    assert any("chance" in n for n in out["notes"])
+    small = insights.top_performers(db, 11, "R2000", today=TODAY)
+    assert small["benchmark"]["symbol"] == "IWM"
+    with pytest.raises(ValueError):
+        insights.top_performers(db, 13, today=TODAY)
+
+
+def test_the_sector_scorecard_puts_two_indices_side_by_side(db, market):
+    out = insights.sector_scorecard(db, 11, "SP500", "R2000", TODAY)
+    rows = {r["sector_code"]: r["results"] for r in out["sectors"]}
+    assert rows["IT"]["SP500"]["beat_share"] == 1.0  # AAA, every November
+    assert "R2000" in rows["IT"]
+    assert rows["FIN"]["SP500"]["observations"] == 4
+
+
+def test_a_calendar_grid_says_how_thin_its_cells_are(db, market):
+    stock = insights.calendar_grid(db, "AAA", today=TODAY)
+    assert any("not a seasonal pattern" in n for n in stock["notes"])
+    index = insights.calendar_grid(db, "SPX", 1991, 2025, "median", TODAY)
+    assert index["years"]["first"] == 1991 and index["stat"] == "median"
+    assert not any("not a seasonal pattern" in n for n in index["notes"])
+    assert all(c["days"] >= 1 for c in index["cells"])
+
+
+def test_finding_and_profiling_a_security(db, market):
+    found = insights.find_security(db, "example corp")
+    assert {r["symbol"] for r in found["results"]} >= {"AAA", "BBB"}
+    assert insights.find_security(db, "aaa")["results"][0]["symbol"] == "AAA"
+    profile = insights.security_profile(db, "AAA", 11, TODAY)
+    assert (
+        profile["indices"] == ["SP500"]
+        and profile["sector"] == "Information Technology"
+    )
+    assert len(profile["last_12_months"]) == 12
+    assert profile["month_by_trading_day"]["buckets"]
+    assert profile["sector_month_of_year"]["survivorship"] is True

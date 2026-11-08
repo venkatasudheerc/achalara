@@ -10,6 +10,7 @@ const NAV = [
   { to: '/portal/activity', label: 'Activity' },
   { to: '/portal/realized', label: 'Realised gains' },
   { to: '/portal/performance', label: 'Performance' },
+  { to: '/portal/research', label: 'Research' },
 ]
 
 /** The client portal's frame: a slim bar with the menu behind one button, and the page at full width. */

@@ -41,7 +41,7 @@ def test_returns(client, db):
     _security(db, "AAA", 0.001)
     _security(db, "BBB", 0.0)
     body = client.get(
-        "/api/v1/admin/market-data/returns",
+        "/api/v1/research/returns",
         params={"symbols": "AAA,NOPE", "grain": "month", "benchmark": "BBB"},
     ).json()
     assert body["unknown"] == ["NOPE"] and body["benchmark"]["basis"] == "total"
@@ -52,7 +52,7 @@ def test_returns(client, db):
 def test_seasonality_and_the_month_it_needs(client, db):
     _security(db, "AAA", 0.001)
     ok = client.get(
-        "/api/v1/admin/market-data/seasonality",
+        "/api/v1/research/seasonality",
         params={"subject": "AAA", "by": "trading_day", "month": 11},
     )
     assert (
@@ -60,13 +60,11 @@ def test_seasonality_and_the_month_it_needs(client, db):
     )
     assert ok.json()["month_to_date"]
     missing = client.get(
-        "/api/v1/admin/market-data/seasonality",
+        "/api/v1/research/seasonality",
         params={"subject": "AAA", "by": "trading_day"},
     )
     assert missing.status_code == 422
-    unknown = client.get(
-        "/api/v1/admin/market-data/seasonality", params={"subject": "NOPE"}
-    )
+    unknown = client.get("/api/v1/research/seasonality", params={"subject": "NOPE"})
     assert unknown.status_code == 404
 
 
@@ -74,13 +72,13 @@ def test_consistent_months_and_movers(client, db):
     _security(db, "AAA", 0.002)
     _security(db, "BBB", 0.0)
     body = client.get(
-        "/api/v1/admin/market-data/consistent-months",
+        "/api/v1/research/consistent-months",
         params={"month": 6, "benchmark": "BBB", "min_years": 2, "universe": "XYZ"},
     ).json()
     assert [r["symbol"] for r in body["rows"]] == ["AAA"]
     assert body["expected_by_luck"] > 0
     movers = client.get(
-        "/api/v1/admin/market-data/movers", params={"grain": "month", "universe": "XYZ"}
+        "/api/v1/research/movers", params={"grain": "month", "universe": "XYZ"}
     ).json()
     assert movers["best"][0]["symbol"] == "AAA" and movers["count"] == 2
 
@@ -90,12 +88,10 @@ def test_a_separate_database_that_is_down_is_a_503(client, monkeypatch):
         raise md_read.MdUnavailable("OperationalError")
 
     monkeypatch.setattr(md_read, "market_returns", down)
-    response = client.get(
-        "/api/v1/admin/market-data/returns", params={"symbols": "AAA"}
-    )
+    response = client.get("/api/v1/research/returns", params={"symbols": "AAA"})
     assert response.status_code == 503
 
 
 def test_not_open_to_the_public(anon_client):
     for path in ("returns?symbols=SPY", "seasonality?subject=SPY", "movers"):
-        assert anon_client.get(f"/api/v1/admin/market-data/{path}").status_code == 401
+        assert anon_client.get(f"/api/v1/research/{path}").status_code == 401

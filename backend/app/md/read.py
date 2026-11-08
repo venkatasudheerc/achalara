@@ -7,14 +7,15 @@ they open one, and a database that cannot be reached raises ``MdUnavailable``.
 """
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Iterable, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.md import insights as md_insights
 from app.md import performance as md_performance
-from app.md.database import MdSession, separate
+from app.md.database import MdSession, ReadSession, separate
 from app.md.models import (
     JobRun,
     Security,
@@ -107,26 +108,60 @@ def market_data_status(app_db: Session) -> Dict:
         return unavailable()
 
 
-# -- performance and seasonality -------------------------------------------
+def research_tools() -> List[Dict]:
+    """The research functions a chatbot may call: name, description, parameters.
+    Reads nothing."""
+    return [
+        {"name": t.name, "description": t.description, "parameters": t.parameters}
+        for t in md_insights.TOOLS
+    ]
+
+
+# -- research: read-only, through ReadSession only ---------------------------
+#
+# Everything below is for research and (later) the chatbot. It reads md only
+# through ReadSession (the md_reader role, read-only sessions), never MdSession
+# or the app's session, so nothing here can change data or reach client data.
+# tests/test_research_guardrails.py fails if that changes.
 
 UnknownSubject = md_performance.UnknownSubject
 
 
-def market_returns(app_db: Session, **kwargs) -> Dict:
-    with _session(app_db) as db:
+@contextmanager
+def _read():
+    db = ReadSession()
+    try:
+        yield db
+    except SQLAlchemyError as exc:
+        raise MdUnavailable(type(exc).__name__) from exc
+    finally:
+        db.close()
+
+
+def market_returns(**kwargs) -> Dict:
+    with _read() as db:
         return md_performance.returns(db, **kwargs)
 
 
-def market_seasonality(app_db: Session, **kwargs) -> Dict:
-    with _session(app_db) as db:
+def market_seasonality(**kwargs) -> Dict:
+    with _read() as db:
         return md_performance.seasonality(db, **kwargs)
 
 
-def consistent_months(app_db: Session, **kwargs) -> Dict:
-    with _session(app_db) as db:
+def consistent_months(**kwargs) -> Dict:
+    with _read() as db:
         return md_performance.consistent_months(db, **kwargs)
 
 
-def market_movers(app_db: Session, **kwargs) -> Dict:
-    with _session(app_db) as db:
+def market_movers(**kwargs) -> Dict:
+    with _read() as db:
         return md_performance.movers(db, **kwargs)
+
+
+def research(name: str, **kwargs) -> Dict:
+    """Run one research function from the registry by name."""
+    tool = md_insights.TOOLS_BY_NAME.get(name)
+    if tool is None:
+        raise ValueError(f"Unknown research function {name}")
+    with _read() as db:
+        return tool.run(db, **kwargs)

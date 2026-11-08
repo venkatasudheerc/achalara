@@ -71,6 +71,11 @@ export function useChartColours() {
     area: dark ? '#2C5142' : '#EAF0EC',
     gold: '#C9A24B',
     loss: dark ? '#F0AA7A' : '#C2703D',
+    /** A diverging scale for heatmaps: a loss end, a neutral grey middle, a gain end.
+     *  Ends are deep enough that ink text on them stays readable. */
+    diverging: dark
+      ? { loss: '#A8572B', mid: '#3B4A44', gain: '#25775B', text: '#EEF3F0' }
+      : { loss: '#C2703D', mid: '#EEF1EF', gain: '#2E8B6B', text: '#14201C' },
     /** The benchmark: neither gain, loss nor gold */
     benchmark: dark ? '#A9C4EA' : '#4A6FA5',
     /** Kinds of holding. None is the gain or loss colour: a kind is not a result. */

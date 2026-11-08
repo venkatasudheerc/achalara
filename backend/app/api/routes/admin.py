@@ -1,6 +1,5 @@
 """Admin endpoints for imports and sync"""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel
@@ -8,13 +7,7 @@ from sqlalchemy.orm import Session
 import logging
 import uuid
 
-from app.api.schemas.market_data import (
-    MarketDataStatusResponse,
-    MdConsistentResponse,
-    MdMoversResponse,
-    MdReturnsResponse,
-    MdSeasonalityResponse,
-)
+from app.api.schemas.market_data import MarketDataStatusResponse
 from app.api.schemas.status import AlertTestResponse, SystemStatusResponse
 from app.connectors.models import NotSupported
 from app.db.database import get_db
@@ -48,106 +41,6 @@ def market_data_status(db: Session = Depends(get_db)):
     """The state of the security master: its jobs, indices, coverage and tables,
     and what is not built yet."""
     return md_read.market_data_status(db)
-
-
-def _market_data(call, **kwargs):
-    """Run one market-data question; its refusals as the right HTTP answers."""
-    try:
-        return call(**kwargs)
-    except md_read.UnknownSubject as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except md_read.MdUnavailable:
-        raise HTTPException(
-            status_code=503, detail="Market data's database could not be read."
-        )
-
-
-@router.get("/market-data/returns", response_model=MdReturnsResponse)
-def market_data_returns(
-    symbols: str = Query(..., description="Comma-separated: tickers or index codes"),
-    grain: str = Query("month"),
-    start: Optional[date] = None,
-    end: Optional[date] = None,
-    benchmark: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
-    """Day, week, month, quarter or year returns side by side, with the excess
-    over a benchmark. Securities are a total return; index levels a price return."""
-    wanted = [s.strip() for s in symbols.split(",") if s.strip()][:20]
-    return _market_data(
-        md_read.market_returns,
-        app_db=db,
-        symbols=wanted,
-        grain=grain,
-        start=start,
-        end=end,
-        benchmark=benchmark,
-    )
-
-
-@router.get("/market-data/seasonality", response_model=MdSeasonalityResponse)
-def market_data_seasonality(
-    subject: str = Query(
-        ..., description="A ticker, an index code, index:CODE or sector:CODE"
-    ),
-    by: str = Query(
-        "month", description="month | weekday | turn_of_month | trading_day"
-    ),
-    month: Optional[int] = Query(None, ge=1, le=12),
-    db: Session = Depends(get_db),
-):
-    """How returns fall by month of year, weekday, turn of the month, or day by
-    day within one month, with the number of years behind each figure."""
-    return _market_data(
-        md_read.market_seasonality, app_db=db, subject=subject, by=by, month=month
-    )
-
-
-@router.get("/market-data/consistent-months", response_model=MdConsistentResponse)
-def market_data_consistent_months(
-    month: int = Query(..., ge=1, le=12),
-    benchmark: str = Query("SPY"),
-    min_years: int = Query(4, ge=2, le=50),
-    universe: Optional[str] = Query(
-        None, description="An index code; all priced when empty"
-    ),
-    limit: int = Query(50, ge=1, le=500),
-    db: Session = Depends(get_db),
-):
-    """Securities that beat the benchmark in this month every year on file, with
-    how many luck alone would give and the index's long-run result."""
-    return _market_data(
-        md_read.consistent_months,
-        app_db=db,
-        month=month,
-        benchmark=benchmark,
-        min_years=min_years,
-        universe_index=universe,
-        limit=limit,
-    )
-
-
-@router.get("/market-data/movers", response_model=MdMoversResponse)
-def market_data_movers(
-    grain: str = Query("month", description="week | month"),
-    period: Optional[str] = Query(
-        None, description="2026-10 or 2026-W44; the latest ended"
-    ),
-    universe: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    """The best and worst over one week or month."""
-    return _market_data(
-        md_read.market_movers,
-        app_db=db,
-        grain=grain,
-        period=period,
-        universe_index=universe,
-        limit=limit,
-    )
 
 
 @router.post("/status/test-alert", response_model=AlertTestResponse)

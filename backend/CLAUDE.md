@@ -83,6 +83,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/portal`     | `portal` (a client's accounts read together: overview, positions, trades, realised gains, performance; CSV) |
 | `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
+| `/api/v1/research`   | `research` (market insights from `md`, for every signed-in user; read-only) |
 
 **Performance roll-ups** (`services/performance_service.py`): a level resolves to a _set of sleeve ids_, then one calc runs over the **merged** trade stream — returns are NOT averaged from child returns. Account = all sleeves in the account; Client = all sleeves under the client's accounts; Strategy = all sleeves for that strategy. Each response is `{ level, id, name, summary, timeseries, children }`.
 
@@ -118,6 +119,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
 | `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
 | `app/md/read.py`                        | What the app may ask market data: the one way in from outside the package                |
+| `app/md/insights.py`                    | Market insights and `TOOLS`, the registry the Research page and a future chatbot call     |
 | `app/services/held_symbols.py`          | The symbols held, handed to market data so it never reads client data                     |
 | `app/utils/symbols.py`                  | Every source's spelling of a ticker (`app_symbol`, `webull_symbol`, `figi_symbol`)        |
 | `app/utils/webull_signing.py`           | Signing a Webull request, shared by the app's client and the market-data jobs            |
@@ -406,7 +408,7 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
 - **Returns are computed, never stored by period,** with `utils/returns.py` (shared with the
   portfolio figures: ISO weeks, calendar months, a period from the last close before it). Ad-hoc SQL
   uses `md.day_return` (a view) and `md.week_return` / `md.month_return` (materialized, refreshed by
-  `md_refresh_returns`). `md/performance.py` answers the API (`/api/v1/admin/market-data/returns`,
+  `md_refresh_returns`). `md/performance.py` answers the API (`/api/v1/research/returns`,
   `seasonality`, `consistent-months`, `movers`), reading `md.month_return` on Postgres for questions
   across many stocks. A group's figures use today's members and say so (`survivorship`).
 - **Index data is never pruned.** A history limit may apply only to stock and ETF prices in `md`.
@@ -435,6 +437,35 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   what is not built, with its own `attention` list. It is advisor-only, because the counts include
   symbols from holdings. A planned table goes in `PLANNED_TABLES` and leaves the list by itself once
   its model exists. A new `md` job only needs adding to `MD_JOBS` to appear there.
+- **Security names:** the identifiers job (`identifiers.fill_names`) names a security still called by
+  its ticker from its SEC company, else Webull's instrument name, and index files rename one the
+  same way (`membership._security_for`). A real name is never replaced.
+
+### Research and chatbot guardrails
+
+Research (`/api/v1/research`, the Research page) and the planned chatbot read market data and
+must never change anything. Two independent layers hold this; keep both.
+
+- **Research reads `md` only through `md.database.ReadSession`.** Its engine makes every
+  transaction read-only (`default_transaction_read_only=on`; `PRAGMA query_only` in SQLite) and
+  connects as `MD_READ_DATABASE_URL` when set: the `md_reader` login, which has `SELECT` on the
+  `md` schema and no rights at all on `public` or `perf`. Unset, it uses `md`'s own URL, still
+  read-only. Every function in `read.py`'s research section opens it through `_read()`.
+- **Never use `MdSession`, `SessionLocal`, `get_db` or an engine** in `md/performance.py`,
+  `md/insights.py` or `api/routes/research.py`, and never join client data into research.
+  `tests/test_research_guardrails.py` scans for this and checks a write is refused.
+- **`md_reader` is created by hand once per server** (`deploy/create-md-reader.sh`, password
+  `MD_READER_PASSWORD` in `deploy/.env`, never in the repository). The `md` migration
+  `c6a9d4e2f8b1` grants it `SELECT` and default privileges, so a new `md` table is readable
+  without a new grant. Never grant it a write.
+- **One registry: `insights.TOOLS`.** Each entry is a name, a description, JSON Schema parameters
+  (`additionalProperties: false`) and a function; `GET /api/v1/research/tools` serves the list. A
+  chatbot calls only these, never free SQL, and has no write path. A new insight is a function
+  here plus a route, whose answer carries its basis (`total` or `price`), its sample (years or
+  days) and `notes` in plain words; no advice wording.
+- **Access:** research is shared reference data (`_SHARED_READ_PREFIXES` in `deps.py`): any
+  signed-in user may `GET` it, nothing else. The Market data job page
+  (`/api/v1/admin/market-data/status`) stays advisor-only.
 
 ## System status
 
