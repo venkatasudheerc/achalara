@@ -32,8 +32,8 @@ from app.services.performance_build_service import (
     dietz_factor,
     realized_factor,
 )
+from app.utils.returns import GRAINS, period_key
 
-GRAINS = ("day", "week", "month", "quarter", "year")
 
 # How holdings are valued. "market": at each day's prices, so a return includes
 # gains not yet taken. "realized": at what they cost, so a gain counts only on
@@ -233,16 +233,7 @@ class PerformanceStatsService:
 
     @staticmethod
     def _period_key(day: date, grain: str):
-        if grain == "day":
-            return day
-        if grain == "week":
-            iso = day.isocalendar()
-            return (iso[0], iso[1])
-        if grain == "month":
-            return (day.year, day.month)
-        if grain == "quarter":
-            return (day.year, (day.month - 1) // 3 + 1)
-        return (day.year,)
+        return period_key(day, grain)
 
     def periods(
         self,
