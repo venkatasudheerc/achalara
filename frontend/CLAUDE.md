@@ -65,7 +65,8 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   Holdings, Transactions, Performance and Cost basis are the portal's own pages, rendered inside
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and
   hides their page titles. Views that cannot apply (Holdings for a cash account) are hidden.
-- Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
+- Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built, headed "Research"
+  there (`title` prop; the old `/app/markets` and `/portal/markets` keep "Market patterns").
 - An advisor opens it as a client with "Preview the new app" (`/home?as=<clientId>`).
 - Screenshots for review: `ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`
   saves each route at 390 and 1440 wide, light and dark (`playwright-core` with the installed Chrome).
