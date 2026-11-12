@@ -15,12 +15,14 @@ from sqlalchemy.orm import Session
 
 from app.connectors.models import is_option_symbol
 from app.models.account import Account
+from app.models.brokerage_connection import BrokerageAccount
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services import benchmarks
+from app.services.account_kind import account_kind
 from app.services.auth_service import AuthService, display_name, last_four
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, option_event
 from app.services.live_quotes import live_quotes
@@ -243,6 +245,20 @@ class PortalService:
         self.visible = AuthService(db).accounts_for_client(client_id)
         self._matched_sleeves: Dict[str, Dict] = {}
 
+    def narrow(self, account_ids: Optional[Sequence[str]]) -> "PortalService":
+        """Answer for only these accounts, as if they were all that is in view.
+
+        Every id must be in view: one that is not (or does not exist) is a 404, the
+        same answer either way. Nothing given leaves the view as it is.
+        """
+        if account_ids:
+            wanted = set(account_ids)
+            chosen = [(a, shared) for a, shared in self.visible if a.id in wanted]
+            if len(chosen) != len(wanted):
+                raise PortalError(404, "Account not found")
+            self.visible = chosen
+        return self
+
     # -- what is in view -----------------------------------------------
 
     def _refs(
@@ -267,16 +283,65 @@ class PortalService:
         return {
             "id": account.id,
             "client_id": account.client_id,
+            "owner_name": account.client.name,
             "name": display_name(account),
             "number_last4": last_four(account),
             "shared": shared,
         }
 
     def accounts(self) -> List[Dict]:
-        """The accounts in view and the strategies each is run as."""
+        """The accounts in view: each one's kind, the custodian's last recorded
+        value and cash, where those come from, and the strategies it is run as."""
+        ids = [account.id for account, _ in self.visible]
+        latest_day = (
+            self.db.query(
+                DailyValuation.account_id,
+                func.max(DailyValuation.as_of_date).label("day"),
+            )
+            .filter(
+                DailyValuation.account_id.in_(ids), DailyValuation.sleeve_id.is_(None)
+            )
+            .group_by(DailyValuation.account_id)
+            .subquery()
+        )
+        latest = {
+            row.account_id: row
+            for row in self.db.query(DailyValuation).join(
+                latest_day,
+                (DailyValuation.account_id == latest_day.c.account_id)
+                & (DailyValuation.as_of_date == latest_day.c.day)
+                & DailyValuation.sleeve_id.is_(None),
+            )
+        }
+        links = {
+            link.account_id: link
+            for link in self.db.query(BrokerageAccount).filter(
+                BrokerageAccount.account_id.in_(ids)
+            )
+        }
+
+        def money(value) -> Optional[float]:
+            return float(value) if value is not None else None
+
         return [
             {
                 **self._account_fields(account, shared),
+                "kind": account_kind(account.name),
+                "value": money(latest[account.id].total_value)
+                if account.id in latest
+                else None,
+                "cash": money(latest[account.id].cash_value)
+                if account.id in latest
+                else None,
+                "as_of": latest[account.id].as_of_date
+                if account.id in latest
+                else None,
+                "source": (links[account.id].connection.institution or None)
+                if account.id in links
+                else None,
+                "synced_at": links[account.id].last_synced_at
+                if account.id in links
+                else None,
                 "sleeves": [
                     {
                         "sleeve_id": sleeve.id,

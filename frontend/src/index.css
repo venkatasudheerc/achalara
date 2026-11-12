@@ -18,6 +18,12 @@
     --loss-text: 194 112 61;       /* #C2703D */
     --pine-fill: 47 93 74;         /* #2F5D4A */
     --pine-deep-fill: 30 58 47;    /* #1E3A2F */
+    --gold: 201 162 75;            /* #C9A24B */
+    --gain-fill: 46 139 107;       /* #2E8B6B */
+    --loss-fill: 194 112 61;       /* #C2703D */
+    --on-dark: 251 252 251;        /* #FBFCFB */
+    --on-gold: 20 32 28;           /* #14201C */
+    --line: 138 150 143;           /* hairlines; the old screens use stone */
     color-scheme: light;
   }
 
@@ -39,6 +45,68 @@
     color-scheme: dark;
   }
 
+  /* The new app (/home and the sign-in pages): direction C of the 2026-11 redesign.
+     The same tokens, pointed at the new palette, so existing components take the
+     new look; plus the colours for each kind of account. */
+  :root.one-app {
+    --paper: 255 255 255;          /* #FFFFFF */
+    --surface: 255 255 255;
+    --mist: 247 246 251;           /* #F7F6FB  tinted panels, the account list */
+    --ink: 27 26 38;               /* #1B1A26 */
+    --stone: 90 88 112;            /* #5A5870 */
+    --chrome: 27 26 38;
+    --line: 236 235 242;           /* #ECEBF2 */
+    --pine-text: 75 63 214;        /* #4B3FD6  the accent */
+    --pine-deep-text: 46 37 150;   /* #2E2596 */
+    --gain-text: 19 122 75;        /* #137A4B */
+    --loss-text: 180 83 31;        /* #B4531F */
+    --pine-fill: 75 63 214;
+    --pine-deep-fill: 46 37 150;
+    --gold: 75 63 214;             /* the accent takes gold's place */
+    --gain-fill: 63 163 111;       /* #3FA36F */
+    --loss-fill: 224 135 79;       /* #E0874F */
+    --on-dark: 255 255 255;
+    --on-gold: 255 255 255;
+    --accent-soft: 236 233 251;    /* #ECE9FB */
+    --k-cash: 29 79 191;     --k-cash-bg: 231 240 255;
+    --k-taxable: 15 106 64;  --k-taxable-bg: 227 245 236;
+    --k-retire: 138 79 0;    --k-retire-bg: 255 241 220;
+    --k-kids: 142 42 91;     --k-kids-bg: 251 238 244;
+    color-scheme: light;
+  }
+  :root.one-app.dark {
+    --paper: 20 19 28;             /* #14131C */
+    --surface: 26 25 37;           /* #1A1925 */
+    --mist: 34 32 48;              /* #222030 */
+    --ink: 241 240 247;            /* #F1F0F7 */
+    --stone: 169 167 188;          /* #A9A7BC */
+    --chrome: 13 12 20;
+    --line: 44 42 58;              /* #2C2A3A */
+    --pine-text: 168 160 255;      /* #A8A0FF */
+    --pine-deep-text: 200 195 255;
+    --gain-text: 95 211 154;       /* #5FD39A */
+    --loss-text: 240 153 106;      /* #F0996A */
+    --pine-fill: 91 79 224;        /* #5B4FE0 */
+    --pine-deep-fill: 75 63 214;
+    --gold: 168 160 255;
+    --gain-fill: 63 163 111;
+    --loss-fill: 224 135 79;
+    --on-dark: 255 255 255;
+    --on-gold: 20 19 28;
+    --accent-soft: 42 39 80;       /* #2A2750 */
+    --k-cash: 143 180 255;   --k-cash-bg: 23 36 63;
+    --k-taxable: 111 214 160; --k-taxable-bg: 19 48 31;
+    --k-retire: 242 190 107; --k-retire-bg: 58 42 16;
+    --k-kids: 242 156 192;   --k-kids-bg: 58 22 38;
+    color-scheme: dark;
+  }
+  :root.one-app body { font-family: 'Inter', system-ui, sans-serif; }
+  :root.one-app .font-display { font-family: 'Manrope', 'Inter', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+  :root.one-app .font-mono { font-family: 'Inter', system-ui, sans-serif; }
+  /* On sign-in's violet panel the highlighted line needs a lighter violet than the accent. */
+  :root.one-app:not(.dark) .auth-aside .text-gold { color: #C9C3FF; }
+  :root.one-app:not(.dark) .auth-aside .text-on-dark\/80 { color: rgb(255 255 255 / 0.85); }
+
   html {
     font-family: 'Inter', system-ui, sans-serif;
     color: rgb(var(--ink));
@@ -46,7 +114,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid #C9A24B;
+    outline: 2px solid rgb(var(--gold));
     outline-offset: 2px;
     border-radius: 4px;
   }

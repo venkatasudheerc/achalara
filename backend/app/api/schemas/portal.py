@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PortalViewerResponse(BaseModel):
@@ -20,15 +20,51 @@ class PortalSleeve(BaseModel):
 class PortalAccount(BaseModel):
     id: str
     client_id: str  # the owner; not the viewer when ``shared``
+    owner_name: str
     name: str
     number_last4: Optional[str] = None
     shared: bool
+    # taxable | retirement | kids | cash, read from the brokerage's account name
+    kind: str
+    # The custodian's last recorded day: total, of which cash. None before the first.
+    value: Optional[float] = None
+    cash: Optional[float] = None
+    as_of: Optional[date] = None
+    source: Optional[str] = None  # the institution the figures come from
+    synced_at: Optional[datetime] = None  # its last transactions sync
     sleeves: List[PortalSleeve] = []
 
 
 class PortalAccountsResponse(BaseModel):
     viewer: PortalViewerResponse
     accounts: List[PortalAccount]
+
+
+class AccountGroupResponse(BaseModel):
+    """One of the client's own named groups of accounts."""
+
+    id: str
+    name: str
+    position: int
+    account_ids: List[str]
+
+
+class AccountGroupsResponse(BaseModel):
+    groups: List[AccountGroupResponse]
+
+
+class AccountGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    account_ids: List[str] = []
+
+
+class AccountGroupUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    position: Optional[int] = Field(None, ge=0)
+
+
+class AccountGroupMembers(BaseModel):
+    account_ids: List[str]
 
 
 class RowPlace(BaseModel):
@@ -286,6 +322,8 @@ class PortalSummary(BaseModel):
     closing_value: float
     cash_value: Optional[float] = None
     net_flow: float
+    flow_in: float = 0  # money added in the window
+    flow_out: float = 0  # money taken out in the window
     gain: float
     twr_pct: Optional[float] = None
     mwr_pct: Optional[float] = None  # None for a single strategy
@@ -325,6 +363,8 @@ class PortalPeriod(BaseModel):
     opening_value: float
     closing_value: float
     net_flow: float
+    flow_in: float = 0
+    flow_out: float = 0
     gain: float
     twr_pct: Optional[float] = None
     twr_ytd_pct: Optional[float] = None

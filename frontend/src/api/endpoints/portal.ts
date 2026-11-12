@@ -2,6 +2,7 @@ import { apiClient } from '../client'
 import type {
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
+  AccountGroup,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -9,6 +10,8 @@ const base = '/api/v1/portal'
 /** Filters shared by the portal's lists. `as_client` is an advisor previewing a client. */
 export interface PortalScope {
   as_client?: string
+  /** A set of accounts in view; empty or left out means every account */
+  account_ids?: string[]
   account_id?: string
   strategy_id?: string
 }
@@ -33,7 +36,9 @@ export interface PerformanceFilters extends PortalScope {
 /** Drops empty values so they are not sent as blank parameters. */
 function clean<T extends object>(params: T): Partial<T> {
   return Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v !== undefined && v !== '' && v !== null),
+    Object.entries(params).filter(
+      ([, v]) => v !== undefined && v !== '' && v !== null && !(Array.isArray(v) && v.length === 0),
+    ),
   ) as Partial<T>
 }
 
@@ -65,6 +70,18 @@ export const portalApi = {
     apiClient
       .get<PortalPerformanceResponse>(`${base}/performance`, { params: clean(params) })
       .then((r) => r.data),
+
+  groups: (asClient?: string) =>
+    apiClient
+      .get<{ groups: AccountGroup[] }>(`${base}/groups`, { params: clean({ as_client: asClient }) })
+      .then((r) => r.data.groups),
+  createGroup: (name: string, accountIds: string[] = []) =>
+    apiClient.post<AccountGroup>(`${base}/groups`, { name, account_ids: accountIds }).then((r) => r.data),
+  updateGroup: (id: string, body: { name?: string; position?: number }) =>
+    apiClient.patch<AccountGroup>(`${base}/groups/${id}`, body).then((r) => r.data),
+  setGroupAccounts: (id: string, accountIds: string[]) =>
+    apiClient.put<AccountGroup>(`${base}/groups/${id}/accounts`, { account_ids: accountIds }).then((r) => r.data),
+  deleteGroup: (id: string) => apiClient.delete(`${base}/groups/${id}`).then(() => undefined),
 
   /** A link that downloads what the filters match as CSV (the session cookie rides along). */
   csvUrl: (list: 'positions' | 'trades' | 'activity' | 'realized', params: object) =>

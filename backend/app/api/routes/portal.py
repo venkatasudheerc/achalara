@@ -15,6 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import PortalViewer, portal_viewer
 from app.api.schemas.portal import (
+    AccountGroupCreate,
+    AccountGroupMembers,
+    AccountGroupResponse,
+    AccountGroupsResponse,
+    AccountGroupUpdate,
     PortalAccountsResponse,
     PortalActivityResponse,
     PortalHomeResponse,
@@ -25,12 +30,16 @@ from app.api.schemas.portal import (
     PortalTradesResponse,
 )
 from app.db.database import get_db
+from app.services.account_group_service import AccountGroupService
 from app.services.performance_stats_service import GRAINS
 from app.services.portal_service import PortalError, PortalService
 
 router = APIRouter()
 
 _ACCOUNT = Query(None, description="Limit to one account in view")
+_ACCOUNTS = Query(
+    None, description="Limit to these accounts in view (repeat the parameter for each)"
+)
 _STRATEGY = Query(None, description="Limit to one strategy")
 _TYPE = Query(None, pattern="^(stock|etf|option|other)$", alias="type")
 _SYMBOL = Query(None, alias="q", max_length=50, description="Symbol contains")
@@ -46,8 +55,11 @@ def _http_errors():
         raise HTTPException(status_code=error.status_code, detail=error.detail)
 
 
-def _service(viewer: PortalViewer, db: Session) -> PortalService:
-    return PortalService(db, viewer.client_id)
+def _service(
+    viewer: PortalViewer, db: Session, account_ids: Optional[List[str]] = None
+) -> PortalService:
+    """The viewer's portal, narrowed to ``account_ids`` when some are named."""
+    return PortalService(db, viewer.client_id).narrow(account_ids)
 
 
 def _csv(
@@ -86,9 +98,78 @@ def portal_accounts(
     }
 
 
+def _groups(
+    viewer: PortalViewer, db: Session, change: bool = False
+) -> AccountGroupService:
+    """The viewer's groups. An advisor previewing a client may look but not change."""
+    if change and viewer.preview:
+        raise HTTPException(
+            status_code=403, detail="Only the client can change their groups"
+        )
+    return AccountGroupService(db, viewer.client_id)
+
+
+@router.get("/groups", response_model=AccountGroupsResponse)
+def portal_groups(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """The client's own named groups of accounts, in their chosen order."""
+    return {"groups": _groups(viewer, db).list()}
+
+
+@router.post("/groups", response_model=AccountGroupResponse, status_code=201)
+def portal_create_group(
+    body: AccountGroupCreate,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A new group, optionally with its accounts. Names are unique per client."""
+    with _http_errors():
+        return _groups(viewer, db, change=True).create(body.name, body.account_ids)
+
+
+@router.patch("/groups/{group_id}", response_model=AccountGroupResponse)
+def portal_update_group(
+    group_id: str,
+    body: AccountGroupUpdate,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Rename a group or move it in the list."""
+    with _http_errors():
+        return _groups(viewer, db, change=True).update(
+            group_id, body.name, body.position
+        )
+
+
+@router.put("/groups/{group_id}/accounts", response_model=AccountGroupResponse)
+def portal_set_group_accounts(
+    group_id: str,
+    body: AccountGroupMembers,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Replace the group's accounts. Each must be an account the client can see."""
+    with _http_errors():
+        return _groups(viewer, db, change=True).set_accounts(group_id, body.account_ids)
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+def portal_delete_group(
+    group_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Remove a group. Its accounts are not touched."""
+    with _http_errors():
+        _groups(viewer, db, change=True).delete(group_id)
+    return Response(status_code=204)
+
+
 @router.get("/home", response_model=PortalHomeResponse)
 def portal_home(
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     viewer: PortalViewer = Depends(portal_viewer),
     db: Session = Depends(get_db),
 ):
@@ -97,24 +178,26 @@ def portal_home(
     and what is worth knowing (options about to expire, losses still carried,
     holdings about to become long-term, a holding that dominates)."""
     with _http_errors():
-        return _service(viewer, db).home(account_id)
+        return _service(viewer, db, account_ids).home(account_id)
 
 
 @router.get("/overview", response_model=PortalOverviewResponse)
 def portal_overview(
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     viewer: PortalViewer = Depends(portal_viewer),
     db: Session = Depends(get_db),
 ):
     """Home: value, this year's return and gain, each account by strategy,
     the value over time, and recent activity."""
     with _http_errors():
-        return _service(viewer, db).overview(account_id)
+        return _service(viewer, db, account_ids).overview(account_id)
 
 
 @router.get("/positions", response_model=PortalPositionsResponse)
 def portal_positions(
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     strategy_id: Optional[str] = _STRATEGY,
     security_type: Optional[str] = _TYPE,
     query: Optional[str] = _SYMBOL,
@@ -134,7 +217,7 @@ def portal_positions(
     the custodian's price.
     """
     with _http_errors():
-        result = _service(viewer, db).positions(
+        result = _service(viewer, db, account_ids).positions(
             account_id, strategy_id, security_type, query, live
         )
     if output == "csv":
@@ -163,6 +246,7 @@ def portal_trades(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     strategy_id: Optional[str] = _STRATEGY,
     action: Optional[str] = Query(None, pattern="^(?i:buy|sell)$"),
     security_type: Optional[str] = _TYPE,
@@ -176,7 +260,7 @@ def portal_trades(
     """Trades, newest first, with totals for everything the filters match."""
     as_csv = output == "csv"
     with _http_errors():
-        result = _service(viewer, db).trades(
+        result = _service(viewer, db, account_ids).trades(
             start_date,
             end_date,
             account_id,
@@ -213,6 +297,7 @@ def portal_activity(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     strategy_id: Optional[str] = _STRATEGY,
     show: str = Query("all", pattern="^(all|trades|money|income|charges)$"),
     action: Optional[str] = Query(None, pattern="^(?i:buy|sell)$"),
@@ -229,7 +314,7 @@ def portal_activity(
     the filters match."""
     as_csv = output == "csv"
     with _http_errors():
-        result = _service(viewer, db).activity(
+        result = _service(viewer, db, account_ids).activity(
             start_date,
             end_date,
             account_id,
@@ -265,6 +350,7 @@ def portal_realized(
     start_date: Optional[date] = Query(None, description="Closed on or after"),
     end_date: Optional[date] = Query(None, description="Closed on or before"),
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     strategy_id: Optional[str] = _STRATEGY,
     term: Optional[str] = Query(None, pattern="^(short|long)$"),
     security_type: Optional[str] = _TYPE,
@@ -279,7 +365,7 @@ def portal_realized(
 ):
     """Closed positions and their realised gains, newest first."""
     with _http_errors():
-        payload = _service(viewer, db).realized(
+        payload = _service(viewer, db, account_ids).realized(
             start_date,
             end_date,
             account_id,
@@ -320,6 +406,7 @@ def portal_realized(
 @router.get("/performance", response_model=PortalPerformanceResponse)
 def portal_performance(
     account_id: Optional[str] = _ACCOUNT,
+    account_ids: Optional[List[str]] = _ACCOUNTS,
     strategy_id: Optional[str] = _STRATEGY,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
@@ -337,7 +424,7 @@ def portal_performance(
             status_code=422, detail=f"grain must be one of {', '.join(GRAINS)}"
         )
     with _http_errors():
-        payload = _service(viewer, db).performance(
+        payload = _service(viewer, db, account_ids).performance(
             account_id, strategy_id, start_date, end_date, grain, benchmark
         )
     return {**payload, "grain": grain}

@@ -80,7 +80,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 | `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
-| `/api/v1/portal`     | `portal` (a client's accounts read together: overview, positions, trades, realised gains, performance; CSV) |
+| `/api/v1/portal`     | `portal` (a client's accounts read together: accounts, overview, positions, trades, realised gains, performance; CSV; the client's own account groups) |
 | `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 | `/api/v1/research`   | `research` (market insights from `md`, for every signed-in user; read-only) |
@@ -136,6 +136,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
 | `app/cli.py`                            | `python -m app.cli create-advisor` — the first advisor login                            |
 | `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
+| `app/services/account_kind.py`          | An account's kind (taxable, retirement, kids, cash), read from the brokerage's account name |
+| `app/services/account_group_service.py` | A client's own named groups of accounts ("My groups")                                    |
 | `tests/conftest.py`                     | Shared fixtures (DB session, `TestClient`)                                              |
 
 ## Coding Conventions
@@ -213,6 +215,18 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   names in `as_client` (ignored from a client user). `PortalService` starts from
   `AuthService.accounts_for_client`, so nothing outside the viewer's accounts can be reached, and
   an `account_id` that is not in view is a 404.
+- **Any portal view can be narrowed to a set of accounts** (`account_ids`, repeated): the route
+  calls `PortalService.narrow`, which keeps only those accounts in `visible` before anything is
+  read, so every method answers for that set unchanged. An id out of view is a 404, as for
+  `account_id`. The landing page uses this for a person, a kind or a group of accounts.
+- `GET /portal/accounts` gives each account's owner's name, its **kind** (`account_kind.py`,
+  from the brokerage's account name: taxable, retirement, kids, cash; a name that says nothing is
+  taxable), the custodian's last recorded value and cash (`perf.daily_valuation`), and its source
+  and last sync (`brokerage_accounts`). Bank, card, loan and property kinds come with Plaid.
+- **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
+  portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
+  themselves: a group belongs to the viewer's client, members must be accounts in view, and an
+  advisor previewing (`as_client`) may read the groups but not change them (403).
 - Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
   come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
   cost included (`avg_cost`; the trade history's average is the fallback when the custodian

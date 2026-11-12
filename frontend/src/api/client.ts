@@ -3,7 +3,12 @@ import axios from 'axios'
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 // The session is an http-only cookie set by the API, so every call sends credentials.
-export const apiClient = axios.create({ baseURL, withCredentials: true })
+export const apiClient = axios.create({
+  baseURL,
+  withCredentials: true,
+  // Lists go as a repeated parameter (a=1&a=2), the way FastAPI reads them.
+  paramsSerializer: { indexes: null },
+})
 
 apiClient.interceptors.response.use(
   (res) => res,
