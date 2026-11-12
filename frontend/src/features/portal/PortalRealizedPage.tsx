@@ -6,7 +6,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatNumber, securityLabel } from '@/lib/formatters'
 import {
   AccountStrategyFields, ExportLink, Field, PageHeader, Pills, Quantity, Select, TextInput,
-  TYPE_OPTIONS, signedCurrency, tone, useAccountStrategyFilter, useDebounced,
+  TYPE_OPTIONS, signedCurrency, tone, useAccountStrategyFilter, useAccountName, useDebounced,
 } from '@/features/portal/ui'
 import type { PortalClosedLot, PortalGainFigures, SecurityGroup } from '@/api/types'
 
@@ -106,6 +106,7 @@ function TermGain({ lot, term }: { lot: PortalClosedLot; term: 'short' | 'long' 
 export function PortalRealizedPage() {
   const as_client = usePreviewClient()
   const filter = useAccountStrategyFilter()
+  const accountName = useAccountName()
   const [start, setStart] = useState(RANGE.this.start)
   const [end, setEnd] = useState(RANGE.this.end)
   const [grain, setGrain] = useState<Grain>('quarter')
@@ -161,7 +162,7 @@ export function PortalRealizedPage() {
     .map((a) => {
       const lots = data.positions.filter((p) => p.account_id === a.account_id)
       return {
-        id: a.account_id, name: a.account_name, shared: a.shared, lots,
+        id: a.account_id, name: accountName(a.account_id, a.account_name), shared: a.shared, lots,
         realized: lots.reduce((sum, p) => sum + p.realized_gain, 0),
       }
     })
@@ -315,7 +316,7 @@ export function PortalRealizedPage() {
                             <path d="M9 6l6 6-6 6" />
                           </svg>
                           <span>
-                            {a.account_name}
+                            {accountName(a.account_id, a.account_name)}
                             <span className="block font-normal text-[15px] text-summit-ink/70">
                               {formatNumber(a.count, 0)} closed · {a.sleeves.length} {a.sleeves.length === 1 ? 'strategy' : 'strategies'}{a.shared && ' · shared'}
                             </span>

@@ -97,3 +97,14 @@ export function securityLabel(symbol: string): string {
   const shown = Number.isInteger(price) ? `$${price}` : `$${price.toFixed(2)}`
   return `${root} ${shown} ${kind === 'P' ? 'put' : 'call'}, ${formatDate(`20${yy}-${mm}-${dd}`)}`
 }
+
+/**
+ * An account's name without the owner's names the brokerage puts in front
+ * ("Pat Doe — Roth IRA Brokerage Account" reads "Roth IRA Brokerage"). A name
+ * that is only the owner's is kept as it is.
+ */
+export function shortAccountName(name: string): string {
+  const parts = name.split(/\s+[—–-]\s+/)
+  const rest = parts.length > 1 ? parts.slice(1).join(' — ') : name
+  return rest.replace(/\s+Account$/i, '') || name
+}
