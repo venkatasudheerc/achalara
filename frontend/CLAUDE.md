@@ -221,6 +221,11 @@ live as you type: nothing new loads, and clearing it on a click would throw the 
 
 ### Formatters (`src/lib/formatters.ts`)
 
+`shortAccountName` drops the owner names the brokerage puts in front of an account's name ("Pat Doe —
+Roth IRA Brokerage Account" → "Roth IRA Brokerage"). Every screen names accounts this way:
+`accountLabel` and `useAccountName` (`portal/ui.tsx`) add the owner's first name for an account
+shared with the viewer, since the short name no longer says whose it is.
+
 Central formatters for currency, percent, and dates — use these for every number that reaches the screen. All numbers render in `font-mono` with `font-feature-settings: "tnum"` (tabular figures), right-aligned in tables.
 
 ## Design Tokens

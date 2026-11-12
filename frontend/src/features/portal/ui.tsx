@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { usePortalAccounts } from '@/hooks/usePortal'
-import { formatCurrency, formatNumber } from '@/lib/formatters'
+import { formatCurrency, formatNumber, shortAccountName } from '@/lib/formatters'
 import type { SecurityGroup } from '@/api/types'
 
 /** Gain green, loss clay; nothing for a missing figure. */
@@ -30,8 +30,25 @@ export const TYPE_LABEL: Record<SecurityGroup, string> = {
   stock: 'Stock', etf: 'ETF', option: 'Option', other: 'Other',
 }
 
-export function accountLabel(a: { name: string; number_last4: string | null; shared?: boolean }): string {
-  return `${a.name}${a.number_last4 ? ` ••${a.number_last4}` : ''}${a.shared ? ' (shared)' : ''}`
+/** An account in a list or heading: its short name, last four, and whose it is when shared. */
+export function accountLabel(a: { name: string; number_last4: string | null; shared?: boolean; owner_name?: string }): string {
+  const owner = a.shared ? (a.owner_name ? ` · ${a.owner_name.split(' ')[0]}` : ' (shared)') : ''
+  return `${shortAccountName(a.name)}${a.number_last4 ? ` ••${a.number_last4}` : ''}${owner}`
+}
+
+/**
+ * A row's account by its id, named as in accountLabel; rows carry only the
+ * account's full name, so the owner comes from the accounts in view.
+ */
+export function useAccountName() {
+  const { data } = usePortalAccounts()
+  const byId = useMemo(() => new Map((data?.accounts ?? []).map((a) => [a.id, a])), [data])
+  return (id: string, fallback: string) => {
+    const a = byId.get(id)
+    if (!a) return shortAccountName(fallback)
+    const owner = a.shared ? ` · ${a.owner_name.split(' ')[0]}` : ''
+    return `${shortAccountName(a.name)}${owner}`
+  }
 }
 
 /** A date `days` before today, as YYYY-MM-DD in local time. */

@@ -6,7 +6,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatNumber, formatSharePrice, securityLabel } from '@/lib/formatters'
 import {
   AccountStrategyFields, ExportLink, Field, PageHeader, Pills, Quantity, Select, TextInput,
-  TYPE_OPTIONS, daysAgo, signedCurrency, tone, useAccountStrategyFilter, useDebounced,
+  TYPE_OPTIONS, daysAgo, signedCurrency, tone, useAccountStrategyFilter, useAccountName, useDebounced,
 } from '@/features/portal/ui'
 import type { ActivityRow, SecurityGroup } from '@/api/types'
 
@@ -115,6 +115,7 @@ function AccountActivity({ filters, accountId }: { filters: ActivityFilters; acc
 export function PortalActivityPage() {
   const as_client = usePreviewClient()
   const filter = useAccountStrategyFilter()
+  const accountName = useAccountName()
   // A preset fills the two dates; editing a date leaves no preset selected.
   const [period, setPeriod] = useState<Period | null>('ytd')
   const [dates, setDates] = useState(span('ytd'))
@@ -243,7 +244,7 @@ export function PortalActivityPage() {
                   <path d="M9 6l6 6-6 6" />
                 </svg>
                 <span>
-                  <span className="block text-[19px] font-semibold">{account.account_name}</span>
+                  <span className="block text-[19px] font-semibold">{accountName(account.account_id, account.account_name)}</span>
                   <span className="block text-[15px] text-summit-ink/70">
                     {formatNumber(account.total, 0)} {account.total === 1 ? 'item' : 'items'} · {formatNumber(account.trades, 0)} {account.trades === 1 ? 'trade' : 'trades'}{account.shared && ' · shared'}
                   </span>

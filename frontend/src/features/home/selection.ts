@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { AccountGroup, AccountKind, PortalAccount } from '@/api/types'
+import { shortAccountName } from '@/lib/formatters'
 
 /** The kinds of account, in the order they are listed, with their names and colour classes. */
 export const KINDS: { kind: AccountKind; label: string; plural: string; text: string; bg: string; dot: string }[] = [
@@ -106,13 +107,5 @@ export function useGroupBy(): [GroupBy, (g: GroupBy) => void] {
   return [groupBy, choose]
 }
 
-/**
- * An account's name without the owner's names the brokerage puts in front
- * ("Pat Doe — Roth IRA Brokerage Account" reads "Roth IRA Brokerage"). A name
- * that is only the owner's is kept as it is.
- */
-export function accountName(a: Pick<PortalAccount, 'name'>): string {
-  const parts = a.name.split(/\s+[—–-]\s+/)
-  const rest = parts.length > 1 ? parts.slice(1).join(' — ') : a.name
-  return rest.replace(/\s+Account$/i, '') || a.name
-}
+/** An account's short name ("Roth IRA Brokerage"); see shortAccountName. */
+export const accountName = (a: Pick<PortalAccount, 'name'>): string => shortAccountName(a.name)

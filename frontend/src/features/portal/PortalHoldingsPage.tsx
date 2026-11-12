@@ -6,7 +6,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { ShortBadge } from '@/components/ShortBadge'
 import { formatCurrency, formatDate, formatNumber, formatPercent, formatSharePrice, formatTime, securityLabel } from '@/lib/formatters'
 import {
-  AccountStrategyFields, Field, HomeSelection, Pills, TextInput, TYPE_LABEL, signedCurrency, tone, useAccountStrategyFilter, useDebounced,
+  AccountStrategyFields, Field, HomeSelection, Pills, TextInput, TYPE_LABEL, signedCurrency, tone, useAccountStrategyFilter, useAccountName, useDebounced,
 } from '@/features/portal/ui'
 import type { PortalHomeResponse, PortalPosition, SecurityGroup } from '@/api/types'
 
@@ -181,6 +181,7 @@ export function PortalHoldingsPage() {
   const { data: portal } = usePortalAccounts()
   const filter = useAccountStrategyFilter()
   const embedded = useContext(HomeSelection) !== null
+  const accountName = useAccountName()
   const [type, setType] = useState<(typeof TYPES)[number]['value']>('')
   const [search, setSearch] = useState('')
   const q = useDebounced(search)
@@ -297,7 +298,7 @@ export function PortalHoldingsPage() {
                     <Chevron open={expanded} />
                     <span className="min-w-0">
                       <span className="block text-[21px] font-semibold">
-                        {account.name}
+                        {accountName(account.id, account.name)}
                         {account.shared && <span className="ml-[10px] align-middle text-[13px] font-semibold px-[9px] py-[3px] rounded-full bg-gold/25">Shared with you</span>}
                       </span>
                       <span className="block text-[15px] text-summit-ink/70 mt-[2px]">
