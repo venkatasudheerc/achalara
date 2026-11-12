@@ -19,7 +19,7 @@
       (function () {
         var root = document.documentElement
         var p = location.pathname
-        var oneApp = /^\/(home|login|invite|reset|request-invitation)(\/|$)/.test(p)
+        var oneApp = /^\/(home|portal|login|invite|reset|request-invitation)(\/|$)/.test(p)
         var dark = true
         if (oneApp) {
           root.classList.add('one-app')
