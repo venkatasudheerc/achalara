@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { HomePage } from '@/features/HomePage'
 import { PerformancePage } from '@/features/performance/PerformancePage'
@@ -20,15 +20,25 @@ import { GrowPage } from '@/features/GrowPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AcceptLinkPage } from '@/features/auth/AcceptLinkPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
-import { PortalShell } from '@/features/portal/PortalShell'
-import { PortalHomePage } from '@/features/portal/PortalHomePage'
-import { PortalHoldingsPage } from '@/features/portal/PortalHoldingsPage'
-import { PortalActivityPage } from '@/features/portal/PortalActivityPage'
-import { PortalRealizedPage } from '@/features/portal/PortalRealizedPage'
-import { PortalPerformancePage } from '@/features/portal/PortalPerformancePage'
 import { HomeShell, MorePage } from '@/features/home/HomeShell'
 import { LandingPage } from '@/features/home/LandingPage'
 import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
+
+/** Where each of the old portal's pages now lives in the new app. */
+const OLD_PORTAL: Record<string, string> = {
+  '': '/home', holdings: '/home?view=holdings', activity: '/home?view=transactions',
+  realized: '/home?view=cost-basis', performance: '/home?view=performance',
+  markets: '/home/research', research: '/home/research',
+}
+
+/** An old `/portal/...` address: the same page in the new app, keeping an advisor's `?as=`. */
+function OldPortalRedirect() {
+  const { pathname, search } = useLocation()
+  const page = pathname.replace(/^\/portal\/?/, '').split('/')[0]
+  const to = OLD_PORTAL[page] ?? '/home'
+  const as = new URLSearchParams(search).get('as')
+  return <Navigate to={as ? `${to}${to.includes('?') ? '&' : '?'}as=${as}` : to} replace />
+}
 
 /** Research (Market patterns, as built) inside the new app's frame. */
 function HomeResearch() {
@@ -76,15 +86,8 @@ export function AppRoutes() {
           <Route path="research" element={<HomeResearch />} />
           <Route path="more" element={<MorePage />} />
         </Route>
-        <Route path="/portal" element={<PortalShell />}>
-          <Route index element={<PortalHomePage />} />
-          <Route path="holdings" element={<PortalHoldingsPage />} />
-          <Route path="activity" element={<PortalActivityPage />} />
-          <Route path="realized" element={<PortalRealizedPage />} />
-          <Route path="performance" element={<PortalPerformancePage />} />
-          <Route path="markets" element={<ResearchPage />} />
-          <Route path="research" element={<Navigate to="../markets" replace />} />
-        </Route>
+        {/* The old portal's addresses, kept for bookmarks: each opens the matching place in the new app. */}
+        <Route path="/portal/*" element={<OldPortalRedirect />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

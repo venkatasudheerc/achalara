@@ -48,8 +48,9 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 
 `/login`, `/invite/:token` and `/reset/:token` are open. Everything else sits under
 `<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the advisor workspace at `/app/*`,
-**the new app at `/home/*`** (where a client lands after signing in), and the old client portal
-at `/portal`, kept working until it is retired.
+**the new app at `/home/*`** (where a client lands after signing in). The old client portal is
+retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
+in `src/routes.tsx`), keeping an advisor's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
 `docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
@@ -74,30 +75,25 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 signed in; there is no auth context and nothing about the session is kept in `localStorage`.
 `useLogin` / `useLogout` clear the query cache so one user's data is never shown to the next.
 
-The portal lives at `/portal`, `/portal/holdings`, `/portal/activity`, `/portal/realized`,
-`/portal/performance` and `/portal/markets`. `PortalShell` is a slim bar with the menu behind one ≡ button and the
-page at full window width, with a 17px base size (the portal is being redesigned page by page to
-the "wide workspace" mockups; Home is done and reads `/api/v1/portal/home` through
-`usePortalHome`; its chart, `portal/HomeChart.tsx`, reads the performance series, whose points
-carry each day's `value` as well as the cumulative returns). Home's asset allocation is a ring (`portal/AllocationDonut.tsx`): arcs
-for what is held, colours from `useChartColours().allocation`, and a kind that is owed on
-balance (written options) listed with its negative share and no arc. The wordmark in the bar
-links to Home. `/portal/holdings` (`PortalHoldingsPage`) replaced the old positions page: every
-account as an expandable tile, its strategies inside it, each strategy's holdings inside that,
-grouped on the client from the `/api/v1/portal/positions` endpoint, with a summary rail fed by `/portal/home`. In portal code written for the redesign, give sizes as explicit pixels
-(`p-[24px]`, `text-[16px]`) so the spacing override below cannot change them. It reads only `/api/v1/portal/*` (`src/hooks/usePortal.ts`), where every
-percentage is a decimal fraction. Its filters (account, strategy, dates, type) are local state on
-each page, not `ScopeContext` / `DateRangeContext`, which belong to the advisor workspace. The
-realised-gains page shows each lot as the custodian reports it (`cost`, `proceeds`,
-`short_term_gain`, `long_term_gain`; `realized_gain` there is after any wash-sale loss, marked
-"W"); do not recompute gains from entry and exit prices on the client. The holdings page is
-on live prices: it shows `live_prices_at`, refetches every minute while open, and
-marks a row "custodian's price" when `price_source` is `custodian`. An account's options
-are valued together at the custodian's figure (`account_balances`), with cash beside them. The
-performance page's "Compare with" list comes from the response (`benchmarks`); the choice is
-sent back as `benchmark`. Do not hard-code benchmark names on a screen. An
-advisor previews a client's portal at `/portal?as=<clientId>`; `usePreviewClient()` reads that
-and every portal hook passes it on, and `PortalShell` keeps the query string on its links.
+**The portal's pages** (`src/features/portal/`) now live only as tabs of the new app: Holdings
+(`PortalHoldingsPage`: every account as an expandable tile, its strategies inside it, each
+strategy's holdings inside that, from `/api/v1/portal/positions`), Transactions
+(`PortalActivityPage`), Performance (`PortalPerformancePage`) and Cost basis
+(`PortalRealizedPage`). Give sizes as explicit pixels (`p-[24px]`, `text-[16px]`) so the
+spacing override below cannot change them. They read only `/api/v1/portal/*`
+(`src/hooks/usePortal.ts`), where every percentage is a decimal fraction. Their own filters
+(strategy, dates, type, an account within the selection) are local state on each page, not
+`ScopeContext` / `DateRangeContext`, which belong to the advisor workspace. The realised-gains
+page shows each lot as the custodian reports it (`cost`, `proceeds`, `short_term_gain`,
+`long_term_gain`; `realized_gain` there is after any wash-sale loss, marked "W"); do not
+recompute gains from entry and exit prices on the client. The holdings page is on live prices: it
+shows `live_prices_at`, refetches every minute while open, and marks a row "custodian's price"
+when `price_source` is `custodian`. An account's options are valued together at the custodian's
+figure (`account_balances`), with cash beside them. The performance page's "Compare with" list
+comes from the response (`benchmarks`); the choice is sent back as `benchmark`. Do not hard-code
+benchmark names on a screen. An advisor previews a client's view at `/home?as=<clientId>`
+("Preview the client's view" on the client's page); `usePreviewClient()` reads that, every
+portal hook passes it on, and `HomeShell` keeps it on its links.
 
 **Spacing classes:** `tailwind.config.ts` redefines the steps `4, 8, 12, 16, 24, 32, 48, 64, 96`
 as that many pixels (`p-4` is 4px, `h-12` is 12px). Use `p-16` for 16px and so on; other steps
@@ -161,8 +157,8 @@ Each feature directory contains its page component(s). Implemented:
 - `status/StatusPage` (`/app/status`) — system status for the advisor: what needs a look, daily jobs, brokerage accounts, data freshness, backup, notices received from the brokerage source, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
 - `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
-  component at `/app/markets` (advisor menu) and `/portal/markets` (portal menu); the old
-  `/research` addresses redirect there. Every size is an explicit pixel value. Four cards sit above
+  component at `/app/markets` (advisor menu) and `/home/research` (the new app's Research); the
+  old `/research` and `/portal/markets` addresses redirect there. Every size is an explicit pixel value. Four cards sit above
   the tabs (`research/Overview.tsx`, `GlanceCards`); the tabs are Overview (this week, this month
   against a typical one, next month's record), Months by year (`MonthsTab`, a 12-month bar chart over
   the year × month grid `MonthGrid`), Calendar days (`CalendarHeatmap`), Top performers, Sectors
@@ -185,11 +181,11 @@ Each feature directory contains its page component(s). Implemented:
   Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
   fractions. It describes the past: no advice or forecast wording. The luck estimate
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
-  members found it confusing, so `/portal/markets`, previews included, leaves it out.
+  members found it confusing, so `/home/research`, previews included, leaves it out.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
-- `portal/*` — the client portal under `<PortalShell>` (top navigation, not the advisor sidebar): `PortalHomePage`, `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls and the account/strategy filter are in `portal/ui.tsx`.
+- `home/*` — the new app (see Routing). `portal/*` — the pages its Holdings, Transactions, Performance and Cost basis tabs show: `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls, the account/strategy filter and `HomeSelection` are in `portal/ui.tsx`.
 - `connections/BrokerageConnections` — section on `ClientDetailPage`: link a brokerage (opens the SnapTrade portal, then "I've finished linking" runs discover), map/ignore discovered accounts, sync (disabled inside the 24h window), holdings-drift detail, repair prompt when `broken`, remove link
 
 Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`, `SettingsPage`.
@@ -243,8 +239,8 @@ CSS variables in `src/index.css` (`:root` for light, `:root.dark` for dark). Bra
 `ThemeContext` keeps a choice of Light, Dark or Auto (the device's setting, followed live) under
 `achalara-theme`. A page of the new app calls `useOneAppLook()` (`HomeShell`, `AuthFrame`), which
 puts `one-app` on `<html>` and applies the choice; everywhere else `THEME_CHOICE_OFFERED` (false)
-keeps the advisor workspace and the old portal dark as before. The script in `index.html` does the
-same before first paint, by path (`/home`, `/login`, `/invite`, `/reset`, `/request-invitation`).
+keeps the advisor workspace dark as before. The script in `index.html` does the
+same before first paint, by path (`/home`, `/portal`, `/login`, `/invite`, `/reset`, `/request-invitation`).
 The choice is made under the person menu's Appearance (and on the sign-in page).
 
 **The new look re-points the same tokens.** Under `:root.one-app` (and `.one-app.dark`) in
