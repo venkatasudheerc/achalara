@@ -2,6 +2,7 @@
 from app.models.base import Base
 from app.models.client import Client
 from app.models.account import Account
+from app.models.account_group import AccountGroup, AccountGroupMember
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
@@ -31,6 +32,8 @@ __all__ = [
     "InvitationRequest",
     "Client",
     "Account",
+    "AccountGroup",
+    "AccountGroupMember",
     "Strategy",
     "Sleeve",
     "Trade",

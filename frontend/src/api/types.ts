@@ -358,7 +358,19 @@ export interface PeriodsResponse {
 export type SecurityGroup = 'stock' | 'etf' | 'option' | 'other'
 
 export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy_name: string }
-export interface PortalAccount extends VisibleAccount { sleeves: PortalSleeve[] }
+/** What kind of account it is, read from the brokerage's name for it */
+export type AccountKind = 'taxable' | 'retirement' | 'kids' | 'cash'
+export interface PortalAccount extends VisibleAccount {
+  owner_name: string
+  kind: AccountKind
+  /** The custodian's last recorded day: total and cash. Null before the first. */
+  value: number | null; cash: number | null; as_of: string | null
+  /** The institution the figures come from, and its last transactions sync */
+  source: string | null; synced_at: string | null
+  sleeves: PortalSleeve[]
+}
+/** One of the client's own named groups of accounts */
+export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
 export interface PortalAccountsResponse {
   /** `preview` is true when an advisor is looking at this client's portal */
   viewer: { client_id: string; name: string; preview: boolean }
@@ -544,6 +556,8 @@ export interface PortalSummary {
   start: string; end: string
   opening_value: number; closing_value: number; cash_value: number | null
   net_flow: number; gain: number
+  /** Money added and taken out in the window; net_flow is their difference */
+  flow_in: number; flow_out: number
   twr_pct: number | null
   /** null for a single strategy: deposits are made to the account */
   mwr_pct: number | null
@@ -561,6 +575,7 @@ export interface PortalYear { year: number; twr_pct: number | null; is_provision
 export interface PortalPeriod {
   period_start: string; period_end: string
   opening_value: number; closing_value: number; net_flow: number; gain: number
+  flow_in: number; flow_out: number
   twr_pct: number | null; twr_ytd_pct: number | null
   benchmark_return_pct: number | null; excess_return_pct: number | null
   is_provisional: boolean

@@ -48,7 +48,29 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 
 `/login`, `/invite/:token` and `/reset/:token` are open. Everything else sits under
 `<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the advisor workspace at `/app/*`,
-the client portal at `/portal`. `useMe()` (`src/hooks/useAuth.ts`) is the only source of who is
+**the new app at `/home/*`** (where a client lands after signing in), and the old client portal
+at `/portal`, kept working until it is retired.
+
+**The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
+`docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
+Plan, Tax, Research), the person menu (Appearance, Manage for an advisor, Sign out), and on a
+phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **account rail** plus
+**view tabs**:
+- The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
+  (only when more than one owner is in view), Kind (`account.kind`) or My groups
+  (`/portal/groups`, edited in `GroupsDialog`; an advisor's preview cannot edit them).
+- The selection and the open view live in the address, `?sel=all|owner:<id>|kind:<kind>|group:<id>|account:<id>&view=…`
+  (`selection.ts`), and become `account_ids` on every portal request.
+- Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;
+  Holdings, Transactions, Performance and Cost basis are the portal's own pages, rendered inside
+  `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and
+  hides their page titles. Views that cannot apply (Holdings for a cash account) are hidden.
+- Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
+- An advisor opens it as a client with "Preview the new app" (`/home?as=<clientId>`).
+- Screenshots for review: `ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`
+  saves each route at 390 and 1440 wide, light and dark (`playwright-core` with the installed Chrome).
+
+`useMe()` (`src/hooks/useAuth.ts`) is the only source of who is
 signed in; there is no auth context and nothing about the session is kept in `localStorage`.
 `useLogin` / `useLogout` clear the query cache so one user's data is never shown to the next.
 
@@ -212,12 +234,22 @@ CSS variables in `src/index.css` (`:root` for light, `:root.dark` for dark). Bra
 
 ### Light and dark
 
-**For now the app is dark for everyone**: `THEME_CHOICE_OFFERED` in `ThemeContext` is false,
-so the theme is always dark whatever was saved or the system prefers, `<ThemeToggle>` renders
-nothing, and the script in `index.html` puts `dark` on `<html>` before first paint. Keep the
-light values below working: to offer the choice again, set the flag to true and restore the
-saved-choice lines kept as a comment in `index.html`. The toggle then shows in the advisor
-sidebar, the portal header and the sign-in panel, and the choice is kept in `localStorage`.
+**The new app and the sign-in pages honour the viewer's choice; the older screens stay dark.**
+`ThemeContext` keeps a choice of Light, Dark or Auto (the device's setting, followed live) under
+`achalara-theme`. A page of the new app calls `useOneAppLook()` (`HomeShell`, `AuthFrame`), which
+puts `one-app` on `<html>` and applies the choice; everywhere else `THEME_CHOICE_OFFERED` (false)
+keeps the advisor workspace and the old portal dark as before. The script in `index.html` does the
+same before first paint, by path (`/home`, `/login`, `/invite`, `/reset`, `/request-invitation`).
+The choice is made under the person menu's Appearance (and on the sign-in page).
+
+**The new look re-points the same tokens.** Under `:root.one-app` (and `.one-app.dark`) in
+`src/index.css` the tokens below take direction C's palette (white or near-black page, violet
+accent: `pine` and `gold` both become the accent, `pine-deep` a deep violet), so existing
+components render in the new look without change. `gold`, `gain`, `loss`, `on-dark` and `on-gold`
+are variables now (their old values are the defaults). New tokens, defined only under `.one-app`:
+`line` (hairlines), `accent-soft`, and a colour and background per kind of account (`k-cash`,
+`k-taxable`, `k-retire`, `k-kids`, each with `-bg`). Headings use Manrope there (`font-display`).
+Charts in the new app take `useChartColours()`'s violet palette. The old tokens' values:
 
 | Token | Use | Light | Dark |
 |---|---|---|---|

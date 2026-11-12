@@ -153,6 +153,12 @@ export function ClientDetailPage() {
           >
             Preview client portal
           </Link>
+          <Link
+            to={`/home?as=${client.id}`}
+            className="px-16 py-2 border border-pine text-pine text-sm font-medium rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
+          >
+            Preview the new app
+          </Link>
           <button
             onClick={() => { flushSync(() => setClient(client.id, client.name)); navigate('/app/performance') }}
             className="px-16 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"

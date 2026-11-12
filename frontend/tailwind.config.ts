@@ -18,13 +18,20 @@ export default {
         'stone': themed('stone'),            // secondary text, hairlines
         'chrome': themed('chrome'),          // header and sidebar: dark in both themes
         // The same in both themes (pine and pine-deep shift a little in dark).
-        'on-dark': '#FBFCFB',                // text on chrome, pine and loss/gain fills
-        'on-gold': '#14201C',                // text on a gold button
+        'on-dark': themed('on-dark'),        // text on chrome, pine and loss/gain fills
+        'on-gold': themed('on-gold'),        // text on a gold button
         'pine-deep': themed('pine-deep-fill'),  // the highlighted card and sign-in panel
         'pine': themed('pine-fill'),            // buttons, the selected pill
-        'gain': '#2E8B6B',
-        'loss': '#C2703D',
-        'gold': '#C9A24B',
+        'gain': themed('gain-fill'),
+        'loss': themed('loss-fill'),
+        'gold': themed('gold'),
+        // The new app only (defined under .one-app in src/index.css)
+        'line': themed('line'),
+        'accent-soft': themed('accent-soft'),
+        'k-cash': themed('k-cash'), 'k-cash-bg': themed('k-cash-bg'),
+        'k-taxable': themed('k-taxable'), 'k-taxable-bg': themed('k-taxable-bg'),
+        'k-retire': themed('k-retire'), 'k-retire-bg': themed('k-retire-bg'),
+        'k-kids': themed('k-kids'), 'k-kids-bg': themed('k-kids-bg'),
       },
       // As text and outlines these need to lift off a dark page; as fills
       // (bg-pine, bg-gain, bg-loss) they stay the brand colours above.

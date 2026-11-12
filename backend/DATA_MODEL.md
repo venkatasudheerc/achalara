@@ -587,7 +587,7 @@ placeholders that are not tickers skipped).
 
 ## Sign-in and access
 
-Four tables, none of them part of the portfolio hierarchy.
+Six tables, none of them part of the portfolio hierarchy.
 
 ### `users`
 One row per login: `email` (unique, stored lower-case), `name`, `role` (`advisor` | `client`),
@@ -612,6 +612,16 @@ once, when it is created. A new link replaces an earlier unused one of the same 
 `client_id`, `account_id` (both CASCADE), `UNIQUE(client_id, account_id)`. Lets a client view an
 account that belongs to **another** client, read-only (for example someone acting as agent on a
 relative's account). The owner (`accounts.client_id`) needs no row.
+
+### `account_groups` and `account_group_members`
+A client's own named groups of accounts, which the landing page's account list can be grouped
+by ("My groups"). `account_groups`: `client_id` (CASCADE), `name` (`UNIQUE(client_id, name)`,
+compared case-insensitively by the service), `position` (order in the list).
+`account_group_members`: `group_id` (CASCADE), `account_id` (CASCADE),
+`UNIQUE(group_id, account_id)`. A group belongs to the client, not to a login, so an advisor
+previewing that client's portal sees the same groups. Grouping grants nothing: a member must be
+an account the client can already see, and one they stop seeing drops out when the group is read
+(`AccountGroupService`).
 
 ### Who may call what
 Applied in one place, `app/api/deps.py::require_access`, where each router is mounted:

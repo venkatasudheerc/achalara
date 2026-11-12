@@ -4,7 +4,7 @@ import type { UserRole } from '@/api/types'
 
 /** Where each role lands after signing in. */
 export function homeFor(role: UserRole): string {
-  return role === 'advisor' ? '/app' : '/portal'
+  return role === 'advisor' ? '/app' : '/home'
 }
 
 /**

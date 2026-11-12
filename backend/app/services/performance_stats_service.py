@@ -301,6 +301,8 @@ class PerformanceStatsService:
                         if last.cash is not None
                         else None,
                         "net_flow": float(net_flow),
+                        "flow_in": float(sum((d.flow_in for d in group), ZERO)),
+                        "flow_out": float(sum((d.flow_out for d in group), ZERO)),
                         "gain": float(closing - opening - net_flow),
                         "twr_pct": twr,
                         "mwr_pct": self._mwr(opening, group),
@@ -425,6 +427,8 @@ class PerformanceStatsService:
             "closing_value": float(closing),
             "cash_value": float(days[-1].cash) if days[-1].cash is not None else None,
             "net_flow": float(net_flow),
+            "flow_in": float(sum((d.flow_in for d in days), ZERO)),
+            "flow_out": float(sum((d.flow_out for d in days), ZERO)),
             "gain": float(closing - opening - net_flow),
             "twr_pct": twr,
             "mwr_pct": self._mwr(opening, days),

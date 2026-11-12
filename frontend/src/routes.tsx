@@ -26,6 +26,18 @@ import { PortalHoldingsPage } from '@/features/portal/PortalHoldingsPage'
 import { PortalActivityPage } from '@/features/portal/PortalActivityPage'
 import { PortalRealizedPage } from '@/features/portal/PortalRealizedPage'
 import { PortalPerformancePage } from '@/features/portal/PortalPerformancePage'
+import { HomeShell, MorePage } from '@/features/home/HomeShell'
+import { LandingPage } from '@/features/home/LandingPage'
+import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
+
+/** Research (Market patterns, as built) inside the new app's frame. */
+function HomeResearch() {
+  return (
+    <main className="w-full px-[20px] md:px-[40px] pt-[32px] pb-[64px]">
+      <ResearchPage />
+    </main>
+  )
+}
 
 export function AppRoutes() {
   return (
@@ -57,6 +69,13 @@ export function AppRoutes() {
         </Route>
       </Route>
       <Route element={<RequireAuth role="client" />}>
+        <Route path="/home" element={<HomeShell />}>
+          <Route index element={<LandingPage />} />
+          <Route path="plan" element={<PlanPage />} />
+          <Route path="tax" element={<TaxPage />} />
+          <Route path="research" element={<HomeResearch />} />
+          <Route path="more" element={<MorePage />} />
+        </Route>
         <Route path="/portal" element={<PortalShell />}>
           <Route index element={<PortalHomePage />} />
           <Route path="holdings" element={<PortalHoldingsPage />} />

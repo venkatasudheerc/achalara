@@ -135,7 +135,7 @@ export function PortalRealizedPage() {
   }
   const { data, isLoading, isError, error, refetch } = usePortalRealized(filters)
   // Losses still carried in shares held now, for the account in view.
-  const { data: home } = usePortalHome({ account_id: filter.scope.account_id })
+  const { data: home } = usePortalHome({ account_ids: filter.scope.account_ids, account_id: filter.scope.account_id })
   const clear = () => {
     filter.setAccountId(''); filter.setStrategyId('')
     setYear('this'); setTerm(''); setType(''); setResult('all'); setSearch('')

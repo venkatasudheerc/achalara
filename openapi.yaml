@@ -3428,6 +3428,262 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/portal/groups:
+    get:
+      tags:
+      - portal
+      summary: Portal Groups
+      description: The client's own named groups of accounts, in their chosen order.
+      operationId: portal_groups_api_v1_portal_groups_get
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountGroupsResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+      - portal
+      summary: Portal Create Group
+      description: A new group, optionally with its accounts. Names are unique per client.
+      operationId: portal_create_group_api_v1_portal_groups_post
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountGroupCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountGroupResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: An advisor previewing cannot change a client's groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group, or an account in it, not in view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A group with that name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/groups/{group_id}:
+    patch:
+      tags:
+      - portal
+      summary: Portal Update Group
+      description: Rename a group or move it in the list.
+      operationId: portal_update_group_api_v1_portal_groups__group_id__patch
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountGroupUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountGroupResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: An advisor previewing cannot change a client's groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group, or an account in it, not in view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+      - portal
+      summary: Portal Delete Group
+      description: Remove a group. Its accounts are not touched.
+      operationId: portal_delete_group_api_v1_portal_groups__group_id__delete
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: An advisor previewing cannot change a client's groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group, or an account in it, not in view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/groups/{group_id}/accounts:
+    put:
+      tags:
+      - portal
+      summary: Portal Set Group Accounts
+      description: Replace the group's accounts. Each must be an account the client can see.
+      operationId: portal_set_group_accounts_api_v1_portal_groups__group_id__accounts_put
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Advisor only: the client whose portal to preview'
+          nullable: true
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountGroupMembers'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountGroupResponse'
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: An advisor previewing cannot change a client's groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group, or an account in it, not in view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/portal/home:
     get:
       tags:
@@ -3450,6 +3706,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: as_client
         in: query
         required: false
@@ -3501,6 +3767,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: as_client
         in: query
         required: false
@@ -3556,6 +3832,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: strategy_id
         in: query
         required: false
@@ -3666,6 +3952,16 @@ paths:
           description: Limit to one account in view
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: strategy_id
         in: query
         required: false
@@ -3789,6 +4085,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: strategy_id
         in: query
         required: false
@@ -3915,6 +4221,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: strategy_id
         in: query
         required: false
@@ -4024,6 +4340,16 @@ paths:
           type: string
           nullable: true
         description: Limit to one account in view
+      - name: account_ids
+        in: query
+        required: false
+        schema:
+          description: Limit to these accounts in view (repeat the parameter for each)
+          type: array
+          items:
+            type: string
+          nullable: true
+        description: Limit to these accounts in view (repeat the parameter for each)
       - name: strategy_id
         in: query
         required: false
@@ -5891,11 +6217,76 @@ components:
       - sleeve_id
       - strategy_id
       - strategy_name
+    AccountGroupResponse:
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        position:
+          type: integer
+        account_ids:
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - id
+      - name
+      - position
+      - account_ids
+      description: One of the client's own named groups of accounts.
+    AccountGroupsResponse:
+      properties:
+        groups:
+          items:
+            $ref: '#/components/schemas/AccountGroupResponse'
+          type: array
+      type: object
+      required:
+      - groups
+    AccountGroupCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          minLength: 1
+        account_ids:
+          items:
+            type: string
+          type: array
+          default: []
+      type: object
+      required:
+      - name
+    AccountGroupUpdate:
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          nullable: true
+        position:
+          type: integer
+          minimum: 0.0
+          nullable: true
+      type: object
+    AccountGroupMembers:
+      properties:
+        account_ids:
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - account_ids
     PortalAccount:
       properties:
         id:
           type: string
         client_id:
+          type: string
+        owner_name:
           type: string
         name:
           type: string
@@ -5904,6 +6295,25 @@ components:
           nullable: true
         shared:
           type: boolean
+        kind:
+          type: string
+        value:
+          type: number
+          nullable: true
+        cash:
+          type: number
+          nullable: true
+        as_of:
+          type: string
+          format: date
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        synced_at:
+          type: string
+          format: date-time
+          nullable: true
         sleeves:
           items:
             $ref: '#/components/schemas/PortalSleeve'
@@ -5911,6 +6321,8 @@ components:
           default: []
       type: object
       required:
+      - kind
+      - owner_name
       - id
       - client_id
       - name
@@ -6340,6 +6752,12 @@ components:
           type: number
         net_flow:
           type: number
+        flow_in:
+          type: number
+          default: 0
+        flow_out:
+          type: number
+          default: 0
         gain:
           type: number
         twr_pct:
@@ -6696,6 +7114,12 @@ components:
           nullable: true
         net_flow:
           type: number
+        flow_in:
+          type: number
+          default: 0
+        flow_out:
+          type: number
+          default: 0
         gain:
           type: number
         twr_pct:

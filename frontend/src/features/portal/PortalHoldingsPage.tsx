@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useContext, useMemo, useState, type ReactNode } from 'react'
 import { usePortalAccounts, usePortalHome, usePortalPositions } from '@/hooks/usePortal'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
@@ -6,7 +6,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { ShortBadge } from '@/components/ShortBadge'
 import { formatCurrency, formatDate, formatNumber, formatPercent, formatSharePrice, formatTime, securityLabel } from '@/lib/formatters'
 import {
-  AccountStrategyFields, Field, Pills, TextInput, TYPE_LABEL, signedCurrency, tone, useAccountStrategyFilter, useDebounced,
+  AccountStrategyFields, Field, HomeSelection, Pills, TextInput, TYPE_LABEL, signedCurrency, tone, useAccountStrategyFilter, useDebounced,
 } from '@/features/portal/ui'
 import type { PortalHomeResponse, PortalPosition, SecurityGroup } from '@/api/types'
 
@@ -180,6 +180,7 @@ function Rail({ home }: { home: PortalHomeResponse }) {
 export function PortalHoldingsPage() {
   const { data: portal } = usePortalAccounts()
   const filter = useAccountStrategyFilter()
+  const embedded = useContext(HomeSelection) !== null
   const [type, setType] = useState<(typeof TYPES)[number]['value']>('')
   const [search, setSearch] = useState('')
   const q = useDebounced(search)
@@ -190,7 +191,7 @@ export function PortalHoldingsPage() {
     ...filter.scope, type: (type || undefined) as SecurityGroup | undefined, q: q || undefined,
   })
   // The summary follows the account chosen; it is always the whole of that account.
-  const { data: home } = usePortalHome({ account_id: filter.scope.account_id })
+  const { data: home } = usePortalHome({ account_ids: filter.scope.account_ids, account_id: filter.scope.account_id })
   const clear = () => { filter.setAccountId(''); filter.setStrategyId(''); setType(''); setSearch('') }
   // Everything starts closed; null until something is opened or closed by hand.
   const [chosen, setOpen] = useState<Set<string> | null>(null)
@@ -232,9 +233,10 @@ export function PortalHoldingsPage() {
         strategies: strategies.sort((a, b) => b.value - a.value),
       }
     // Largest first; accounts holding nothing go last, and are left out once a filter is on.
-    }).filter((a) => (!filter.scope.account_id || a.id === filter.scope.account_id) && (!partial || a.rows.length > 0))
+    }).filter((a) => filter.inView(a.id) && (!filter.scope.account_id || a.id === filter.scope.account_id) && (!partial || a.rows.length > 0))
       .sort((a, b) => b.value - a.value)
-  }, [portal, data, partial, filter.scope.account_id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- inView follows account_ids
+  }, [portal, data, partial, filter.scope.account_id, filter.scope.account_ids])
 
   if (isLoading) return <div className="grid gap-[20px]"><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
   if (isError || !data) return <ErrorState message={error?.message ?? 'Could not load your holdings.'} onRetry={() => refetch()} />
@@ -257,7 +259,7 @@ export function PortalHoldingsPage() {
     <>
       <div className="flex flex-wrap items-end justify-between gap-[16px]">
         <div>
-          <h1 className="font-display font-medium text-[40px] leading-tight">Holdings</h1>
+          {!embedded && <h1 className="font-display font-medium text-[40px] leading-tight">Holdings</h1>}
           <p className="text-summit-ink/70 mt-[6px]">
             Every account, the strategies within it, and what each one holds.
             {data.live_prices_at ? ` Market prices as of ${formatTime(data.live_prices_at)} today.` : ''}
@@ -278,7 +280,7 @@ export function PortalHoldingsPage() {
         {narrowed && <button type="button" onClick={clear} className="h-[48px] px-[8px] text-[16px] text-pine underline underline-offset-2">Clear filters</button>}
       </div>
 
-      <div className="grid gap-[24px] items-start xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className={`grid gap-[24px] items-start ${embedded ? '' : 'xl:grid-cols-[minmax(0,1fr)_400px]'}`}>
         <div className="flex flex-col gap-[20px] min-w-0">
           {accounts.length === 0 && (
             <div className="bg-surface border border-stone/25 rounded-[12px] py-[40px] px-[20px] text-center text-summit-ink/70">
@@ -371,7 +373,8 @@ export function PortalHoldingsPage() {
           </p>
         </div>
 
-        {home && <Rail home={home} />}
+        {/* In the new app the Dashboard holds these figures. */}
+        {home && !embedded && <Rail home={home} />}
       </div>
     </>
   )

@@ -153,11 +153,11 @@ export function HowToRead({ notes }: { notes: (string | null | undefined | false
 }
 
 /** The views of the page: underlined, so they never look like a setting. */
-export function Tabs<T extends string>({ tabs, value, onChange }: {
-  tabs: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void
+export function Tabs<T extends string>({ tabs, value, onChange, label = 'Market patterns views' }: {
+  tabs: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void; label?: string
 }) {
   return (
-    <div role="tablist" aria-label="Market patterns views"
+    <div role="tablist" aria-label={label}
       className="flex overflow-x-auto overflow-y-hidden border-b border-stone/30 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const on = t.value === value

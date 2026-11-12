@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { usePortalAccounts } from '@/hooks/usePortal'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
 import type { SecurityGroup } from '@/api/types'
@@ -128,6 +128,14 @@ export function Card({ label, children, sub, dark }: {
 }
 
 export function PageHeader({ title, sub, action }: { title: string; sub?: ReactNode; action?: ReactNode }) {
+  // Inside the new app the view's tab already names the page.
+  const embedded = useContext(HomeSelection) !== null
+  if (embedded) return action || sub ? (
+    <div className="flex flex-wrap justify-between items-end gap-5">
+      {sub ? <p className="text-[16px] text-summit-ink/70">{sub}</p> : <span />}
+      {action}
+    </div>
+  ) : null
   return (
     <div className="flex flex-wrap justify-between items-end gap-5">
       <div className="space-y-2">
@@ -175,14 +183,27 @@ export function Place({ account, strategy, shared }: { account: string; strategy
 }
 
 /**
+ * The accounts chosen in the new app's account list, when a portal page is shown
+ * there as one of its views. Null on the portal's own pages. `accountIds`
+ * undefined means every account in view.
+ */
+export const HomeSelection = createContext<{ accountIds?: string[] } | null>(null)
+
+/**
  * The account and strategy a portal page is narrowed to, with the options for
  * each. Strategies are those of the chosen account, or of all accounts.
  */
 export function useAccountStrategyFilter() {
   const { data } = usePortalAccounts()
+  const selection = useContext(HomeSelection)
   const [accountId, setAccountId] = useState('')
   const [strategyId, setStrategyId] = useState('')
-  const accounts = useMemo(() => data?.accounts ?? [], [data])
+  // Inside the new app the account list chooses the accounts; the page's own
+  // filter then narrows within them.
+  const accounts = useMemo(
+    () => (data?.accounts ?? []).filter((a) => !selection?.accountIds || selection.accountIds.includes(a.id)),
+    [data, selection],
+  )
 
   const strategies = useMemo(() => {
     const seen = new Map<string, string>()
@@ -204,7 +225,13 @@ export function useAccountStrategyFilter() {
     accounts, strategies, accountId, strategyId,
     setAccountId: chooseAccount, setStrategyId,
     account: accounts.find((a) => a.id === accountId),
-    scope: { account_id: accountId || undefined, strategy_id: strategyId || undefined },
+    scope: {
+      account_ids: selection?.accountIds,
+      account_id: accountId || undefined,
+      strategy_id: strategyId || undefined,
+    },
+    /** Whether an account is among those chosen */
+    inView: (id: string) => !selection?.accountIds || selection.accountIds.includes(id),
   }
 }
 
@@ -213,12 +240,14 @@ export function AccountStrategyFields({ filter, idPrefix }: {
 }) {
   return (
     <>
-      <Field label="Account" htmlFor={`${idPrefix}-account`}>
-        <Select id={`${idPrefix}-account`} value={filter.accountId} onChange={filter.setAccountId} minWidth={230}>
-          <option value="">All accounts{filter.accounts.length ? ` (${filter.accounts.length})` : ''}</option>
-          {filter.accounts.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
-        </Select>
-      </Field>
+      {filter.accounts.length > 1 && (
+        <Field label="Account" htmlFor={`${idPrefix}-account`}>
+          <Select id={`${idPrefix}-account`} value={filter.accountId} onChange={filter.setAccountId} minWidth={230}>
+            <option value="">All accounts{filter.accounts.length ? ` (${filter.accounts.length})` : ''}</option>
+            {filter.accounts.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
+          </Select>
+        </Field>
+      )}
       <Field label="Strategy" htmlFor={`${idPrefix}-strategy`}>
         <Select id={`${idPrefix}-strategy`} value={filter.strategyId} onChange={filter.setStrategyId}>
           <option value="">All strategies</option>

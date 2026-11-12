@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
   portalApi,
@@ -82,4 +82,35 @@ export function usePortalPerformance(filters: PerformanceFilters, enabled = true
     placeholderData: keepPreviousData,
     enabled,
   })
+}
+
+/** The client's own named groups of accounts. */
+export function usePortalGroups() {
+  const asClient = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'groups', asClient],
+    queryFn: () => portalApi.groups(asClient),
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Create, rename, refill or delete a group; the list is fetched again after each. */
+export function useGroupChanges() {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ['portal', 'groups'] })
+  return {
+    create: useMutation({
+      mutationFn: (v: { name: string; accountIds?: string[] }) => portalApi.createGroup(v.name, v.accountIds),
+      onSuccess: refresh,
+    }),
+    rename: useMutation({
+      mutationFn: (v: { id: string; name: string }) => portalApi.updateGroup(v.id, { name: v.name }),
+      onSuccess: refresh,
+    }),
+    setAccounts: useMutation({
+      mutationFn: (v: { id: string; accountIds: string[] }) => portalApi.setGroupAccounts(v.id, v.accountIds),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => portalApi.deleteGroup(id), onSuccess: refresh }),
+  }
 }
