@@ -34,7 +34,7 @@ import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
 function HomeResearch() {
   return (
     <main className="w-full px-[20px] md:px-[40px] pt-[32px] pb-[64px]">
-      <ResearchPage title="Research" />
+      <ResearchPage />
     </main>
   )
 }

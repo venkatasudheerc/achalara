@@ -264,11 +264,7 @@ function SectorsTab() {
 
 /** Market patterns: how markets have behaved in the past, the same for every signed-in user.
  *  Shared by the advisor workspace (`forAdvisor`) and the family portal. */
-export function ResearchPage({ forAdvisor = false, title = 'Market patterns' }: {
-  forAdvisor?: boolean
-  /** The page's heading: "Research" in the new app, where Market patterns is what it holds */
-  title?: string
-}) {
+export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [tab, setTab] = useState<Tab>('overview')
   // One choice for the views of a single index or stock, so it carries from tab to tab,
   // and one for the look-up (stocks and funds only).
@@ -280,10 +276,9 @@ export function ResearchPage({ forAdvisor = false, title = 'Market patterns' }: 
   return (
     <div className="max-w-[1280px] w-full mx-auto flex flex-col gap-[32px]">
       <div className="flex flex-col gap-[8px]">
-        <h1 className="font-display font-medium text-[32px] md:text-[40px] leading-tight">{title}</h1>
+        <h1 className="font-display font-medium text-[32px] md:text-[40px] leading-tight">Market patterns</h1>
         <p className="text-[17px] text-stone max-w-[820px]">
-          {title === 'Market patterns' ? 'How markets' : 'Market patterns: how markets'} have behaved in the past: months,
-          days, sectors and single stocks. A record of history, not advice.
+          How markets have behaved in the past: months, days, sectors and single stocks. A record of history, not advice.
         </p>
       </div>
       <GlanceCards />
