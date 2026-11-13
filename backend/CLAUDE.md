@@ -317,6 +317,11 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   does not. Keep both paths returning the same response shape.
 - Account and client views include cash where a `CashLedger` exists; sleeve and strategy views
   are securities-only.
+- **A cash account earns only its income.** For an account whose kind is `cash`
+  (`account_kind.py`), `rebuild_account` counts every change in the day's balance, less its
+  interest, dividends, fees and tax withheld (`_cash_account_income`), as money in or out. The
+  transfers on file are not used for it: for a bank-style account they can be missing or dated a
+  day or two from the balance they moved, and the gap would read as a gain or a loss.
 - No return is quoted when no money was ever invested (written options, shorts): `None`, not 0.
 
 ## Brokerage Sync Rules
