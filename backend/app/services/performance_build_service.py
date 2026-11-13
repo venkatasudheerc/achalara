@@ -27,13 +27,15 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageActivity
-from app.models.cash_activity import CashActivity
+from app.models.cash_activity import INCOME_TYPES, CashActivity
 from app.connectors.models import is_option_symbol
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
+from app.services.account_kind import CASH, account_kind
 from app.services.cash_activity_service import CashActivityService
 from app.services.cash_ledger import CashLedger
 from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
@@ -173,6 +175,11 @@ class PerformanceBuildService:
             for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id)
         ]
         ledger = CashLedger.for_accounts(self.db, [account_id])
+        account = self.db.get(Account, account_id)
+        # A cash account earns only its interest: every other change in its
+        # balance is money moving in or out, whatever the transfers on file say.
+        cash_only = account is not None and account_kind(account.name) == CASH
+        cash_income = self._cash_account_income(sleeve_ids) if cash_only else {}
         stored = (
             self.db.query(Trade)
             .filter(Trade.sleeve_id.in_(sleeve_ids))
@@ -364,6 +371,19 @@ class PerformanceBuildService:
                     account_in += max(-earned, ZERO)
                     account_out += max(earned, ZERO)
                 cash = None
+            if cash_only:
+                observed_row = observed.get((account_id, day))
+                today_total = (
+                    Decimal(str(observed_row.total_value))
+                    if observed_row is not None
+                    else sum(securities.values(), ZERO) + (cash or ZERO)
+                )
+                earned = sum(
+                    (a for paid_on, a in cash_income.items() if previous_day < paid_on <= day),
+                    ZERO,
+                )
+                moved = today_total - previous_account_total - earned
+                account_in, account_out = max(moved, ZERO), max(-moved, ZERO)
             previous_account_total = self._write(
                 new_rows,
                 observed.get((account_id, day)),
@@ -527,6 +547,19 @@ class PerformanceBuildService:
             (DailyValuation.account_id == account_id)
             | DailyValuation.sleeve_id.in_(sleeve_ids),
         ).delete(synchronize_session=False)
+
+    def _cash_account_income(self, sleeve_ids: List[str]) -> Dict[date, Decimal]:
+        """A cash account's income by day: its interest and dividends, less fees and
+        tax withheld, signed from the holder's side. Unlike ``income_flows`` this
+        counts interest on the cash itself, which is all a cash account earns."""
+        income: Dict[date, Decimal] = {}
+        for row in self.db.query(CashActivity).filter(
+            CashActivity.sleeve_id.in_(sleeve_ids), CashActivity.type.in_(INCOME_TYPES)
+        ):
+            income[row.activity_date] = income.get(row.activity_date, ZERO) + Decimal(
+                str(row.amount)
+            )
+        return income
 
     def _dividends(self, sleeve_ids: List[str]):
         """Dividends paid on a named security, oldest first."""
