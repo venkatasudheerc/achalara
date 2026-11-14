@@ -1629,54 +1629,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/admin/status/check-links:
-    post:
-      tags:
-      - admin
-      summary: Check Brokerage Links
-      description: 'Ask the source now whether each brokerage link is still sharing data,
-  
-        then return the status afresh.'
-      operationId: check_brokerage_links_api_v1_admin_status_check_links_post
-      parameters:
-      - name: connection_id
-        in: query
-        required: false
-        schema:
-          type: string
-          nullable: true
-        description: Check only this link; every link when left out. 404 when it is not on file.
-      - name: achalara_session
-        in: cookie
-        required: false
-        schema:
-          type: string
-          nullable: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SystemStatusResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '502':
-          description: The brokerage source did not answer
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: The brokerage source is not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
   /api/v1/research/this-week:
     get:
       tags:
@@ -2853,179 +2805,6 @@ paths:
 
   # ─── Brokerage connections ──────────────────────────────────────────────────
 
-  /api/v1/clients/{client_id}/connections/snaptrade/link:
-    post:
-      tags: [connections]
-      summary: Start linking a brokerage login
-      description: |
-        Returns a hosted SnapTrade portal URL where the client signs in to their
-        brokerage. **The URL expires in about five minutes** — open it immediately.
-        There is no callback; after the portal is finished, call `discover`.
-        Read-only access is requested.
-      operationId: startBrokerageLink
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LinkRequest"
-      responses:
-        "200":
-          description: Portal URL
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LinkResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          description: SnapTrade is not configured on the server
-
-  /api/v1/clients/{client_id}/connections/discover:
-    post:
-      tags: [connections]
-      summary: Record the logins and accounts the brokerage source reports
-      description: |
-        Run after the linking portal completes. Safe to repeat: existing rows are
-        updated, account mappings are untouched, and a login the source no longer
-        lists is marked deleted.
-      operationId: discoverConnections
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      responses:
-        "200":
-          description: The client's connections after discovery
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Connection"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          description: SnapTrade is not configured on the server
-
-  /api/v1/clients/{client_id}/connections:
-    get:
-      tags: [connections]
-      summary: List a client's brokerage connections and their accounts
-      operationId: listConnections
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      responses:
-        "200":
-          description: Connections (removed ones are omitted)
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Connection"
-
-  /api/v1/connections/{connection_id}:
-    delete:
-      tags: [connections]
-      summary: Revoke a brokerage login
-      description: Revokes access at the source. Trades already ingested are kept.
-      operationId: removeConnection
-      parameters:
-        - name: connection_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Removed
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}:
-    patch:
-      tags: [connections]
-      summary: Map a discovered account into the hierarchy, or ignore it
-      description: |
-        `mapped` creates an Achalara account (unless `account_id` names one) and
-        a FIFO sleeve for `strategy_id` (default: the "Unallocated" strategy).
-        The account may belong to a different client than the login: pass
-        `client_id` to name its owner.
-        The sleeve must not already hold trades. An account cannot be remapped
-        once it has synced.
-      operationId: updateBrokerageAccount
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BrokerageAccountUpdate"
-      responses:
-        "200":
-          description: Updated brokerage account
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrokerageAccount"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Mapping not allowed (sleeve holds trades, or already synced)
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}/sync:
-    post:
-      tags: [connections]
-      summary: Pull new trades and cash activity for a mapped account
-      description: |
-        At most once per 24 hours per account (the source's limit); an earlier
-        call returns `status: skipped`, `reason: synced_recently`. Also skipped
-        while the source is still loading history (`initial_sync_pending`) or
-        rate limiting (`rate_limited`). Brokerage transactions are a daily batch
-        and lag holdings by days — see `transactions_synced_through`.
-      operationId: syncBrokerageAccount
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-        - name: full_history
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: Reload from the account's first day instead of from the last watermark
-      responses:
-        "200":
-          description: Sync outcome
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrokerageSyncResult"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Account is not mapped, or its connection is broken
-        "502":
-          description: The brokerage source failed
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}/reconciliation:
-    get:
-      tags: [connections]
-      summary: Brokerage holdings compared with positions derived from trades
-      operationId: getReconciliation
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-      responses:
-        "200":
-          description: Result of the last reconciliation (empty before the first sync)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Reconciliation"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
   /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities:
     get:
       tags: [sleeves]
@@ -3201,43 +2980,6 @@ paths:
                 $ref: "#/components/schemas/InvitationRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /api/v1/webhooks/snaptrade:
-    post:
-      tags: [connections]
-      summary: SnapTrade webhook receiver
-      security: []
-      description: |
-        Verifies the `Signature` header (HMAC-SHA256 keyed with the consumer key,
-        over the event written with sorted keys and no spaces as SnapTrade
-        documents, or over the body as sent) before anything is acted on. An
-        event delivered twice (same `webhookId`) is answered `duplicate` and not
-        acted on again. Called by SnapTrade, not by the frontend.
-      operationId: snaptradeWebhook
-      parameters:
-        - name: Signature
-          in: header
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Acknowledged
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-        "401":
-          description: Missing or invalid signature
 
   # ─── Performance: periods, statistics, report ───────────────────────────────
 
@@ -3764,6 +3506,257 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/portal/links/plaid:
+    get:
+      tags:
+      - portal
+      summary: Portal Plaid Availability
+      description: Whether linking with Plaid is offered, and how many logins the plan has left.
+      operationId: portal_plaid_availability_api_v1_portal_links_plaid_get
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidLinkAvailability'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/start:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Start
+      description: A token that opens Plaid Link for this client.
+      operationId: portal_plaid_start_api_v1_portal_links_plaid_start_post
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidLinkStart'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/finish:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Finish
+      description: Keep the login Plaid Link made, and say what each of its accounts may be.
+      operationId: portal_plaid_finish_api_v1_portal_links_plaid_finish_post
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaidLinkFinish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidFound'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/{connection_id}/repair:
+    post:
+      tags: [portal]
+      summary: Sign in again to a Plaid login
+      description: A token that opens Plaid Link in update mode for one of the viewer's own logins. No new place on the plan is used, and the login's history carries on.
+      operationId: repairPlaidLogin
+      parameters:
+        - {name: connection_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The token for Plaid Link
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlaidLinkStart'}
+        '404': {description: Not one of the viewer's logins}
+  /api/v1/portal/links/plaid/{connection_id}/repaired:
+    post:
+      tags: [portal]
+      summary: After signing in again
+      description: Asks Plaid whether the login reads again; if so it is active again and its accounts are brought up to date at once.
+      operationId: plaidLoginRepaired
+      parameters:
+        - {name: connection_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The login's state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlaidRepaired'}
+        '404': {description: Not one of the viewer's logins}
+  /api/v1/portal/links/plaid/{connection_id}:
+    get:
+      tags:
+      - portal
+      summary: Portal Plaid Found
+      description: A linked login's accounts, each with what is proposed for it.
+      operationId: portal_plaid_found_api_v1_portal_links_plaid__connection_id__get
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Connection Id
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidFound'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/{connection_id}/confirm:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Confirm
+      description: Link, add or skip each account as chosen; new and linked ones get their first pull.
+      operationId: portal_plaid_confirm_api_v1_portal_links_plaid__connection_id__confirm_post
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Connection Id
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaidConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidConfirmed'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/portal/groups:
     get:
       tags:
@@ -4739,6 +4732,179 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/auth/advisors:
+    post:
+      tags: [auth]
+      summary: Invite an advisor (admin only)
+      description: An advisor's login and a one-time link to set its password. Only an admin creates advisors.
+      operationId: inviteAdvisor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdvisorInviteRequest'}
+      responses:
+        '201':
+          description: The link to pass on
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LinkResponse'}
+        '403': {description: Not an admin}
+        '409': {description: Another login already uses the email}
+  /api/v1/clients/{client_id}/spouse:
+    put:
+      tags: [clients]
+      summary: Set or end a client's spouse
+      description: The two then see each other's accounts, except private ones. Neither may be a minor or married to someone else.
+      operationId: setSpouse
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SpouseRequest'}
+      responses:
+        '200':
+          description: The client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '404': {description: Client not found}
+        '409': {description: Already has a spouse}
+        '422': {description: Not allowed for these clients}
+  /api/v1/clients/{client_id}/guardian:
+    put:
+      tags: [clients]
+      summary: Mark a client a minor, or not
+      description: The guardian and the guardian's spouse then see the minor's accounts; the minor sees only their own.
+      operationId: setGuardian
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GuardianRequest'}
+      responses:
+        '200':
+          description: The client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '404': {description: Client not found}
+        '422': {description: Not allowed for these clients}
+  /api/v1/clients/{client_id}/relatives:
+    get:
+      tags: [clients]
+      summary: A client's spouse and minors
+      operationId: listRelatives
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Spouse first, then minors
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Relative'}
+    post:
+      tags: [clients]
+      summary: Add a client's spouse or a minor as a new client
+      operationId: addRelative
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeCreate'}
+      responses:
+        '201':
+          description: The new client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '409': {description: A client with that email already exists}
+        '422': {description: Not allowed for this client}
+  /api/v1/portal/accounts/{account_id}:
+    patch:
+      tags: [portal]
+      summary: Keep one of the viewer's own accounts private
+      description: Their spouse no longer sees it; a minor's guardians always do. Only the owner may change it.
+      operationId: setPortalAccountPrivate
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+      responses:
+        '200':
+          description: The account's setting
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+        '404': {description: Not one of the viewer's own accounts}
+  /api/v1/portal/relatives/{relative_id}/invite:
+    post:
+      tags: [portal]
+      summary: A sign-in link for one's own spouse or minor
+      operationId: invitePortalRelative
+      parameters:
+        - {name: relative_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeInvite'}
+      responses:
+        '201':
+          description: The link to pass on
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LinkResponse'}
+        '404': {description: Not the viewer's spouse or minor}
+        '409': {description: Already has a login, or the email is in use}
+  /api/v1/portal/relatives:
+    get:
+      tags: [portal]
+      summary: The viewer's spouse and minors
+      operationId: listPortalRelatives
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: Spouse first, then minors
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Relative'}
+    post:
+      tags: [portal]
+      summary: Add one's own spouse or a minor
+      description: A new client with the viewer's advisor. A minor cannot add anyone. Their login comes from an invite.
+      operationId: addPortalRelative
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeCreate'}
+      responses:
+        '201':
+          description: The new relative
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Relative'}
+        '409': {description: A client with that email already exists}
+        '422': {description: Not allowed}
 components:
   securitySchemes:
     sessionCookie:
@@ -4874,10 +5040,10 @@ components:
       type: object
       required: [action, symbol, quantity, price]
       properties:
-        action: {type: string, enum: [BUY, SELL]}
+        action: {type: string, enum: [BUY, SELL, SPLIT], description: 'SPLIT: a stock split, as the shares it added (quantity); its ratio is worked out on import'}
         symbol: {type: string}
         quantity: {type: number}
-        price: {type: number, description: Per share; per contract (100 shares) for an option}
+        price: {type: number, description: Per share; per contract (100 shares) for an option; 0 for a split}
 
     ImportCash:
       type: object
@@ -4934,6 +5100,7 @@ components:
         rows: {type: integer}
         first_date: {type: string, format: date, nullable: true}
         last_date: {type: string, format: date, nullable: true}
+        history_starts: {type: string, format: date, nullable: true, description: "The first day of the account's history on file before this file; a file reaching earlier changes the figures since inception."}
         on_file_trades: {type: integer}
         on_file_cash: {type: integer}
         on_file_a_day_later: {type: integer, description: Recognised although dated a trading day later (option expiries and assignments)}
@@ -4955,6 +5122,243 @@ components:
             check:
               nullable: true
               allOf: [{$ref: "#/components/schemas/ImportCheck"}]
+
+    PlaidCandidate:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        name:
+          type: string
+          title: Name
+        last_four:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Four
+        shared:
+          type: boolean
+          title: Shared
+        relinked:
+          type: boolean
+          title: Relinked
+        same_last_four:
+          type: boolean
+          title: Same Last Four
+        same_institution:
+          type: boolean
+          title: Same Institution
+        same_holdings:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Same Holdings
+        same_balance:
+          type: boolean
+          title: Same Balance
+      type: object
+      required:
+      - account_id
+      - name
+      - shared
+      - relinked
+      - same_last_four
+      - same_institution
+      - same_balance
+      title: PlaidCandidate
+      description: One of the client's accounts this one might be, and the evidence.
+    PlaidChoice:
+      properties:
+        link_id:
+          type: string
+          title: Link Id
+        action:
+          type: string
+          enum:
+          - link
+          - new
+          - skip
+          title: Action
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+      type: object
+      required:
+      - link_id
+      - action
+      title: PlaidChoice
+    PlaidConfirm:
+      properties:
+        choices:
+          items:
+            $ref: '#/components/schemas/PlaidChoice'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Choices
+      type: object
+      required:
+      - choices
+      title: PlaidConfirm
+    PlaidConfirmed:
+      properties:
+        linked:
+          type: integer
+          title: Linked
+        added:
+          type: integer
+          title: Added
+        skipped:
+          type: integer
+          title: Skipped
+        waiting:
+          type: integer
+          title: Waiting
+      type: object
+      required:
+      - linked
+      - added
+      - skipped
+      - waiting
+      title: PlaidConfirmed
+    PlaidFound:
+      properties:
+        connection_id:
+          type: string
+          title: Connection Id
+        institution:
+          type: string
+          title: Institution
+        logins_left:
+          type: integer
+          title: Logins Left
+        accounts:
+          items:
+            $ref: '#/components/schemas/PlaidFoundAccount'
+          type: array
+          title: Accounts
+      type: object
+      required:
+      - connection_id
+      - institution
+      - logins_left
+      - accounts
+      title: PlaidFound
+    PlaidFoundAccount:
+      properties:
+        link_id:
+          type: string
+          title: Link Id
+        name:
+          type: string
+          title: Name
+        mask:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mask
+        plaid_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plaid Type
+        plaid_subtype:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plaid Subtype
+        kind:
+          type: string
+          title: Kind
+        owed:
+          type: boolean
+          title: Owed
+        balance:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Balance
+        status:
+          type: string
+          title: Status
+        proposal:
+          type: string
+          enum:
+          - same
+          - choose
+          - new
+          title: Proposal
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        candidates:
+          items:
+            $ref: '#/components/schemas/PlaidCandidate'
+          type: array
+          title: Candidates
+      type: object
+      required:
+      - link_id
+      - name
+      - kind
+      - owed
+      - status
+      - proposal
+      - candidates
+      title: PlaidFoundAccount
+    PlaidLinkAvailability:
+      properties:
+        available:
+          type: boolean
+          title: Available
+        logins_left:
+          type: integer
+          title: Logins Left
+      type: object
+      required:
+      - available
+      - logins_left
+      title: PlaidLinkAvailability
+      description: Whether linking with Plaid is offered, and how many logins are left.
+    PlaidLinkFinish:
+      properties:
+        public_token:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Public Token
+      type: object
+      required:
+      - public_token
+      title: PlaidLinkFinish
+      description: The token Plaid Link handed back.
+    PlaidLinkStart:
+      properties:
+        link_token:
+          type: string
+          title: Link Token
+        expiration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expiration
+        logins_left:
+          type: integer
+          title: Logins Left
+      type: object
+      required:
+      - link_token
+      - logins_left
+      title: PlaidLinkStart
 
     # ── Clients ──────────────────────────────────────────────────────────────
 
@@ -5042,7 +5446,8 @@ components:
           type: string
         role:
           type: string
-          enum: [advisor, client]
+          enum: [admin, advisor, client]
+          description: "admin: the platform's super user; advisor: manages the clients assigned to them; client: their own accounts and what the guardrails let them see"
         client_id:
           type: string
           nullable: true
@@ -5064,7 +5469,8 @@ components:
           type: string
         role:
           type: string
-          enum: [advisor, client]
+          enum: [admin, advisor, client]
+          description: "admin: the platform's super user; advisor: manages the clients assigned to them; client: their own accounts and what the guardrails let them see"
         client_id:
           type: string
           nullable: true
@@ -5154,7 +5560,8 @@ components:
 
     ClientCreate:
       type: object
-      required: [name, email]
+      required: [name]
+      description: An advisor's new client is theirs; an admin may assign one to an advisor. A minor may have no email.
       properties:
         name:
           type: string
@@ -5162,7 +5569,11 @@ components:
         email:
           type: string
           format: email
+          nullable: true
           example: contact@acme.com
+        advisor_id:
+          type: string
+          nullable: true
 
     ClientUpdate:
       type: object
@@ -5175,6 +5586,93 @@ components:
           type: string
           format: email
           description: The client record's contact email, not the sign-in email.
+        advisor_id:
+          type: string
+          nullable: true
+          description: Admin only. Sent as null, the client has no advisor.
+
+    SpouseRequest:
+      type: object
+      description: Make this client and another each other's spouse; null ends it.
+      properties:
+        spouse_id:
+          type: string
+          nullable: true
+
+    GuardianRequest:
+      type: object
+      description: Mark this client a minor in another client's care; null, not a minor.
+      properties:
+        guardian_id:
+          type: string
+          nullable: true
+
+    RelativeCreate:
+      type: object
+      required: [name, relation]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        relation:
+          type: string
+          enum: [spouse, minor]
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    Relative:
+      type: object
+      required: [id, name, relation, has_login]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        relation:
+          type: string
+          enum: [spouse, minor]
+        has_login:
+          type: boolean
+
+    AdvisorInviteRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    RelativeInvite:
+      type: object
+      description: The address a spouse or minor will sign in with; their own by default.
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    PlaidRepaired:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, needs signing in]
+
+    PortalAccountPrivacy:
+      type: object
+      required: [is_private]
+      description: An owner's own account kept from their spouse (never from a minor's guardians).
+      properties:
+        is_private:
+          type: boolean
 
     ClientResponse:
       type: object
@@ -5186,6 +5684,17 @@ components:
           type: string
         email:
           type: string
+          nullable: true
+        advisor_id:
+          type: string
+          nullable: true
+        spouse_id:
+          type: string
+          nullable: true
+        guardian_id:
+          type: string
+          nullable: true
+          description: Set for a minor, the adult client responsible for them.
         created_at:
           type: string
           format: date-time
@@ -6680,6 +7189,24 @@ components:
       type: object
       required:
       - account_ids
+    AccountHealth:
+      type: object
+      description: How far an account's record can be trusted. Figures built on an incomplete account are not to be trusted, and no nudge is built on one.
+      required: [state, reasons]
+      properties:
+        state:
+          type: string
+          enum: [complete, provisional, incomplete]
+          description: "complete; provisional: recent transactions still posting; incomplete: a transaction is missing"
+        reasons:
+          type: array
+          items:
+            type: string
+        download_from:
+          type: string
+          format: date
+          nullable: true
+          description: Where a download from the institution should start to repair it
     PortalAccount:
       properties:
         id:
@@ -6697,6 +7224,30 @@ components:
           type: boolean
         kind:
           type: string
+          description: "taxable, retirement, kids, cash, checking, savings, credit_card, mortgage, car_loan or loan: chosen when the account was added, else read from its name"
+        owed:
+          type: boolean
+          default: false
+          description: A card or loan, whose value is what is owed (negative)
+        institution:
+          type: string
+          nullable: true
+        is_private:
+          type: boolean
+          default: false
+          description: The owner keeps it from their spouse (a minor's guardians still see it).
+        needs_sign_in:
+          type: boolean
+          default: false
+          description: Its Plaid login needs the owner to sign in again (see the repair route)
+        login_id:
+          type: string
+          nullable: true
+          description: The Plaid login feeding it; set only for the owner, who alone can repair it
+        health:
+          allOf:
+            - $ref: '#/components/schemas/AccountHealth'
+          nullable: true
         value:
           type: number
           nullable: true
@@ -9537,6 +10088,10 @@ components:
           type: string
         preview:
           type: boolean
+        is_minor:
+          type: boolean
+          default: false
+          description: A minor sees only their own accounts and cannot add family members.
       type: object
       required:
       - client_id

@@ -155,6 +155,7 @@ def test_accounts_lists_own_accounts_and_their_strategies(maya, world):
         "client_id": world["maya"].id,
         "name": "Maya Rao",
         "preview": False,
+        "is_minor": False,
     }
     assert [a["name"] for a in body["accounts"]] == ["Brokerage", "Rollover IRA"]
     brokerage = body["accounts"][0]

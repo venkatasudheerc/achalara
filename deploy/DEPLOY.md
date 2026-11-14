@@ -96,7 +96,7 @@ Either start empty, or bring an existing database across.
 **Start empty:** create the first advisor login.
 
 ```sh
-docker compose exec backend python -m app.cli create-advisor --email you@example.com --name "Your Name"
+docker compose exec backend python -m app.cli create-admin --email you@example.com --name "Your Name"
 ```
 
 **Bring a database across:** on the machine that has it,
@@ -117,7 +117,6 @@ Logins come across with the data. Delete the dump from both machines afterwards.
 ### 7. After it is live
 
 - Set `SCHEDULER_ENABLED=false` on the development machine (see the rules above).
-- Set up the brokerage source's webhook (see "Notices from the brokerage source" below).
 - Add a free uptime monitor on `https://<your domain>/health` that emails you.
 
 ## Alerts on your phone (optional)
@@ -174,47 +173,45 @@ A link is a way in: the app shows the address and asks before sending, and sends
 login's own sign-in email. If a send fails the page says so and the link can still be copied;
 the reason is under **System status → Recent warnings**.
 
-## Notices from the brokerage source (webhook)
+## Linking with Plaid (clients add their own accounts)
 
-Without this the app learns of changes only when it asks: the 8am sync, the evening capture
-and the six-hourly link check. With it, SnapTrade tells the app when a link breaks or mends,
-when an account's transactions or holdings have been refreshed, and when a new link appears,
-and the app acts at once. Each notice is signed with the consumer key; the app refuses any
-that is not.
+One Plaid developer account serves every client; each client signs in to their own
+institutions in Plaid's window, and each login uses one of the plan's places (the trial:
+10 in all, never freed). In `deploy/.env`:
 
-1. **Check the address answers.** From any machine:
+- `PLAID_CLIENT_ID`, `PLAID_SECRET` from Plaid's dashboard, and `PLAID_ENV` (`sandbox` or
+  `production`).
+- `PLAID_TOKEN_KEY`: encrypts each login's access key in the database. Make one with
+  `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+  and keep a copy with the backups: without it the stored logins cannot be used and every
+  client must link again.
+- `PLAID_MAX_LOGINS`: the plan's limit (10 on the trial).
 
-   ```sh
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://<your domain>/api/v1/webhooks/snaptrade -d '{}'
-   ```
+`docker-compose.yml` builds the return address for banks that sign in by redirect,
+`https://<DOMAIN>/home/plaid-return`; add it under Allowed redirect URIs in Plaid's
+dashboard. With the keys empty, "Link with Plaid" says linking is not set up.
 
-   `401` is right: it is reachable and refuses an unsigned notice.
-2. **Check a signed notice is accepted.** On the server, in `deploy/`:
+## The fresh start (2026-11-14, once)
 
-   ```sh
-   docker compose exec backend python -m app.cli send-test-webhook --url https://<your domain>/api/v1/webhooks/snaptrade
-   ```
+The deploy that brings Plaid also starts Achalara afresh. When the backend starts, the
+migration `d1e5c3a8b2f6` removes every client, client login, account and everything recorded
+for them (transactions, cash, the daily record, holdings, groups, sharing, feed links); advisor
+logins, strategies, prices, recorded splits, market data and invitation requests stay. Nothing
+asks first, and there is no undo but a backup, so **take one just before that deploy**
+(`deploy/backup.sh`) and keep it.
 
-   It prints `200 {"status":"ignored"}`. Open **System status**: the section "Notices from the
-   brokerage source" lists `ACHALARA_TEST`, and the refused one from step 1 above it.
-3. **Tell SnapTrade the address.** In the SnapTrade dashboard, open the webhook tab and enter
-   `https://<your domain>/api/v1/webhooks/snaptrade`.
-4. **Wait for a real one.** SnapTrade refreshes each account's holdings daily, so
-   `ACCOUNT_HOLDINGS_UPDATED` notices appear within a day. If they show as "Refused: the
-   signature did not match", the consumer key in `deploy/.env` is not the one for that
-   SnapTrade key pair.
-
-What each notice does: a broken or deleted link updates the link's state (and alerts you); a
-mended link or a new account re-reads the link's accounts; new transactions pull that account
-at once, and the 8am job then leaves it alone that morning; refreshed holdings record the
-account's day. A notice delivered twice is acted on once. The list is kept in memory and
-starts empty at each restart.
+Afterwards: add each client again (and invite their login), link their accounts through Plaid
+("+ Add an account"), and upload each account's history from the custodian's files ("Update
+from a file"). The `SNAPTRADE_*` settings can be deleted from `deploy/.env`, and the webhook
+removed from SnapTrade's dashboard.
 
 ## Routine
 
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
-The app's own daily jobs keep their UTC times.
+The app's own daily jobs keep their UTC times (price history at 23:30 UTC on weekdays), except the Plaid refresh, which runs at 6:30 AM
+Eastern Tuesday to Saturday and records the day before. A server down at that time misses that
+day's record for Plaid accounts; the next run brings their transactions up to date.
 
 **Market data (the `md` worker)**
 

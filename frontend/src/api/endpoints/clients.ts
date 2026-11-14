@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 import { PERIOD_BASIS } from './performance'
 import type {
-  ClientCreate, ClientResponse, ClientUpdate,
+  ClientCreate, ClientResponse, ClientUpdate, Relative, RelativeCreate,
   LevelPerformance, MonthlyReturnsResponse, ReturnsSeriesResponse,
   ClientPositionsResponse, ClientTradesResponse,
 } from '../types'
@@ -20,6 +20,22 @@ export const clientsApi = {
 
   update: (clientId: string, body: ClientUpdate) =>
     apiClient.patch<ClientResponse>(`${base}/${clientId}`, body).then((r) => r.data),
+
+  /** Makes the two each other's spouse; null ends it. */
+  setSpouse: (clientId: string, spouseId: string | null) =>
+    apiClient.put<ClientResponse>(`${base}/${clientId}/spouse`, { spouse_id: spouseId }).then((r) => r.data),
+
+  /** Marks the client a minor in the guardian's care; null, not a minor. */
+  setGuardian: (clientId: string, guardianId: string | null) =>
+    apiClient.put<ClientResponse>(`${base}/${clientId}/guardian`, { guardian_id: guardianId }).then((r) => r.data),
+
+  /** The client's spouse first, then minors (theirs and their spouse's). */
+  relatives: (clientId: string) =>
+    apiClient.get<Relative[]>(`${base}/${clientId}/relatives`).then((r) => r.data),
+
+  /** A new client who is this client's spouse or minor, with the same advisor. */
+  addRelative: (clientId: string, body: RelativeCreate) =>
+    apiClient.post<ClientResponse>(`${base}/${clientId}/relatives`, body).then((r) => r.data),
 
   getPerformance: (clientId: string, params?: { start_date?: string; end_date?: string }) =>
     apiClient

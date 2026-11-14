@@ -3,10 +3,13 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, Responsiv
 import type { PortalAccount } from '@/api/types'
 import { usePortalPerformance } from '@/hooks/usePortal'
 import { useChartColours } from '@/context/ThemeContext'
+import { usePlaidRepair } from '@/hooks/usePlaid'
+import { loadPlaid } from '@/lib/plaid'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
-import { KINDS, type Selection } from './selection'
+import { KINDS, accountName, type Selection } from './selection'
+import { PrivateToggle } from './PrivateToggle'
 
 type Chart = 'balances' | 'activity' | 'returns'
 
@@ -51,6 +54,8 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   const latest = accounts.map((a) => a.as_of).filter(Boolean).sort().pop()
   const priced = accounts.map((a) => a.priced_at).filter(Boolean).sort().shift()
 
+  const incomplete = accounts.filter((a) => a.health?.state === 'incomplete')
+
   const summary = data?.summary
   const change = summary ? summary.closing_value - summary.opening_value : null
   const chartKind: Chart = allCash && chart === 'returns' ? 'balances' : chart
@@ -77,6 +82,9 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           </p>
         )}
       </section>
+
+      <SignInAgain accounts={accounts} />
+      {incomplete.length > 0 && <Incomplete accounts={incomplete} one={one} />}
 
       <section aria-labelledby="past-year" className="border border-line rounded-[20px] p-[18px] md:p-[22px] flex flex-col gap-[18px]">
         <div className="flex flex-wrap justify-between items-center gap-[12px]">
@@ -165,9 +173,116 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
             <div><dt className="text-[13px] text-stone">Kind</dt><dd>{KINDS.find((k) => k.kind === one.kind)?.label}</dd></div>
             <div><dt className="text-[13px] text-stone">Cash in it</dt><dd className="tabular-nums">{one.cash == null ? '—' : formatCurrency(one.cash)}</dd></div>
             <div><dt className="text-[13px] text-stone">Figures from</dt><dd>{one.source ?? 'Entered by hand'}{one.synced_at ? `, last synced ${formatDate(one.synced_at)}` : ''}</dd></div>
+            {!one.shared && (
+              <div className="sm:col-span-2 border-t border-line pt-[10px]"><PrivateToggle account={one} /></div>
+            )}
           </dl>
         </section>
       )}
     </div>
+  )
+}
+
+/** Which accounts' records are missing a transaction, and how to repair them. */
+function Incomplete({ accounts, one }: { accounts: PortalAccount[]; one?: PortalAccount }) {
+  const from = (a: PortalAccount) => a.health?.download_from
+  return (
+    <section aria-label="Records to repair" className="border border-loss/40 rounded-[20px] p-[18px] flex flex-col gap-[8px]">
+      <p className="text-[16px] font-semibold">
+        {one ? 'This account\'s record is missing a transaction.'
+          : `${accounts.length === 1 ? 'One account\'s record is' : `${accounts.length} accounts' records are`} missing a transaction.`}
+        {' '}Figures that reach back past the gap are not reliable until it is filled.
+      </p>
+      {one ? (
+        <p className="text-[14px] text-stone leading-relaxed">
+          {one.health?.reasons.join(' ')}
+          {one.shared ? <> {one.owner_name.split(' ')[0]} can repair it.</>
+            : <> Download {from(one) ? <>its activity from {formatDate(from(one)!)} to today</> : 'all of its activity'}, then use Update from a file.</>}
+        </p>
+      ) : (
+        <ul className="text-[14px] text-stone leading-relaxed">
+          {accounts.map((a) => (
+            <li key={a.id}>
+              {accountName(a)}{a.number_last4 ? ` ··${a.number_last4}` : ''}:{' '}
+              {a.shared ? `${a.owner_name.split(' ')[0]} can repair it`
+                : from(a) ? `download its activity from ${formatDate(from(a)!)} to today` : 'download all of its activity'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Logins the institution has stopped sharing until someone signs in again. The
+ * owner signs in to the same login (no new place on the plan, history carries
+ * on); anyone else seeing the account is told whose it is.
+ */
+function SignInAgain({ accounts }: { accounts: PortalAccount[] }) {
+  const repair = usePlaidRepair()
+  const [working, setWorking] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const broken = accounts.filter((a) => a.needs_sign_in)
+  if (broken.length === 0) return null
+  const logins = new Map<string, PortalAccount[]>()
+  broken.forEach((a) => {
+    const key = a.login_id ?? `shared:${a.client_id}:${a.institution ?? a.source ?? ''}`
+    logins.set(key, [...(logins.get(key) ?? []), a])
+  })
+
+  const signIn = async (loginId: string) => {
+    setError(''); setWorking(loginId)
+    try {
+      const [{ link_token }, Plaid] = await Promise.all([repair.start.mutateAsync(loginId), loadPlaid()])
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: () => {
+          repair.done.mutate(loginId, {
+            onSuccess: (r) => {
+              if (r.status !== 'active') setError('The institution still asks to sign in. Try again in a moment.')
+              setWorking(null)
+            },
+            onError: (e) => { setError(e.message); setWorking(null) },
+          })
+          handler.destroy()
+        },
+        onExit: (err) => {
+          if (err) setError(err.display_message || err.error_message || 'Signing in did not finish.')
+          setWorking(null)
+          handler.destroy()
+        },
+      })
+      handler.open()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not start signing in.')
+      setWorking(null)
+    }
+  }
+
+  return (
+    <section aria-label="Sign in again" className="border border-loss/40 rounded-[20px] p-[18px] flex flex-col gap-[12px]">
+      {[...logins.entries()].map(([key, list]) => {
+        const first = list[0]
+        const where = first.institution ?? first.source ?? 'Your institution'
+        const names = list.map((a) => `${accountName(a)}${a.number_last4 ? ` ··${a.number_last4}` : ''}`).join(', ')
+        return (
+          <div key={key} className="flex flex-wrap items-center justify-between gap-[12px]">
+            <p className="text-[15px] leading-relaxed flex-1 min-w-[240px]">
+              <strong>{where}</strong> has stopped sharing {names} until{' '}
+              {first.login_id ? 'you sign in again.' : `${first.owner_name.split(' ')[0]} signs in again.`}
+              {' '}Figures stay as they were last updated.
+            </p>
+            {first.login_id && (
+              <button type="button" onClick={() => signIn(first.login_id!)} disabled={working !== null}
+                className="h-[44px] px-[18px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold disabled:opacity-60">
+                {working === first.login_id ? 'Signing in…' : 'Sign in again'}
+              </button>
+            )}
+          </div>
+        )
+      })}
+      {error && <p role="alert" className="text-[14px] text-loss">{error}</p>}
+    </section>
   )
 }

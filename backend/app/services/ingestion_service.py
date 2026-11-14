@@ -28,6 +28,7 @@ from app.models.sleeve import Sleeve
 from app.models.strategy import Strategy
 from app.models.sync_log import SyncLog
 from app.models.trade import Trade
+from app.services.opening_position import NOT_OPENING
 from app.services.portfolio_calculation import PortfolioCalculationService
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 # real brokerage data contains — and silently drop a leg.
 # A custodian's activity report is one too: its rows are matched against what
 # is on file before they reach here (``vanguard_report``).
-_ID_AUTHORITATIVE_SOURCES = {"snaptrade", "vanguard"}
+_ID_AUTHORITATIVE_SOURCES = {"plaid", "vanguard"}
 # Identical trades (day, side, symbol, quantity, price) one report may hold.
 _MAX_SAME_TRADES = 50
 
@@ -421,7 +422,10 @@ class IngestionService:
         """
         if not sleeve_id:
             return set()
-        existing = self.db.query(Trade).filter(Trade.sleeve_id == sleeve_id).all()
+        # An opening position is not a transaction: nothing is a duplicate of one.
+        existing = (
+            self.db.query(Trade).filter(Trade.sleeve_id == sleeve_id, NOT_OPENING).all()
+        )
         keys = set()
         # Report trades by their economics, numbered so that two identical
         # trades on one day answer for two feed trades, not one.

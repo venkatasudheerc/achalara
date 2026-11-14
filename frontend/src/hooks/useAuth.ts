@@ -39,15 +39,35 @@ export function useLogout() {
   })
 }
 
-export function useUsers() {
-  return useQuery({ queryKey: authKeys.users(), queryFn: () => authApi.users() })
+/** The logins staff may see: every one for an admin, their own clients' for an advisor. */
+export function useUsers(enabled = true) {
+  return useQuery({ queryKey: authKeys.users(), queryFn: () => authApi.users(), enabled })
+}
+
+/** The signed-in user is the platform's admin. */
+export function useIsAdmin() {
+  const { data: me } = useMe()
+  return me?.role === 'admin'
+}
+
+/** Admin only: an advisor's login and the link for them to set a password. */
+export function useInviteAdvisor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, email }: { name: string; email: string }) => authApi.inviteAdvisor(name, email),
+    onSuccess: () => qc.invalidateQueries({ queryKey: authKeys.users() }),
+  })
 }
 
 export function useInviteClient() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ clientId, email }: { clientId: string; email?: string }) => authApi.invite(clientId, email),
-    onSuccess: () => qc.invalidateQueries({ queryKey: authKeys.users() }),
+    // A relative's login state comes from the relatives list, so that follows too.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: authKeys.users() })
+      qc.invalidateQueries({ queryKey: ['clients'] })
+    },
   })
 }
 

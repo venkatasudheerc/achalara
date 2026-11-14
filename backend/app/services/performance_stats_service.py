@@ -212,6 +212,16 @@ class PerformanceStatsService:
             measured = True
         return growth - 1.0 if measured else None
 
+    @staticmethod
+    def _opening(series: Sequence[Day], first: Day) -> Decimal:
+        """The value before ``first``. Where the record begins with ``first``
+        and nothing moved in that day, its value was already there (a feed's
+        history reaches back only so far): that is the opening, not a gain."""
+        before = [d for d in series if d.date < first.date]
+        if before:
+            return before[-1].total
+        return first.total if first.net_flow == 0 else ZERO
+
     def _mwr(self, opening: Decimal, days: Sequence[Day]) -> Optional[float]:
         """Money-weighted return over ``days`` given the value going in."""
         if not days:
@@ -223,9 +233,11 @@ class PerformanceStatsService:
         closing = days[-1].total
         if opening <= 0 and not any(amount < 0 for _, amount in flows):
             return None
-        return MWRCalculationService(self.db)._solve_irr(
+        rate = MWRCalculationService(self.db)._solve_irr(
             opening, flows, closing, start, end
         )
+        # The solver stops within a hair of zero; never show "-0.00%".
+        return 0.0 if rate is not None and abs(rate) < 1e-9 else rate
 
     # ------------------------------------------------------------------
     # Periods
@@ -262,7 +274,7 @@ class PerformanceStatsService:
             groups[-1].append(day)
 
         rows: List[Dict] = []
-        opening = ZERO
+        opening = self._opening(series, series[0]) if series else ZERO
         cumulative = 1.0
         cumulative_ok = True
         ytd = 1.0
@@ -405,8 +417,7 @@ class PerformanceStatsService:
         days = self._within(series, start, end)
         if not days:
             return None
-        before = [d for d in series if d.date < days[0].date]
-        opening = before[-1].total if before else ZERO
+        opening = self._opening(series, days[0])
         closing = days[-1].total
         net_flow = sum((d.net_flow for d in days), ZERO)
         twr = self._twr(days)
@@ -461,7 +472,7 @@ class PerformanceStatsService:
         if not days:
             return []
         before = [d for d in series if d.date < days[0].date]
-        opening = before[-1].total if before else ZERO
+        opening = self._opening(series, days[0])
         origin = days[0].date - timedelta(days=1)
         closes = self._benchmark_closes(benchmark) if benchmark else []
         base, _ = self._benchmark_base(closes, days[0].date, days[-1].date)
@@ -541,7 +552,7 @@ class PerformanceStatsService:
                 # repeat since-inception under another name.
                 days = window(inception)
             before = [d for d in series if d.date < days[0].date] if days else []
-            opening = before[-1].total if before else ZERO
+            opening = self._opening(series, days[0]) if days else ZERO
             twr = self._twr(days)
             mwr = self._mwr(opening, days)
             span_start = (before[-1].date if before else days[0].date) if days else end

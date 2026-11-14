@@ -98,7 +98,7 @@ def as_family_member(db, anon_client, monkeypatch):
     from app.md import insights as module
 
     monkeypatch.setattr(module, "date", _FixedDate)
-    AuthService(db).create_advisor(ADVISOR[0], "Ada Advisor", ADVISOR[1])
+    AuthService(db).create_admin(ADVISOR[0], "Ada Advisor", ADVISOR[1])
     member = Client(name="Example Family Member", email="member@example.com")
     db.add(member)
     db.commit()

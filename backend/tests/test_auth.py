@@ -21,7 +21,7 @@ CLIENT_PASSWORD = "a long passphrase 2026"
 
 @pytest.fixture
 def advisor(db):
-    return AuthService(db).create_advisor(
+    return AuthService(db).create_admin(
         ADVISOR_EMAIL, "Ada Advisor", ADVISOR_PASSWORD
     )
 
@@ -90,7 +90,7 @@ def test_sign_in_sets_an_http_only_cookie_and_me_names_the_user(anon_client, adv
     response = sign_in(anon_client)
 
     assert response.status_code == 200
-    assert response.json()["role"] == "advisor"
+    assert response.json()["role"] == "admin"
     assert "httponly" in response.headers["set-cookie"].lower()
     assert anon_client.get("/api/v1/auth/me").json()["email"] == ADVISOR_EMAIL
     assert anon_client.get("/api/v1/clients/").status_code == 200
@@ -263,7 +263,7 @@ def test_a_client_can_be_invited_under_a_different_sign_in_email(
     )
     assert signed_in.status_code == 200
     # The advisor's login under the shared address is untouched.
-    assert as_advisor.get("/api/v1/auth/me").json()["role"] == "advisor"
+    assert as_advisor.get("/api/v1/auth/me").json()["role"] == "admin"
 
 
 def test_an_unaccepted_invite_can_be_reissued_to_a_corrected_address(
@@ -402,7 +402,6 @@ def test_a_client_cannot_reach_anyone_else_or_any_firm_wide_route(as_maya, house
         "/api/v1/clients/",
         "/api/v1/strategies/",
         "/api/v1/admin/sync-logs",
-        f"/api/v1/clients/{maya.id}/connections",
         f"/api/v1/clients/{maya.id}/account-access",
     ]:
         assert as_maya.get(path).status_code == 403, path
@@ -505,13 +504,6 @@ def test_an_owner_is_not_granted_their_own_account(as_advisor, household):
 
 
 # -- the webhook stays outside sign-in ------------------------------------
-
-
-def test_webhook_is_judged_by_its_signature_not_by_a_session(anon_client):
-    response = anon_client.post("/api/v1/webhooks/snaptrade", json={"eventType": "x"})
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid signature"
 
 
 # ---------------------------------------------------------------------------

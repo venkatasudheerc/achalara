@@ -1,4 +1,5 @@
 """Client endpoints"""
+from contextlib import contextmanager
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date
@@ -10,7 +11,18 @@ from app.models.account import Account
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.models.user import User
-from app.api.schemas.client import ClientCreate, ClientResponse, ClientUpdate
+from app.api.deps import get_current_user
+from app.api.schemas.client import (
+    ClientCreate,
+    ClientResponse,
+    ClientUpdate,
+    GuardianRequest,
+    Relative,
+    RelativeCreate,
+    SpouseRequest,
+)
+from app.models.user import ROLE_ADMIN, ROLE_ADVISOR
+from app.services.auth_service import AuthError, AuthService
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -21,14 +33,28 @@ from app.services.performance_service import PerformanceService
 router = APIRouter()
 
 
-@router.post("/", response_model=ClientResponse, status_code=201)
-def create_client(client: ClientCreate, db: Session = Depends(get_db)):
-    """Create a new client"""
-    existing = db.query(Client).filter(Client.email == client.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+def _advisor_or_422(db: Session, advisor_id: Optional[str]) -> Optional[str]:
+    if advisor_id is None:
+        return None
+    advisor = db.get(User, advisor_id)
+    if advisor is None or advisor.role != ROLE_ADVISOR:
+        raise HTTPException(status_code=422, detail="No such advisor")
+    return advisor.id
 
-    db_client = Client(name=client.name, email=client.email)
+
+@router.post("/", response_model=ClientResponse, status_code=201)
+def create_client(
+    client: ClientCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new client. An advisor's new client is theirs; an admin may
+    assign one to an advisor."""
+    if client.email and db.query(Client).filter(Client.email == client.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    advisor_id = user.id if user.role == ROLE_ADVISOR else _advisor_or_422(db, client.advisor_id)
+
+    db_client = Client(name=client.name, email=client.email, advisor_id=advisor_id)
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
@@ -39,10 +65,15 @@ def create_client(client: ClientCreate, db: Session = Depends(get_db)):
 def list_clients(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all clients with pagination, ordered by creation date."""
-    return db.query(Client).order_by(Client.created_at).offset(skip).limit(limit).all()
+    """The clients the signed-in admin or advisor manages, oldest first: every
+    client for an admin, their own for an advisor."""
+    query = db.query(Client).order_by(Client.created_at)
+    if user.role != ROLE_ADMIN:
+        query = query.filter(Client.advisor_id == user.id)
+    return query.offset(skip).limit(limit).all()
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -55,8 +86,14 @@ def get_client(client_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{client_id}", response_model=ClientResponse)
-def update_client(client_id: str, body: ClientUpdate, db: Session = Depends(get_db)):
-    """Correct a client's name or contact email.
+def update_client(
+    client_id: str,
+    body: ClientUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Correct a client's name or contact email; an admin may also assign or
+    unassign their advisor.
 
     A new name is carried to the client's login, which is where the portal
     reads it. The sign-in email is not touched.
@@ -74,6 +111,10 @@ def update_client(client_id: str, body: ClientUpdate, db: Session = Depends(get_
         if taken:
             raise HTTPException(status_code=400, detail="Email already registered")
         client.email = body.email
+    if "advisor_id" in body.model_fields_set:
+        if user.role != ROLE_ADMIN:
+            raise HTTPException(status_code=403, detail="Only an admin assigns advisors")
+        client.advisor_id = _advisor_or_422(db, body.advisor_id)
     if body.name is not None and body.name.strip() != client.name:
         if not body.name.strip():
             raise HTTPException(status_code=422, detail="A name is needed")
@@ -84,6 +125,71 @@ def update_client(client_id: str, body: ClientUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(client)
     return client
+
+
+@contextmanager
+def _relation_errors():
+    try:
+        yield
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+def _managed_or_404(db: Session, user: User, client_id: Optional[str]) -> None:
+    if client_id and not AuthService(db).manages(user, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+
+
+@router.put("/{client_id}/spouse", response_model=ClientResponse)
+def set_spouse(
+    client_id: str,
+    body: SpouseRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Make two clients each other's spouse (they then see each other's
+    accounts, but not private ones), or end it with null."""
+    _managed_or_404(db, user, body.spouse_id)
+    with _relation_errors():
+        return AuthService(db).set_spouse(client_id, body.spouse_id)
+
+
+@router.put("/{client_id}/guardian", response_model=ClientResponse)
+def set_guardian(
+    client_id: str,
+    body: GuardianRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a client a minor in another client's care (the guardian and the
+    guardian's spouse then see the minor's accounts), or not a minor with null."""
+    _managed_or_404(db, user, body.guardian_id)
+    with _relation_errors():
+        return AuthService(db).set_guardian(client_id, body.guardian_id)
+
+
+@router.get("/{client_id}/relatives", response_model=list[Relative])
+def list_relatives(client_id: str, db: Session = Depends(get_db)):
+    """The client's spouse and minors."""
+    with _relation_errors():
+        return _relatives(db, client_id)
+
+
+@router.post("/{client_id}/relatives", response_model=ClientResponse, status_code=201)
+def add_relative(client_id: str, body: RelativeCreate, db: Session = Depends(get_db)):
+    """Add the client's spouse or a minor as a new client, with the same advisor."""
+    with _relation_errors():
+        return AuthService(db).add_relative(client_id, body.name, body.relation, body.email)
+
+
+def _relatives(db: Session, client_id: str) -> list:
+    with_login = {
+        row[0] for row in db.query(User.client_id).filter(User.client_id.isnot(None))
+    }
+    return [
+        Relative(id=c.id, name=c.name, email=c.email, relation=relation, has_login=c.id in with_login)
+        for c, relation in AuthService(db).relatives(client_id)
+    ]
 
 
 @router.get("/{client_id}/performance", response_model=LevelPerformance)

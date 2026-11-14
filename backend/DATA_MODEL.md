@@ -128,10 +128,16 @@ erDiagram
 |---|---|---|
 | id | String(36) PK | uuid |
 | name | String(255) | not null |
-| email | String(255) | not null, **unique** |
-| brokerage_link_started_at | DateTime(tz) | nullable — set when a brokerage link is started from this client's page, cleared when the new link is first seen; files the link under the right client |
+| email | String(255) | nullable (a minor may have none), **unique** |
+| advisor_id | String(36) FK→users.id | nullable, ON DELETE SET NULL — the advisor who manages this client; none when only the admin does |
+| spouse_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — kept in pairs: each spouse names the other |
+| guardian_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — set for a minor: the adult client responsible for them |
+| brokerage_link_started_at | DateTime(tz) | nullable — left from the retired SnapTrade linking; unused |
 
-Relationships: `accounts` (1→N, cascade delete).
+Relationships: `accounts` (1→N, cascade delete). Who sees which accounts follows from
+`spouse_id` and `guardian_id` (`AuthService.accounts_for_client`): see `backend/CLAUDE.md`
+§ "Sign-in and Access Rules". `accounts.is_private` (Boolean, default false) keeps an owner's
+account from their spouse; a minor's guardians always see the minor's accounts.
 
 ### `invitation_requests`
 What a visitor leaves on the public page's form. Written by anyone, so it holds only the form's
@@ -158,6 +164,9 @@ fields within length limits and has no foreign keys; becoming a client is done b
 | name | String(255) | not null |
 | description | String(500) | nullable |
 | cost_basis_method | String(20) | not null, default `FIFO`; `MIN_TAX` where the brokerage is set that way |
+| kind | String(20) | nullable — chosen when added: `taxable`, `retirement`, `kids`, `cash`, `checking`, `savings`, `credit_card`, `mortgage`, `car_loan`, `loan`; NULL = read from the name (`account_kind.kind_of`) |
+| institution | String(255) | nullable — who holds it, e.g. "Vanguard" |
+| last_four | String(4) | nullable — the last four of the institution's own number (not a feed's numbering) |
 
 Relationships: `client` (N→1), `sleeves` (1→N, cascade delete).
 
@@ -244,6 +253,12 @@ enforces idempotency in the database rather than only in the ingesting process.
 It is nullable: trades created directly through the API, and any predating the
 column, have none. Dedup therefore accepts **either** identity — the
 `external_id`, or the legacy `(date, symbol, qty, price)` tuple.
+
+**Opening trades** are the one kind of row not from a source: what an account held before its
+history on file, a buy per security on the market day before its first transaction, `notes`
+starting `Opening position: ` and `external_id` starting `opening:`
+(`services/opening_position.py`). They are derived and rewritten before every rebuild; nothing
+else writes them, and the activity lists, imports and dedup leave them out.
 
 ### `positions`
 | Column | Type | Notes |
@@ -445,14 +460,18 @@ fund's interest) are stored for audit and never counted. See `CashActivityServic
 |---|---|---|
 | id | String(36) PK | uuid |
 | client_id | String(36) FK→clients.id | not null, **ON DELETE CASCADE** |
-| source | String(50) | connector registry name, e.g. `snaptrade` |
+| source | String(50) | the feed: `plaid` (the retired `snaptrade` rows went with the fresh start, migration `d1e5c3a8b2f6`) |
 | external_user_id | String(255) | the user id the login was linked under at the source |
 | external_connection_id | String(255) | the source's id for the login |
 | institution | String(255) | e.g. "Vanguard" |
 | status | String(20) | `active` / `broken` / `deleted` |
+| access_token_enc | Text | nullable — a Plaid login's access key, encrypted with `PLAID_TOKEN_KEY` (`utils/secret_box.py`); never logged or returned |
+| products | String(255) | nullable — Plaid products the login was linked for |
+| consent_expires_at | DateTime(tz) | nullable — when the client's consent to share runs out, where the institution sets one |
+| transactions_cursor | Text | nullable — where Plaid's bank and card transactions were last read to |
 
-Constraints: `UNIQUE(source, external_connection_id)`. One row per brokerage login. Holds
-references only — no credentials and no secret (the Personal SnapTrade flow issues none).
+Constraints: `UNIQUE(source, external_connection_id)`. One row per login. The only secret is a
+Plaid login's access key, kept encrypted.
 
 ### `brokerage_accounts`
 | Column | Type | Notes |
@@ -467,7 +486,7 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
 | sleeve_routes | JSON | nullable — security type → sleeve id, e.g. `{"ETF": "…"}`; other types use `default_sleeve_id` |
 | sync_start_date | Date | nullable — earliest activity date to load; NULL = full history |
-| status | String(20) | `unmapped` / `mapped` / `ignored` |
+| status | String(20) | `unmapped` / `mapped` / `ignored`; Plaid also `matched`: linked to an account another feed still writes to, moved over later |
 | initial_sync_completed | Boolean | false while the source is still loading history |
 | transactions_synced_through | Date | nullable — the source's own completeness watermark |
 | last_synced_at | DateTime(tz) | nullable — gates the 24h-per-account sync limit |
@@ -475,6 +494,9 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | reconciliation | JSON | nullable — `{matched, drifted[], unmatched_sells, skipped_rows}` |
 | cash_balance | Numeric(18,2) | nullable — cash the source last reported; NULL means cash is not tracked |
 | cash_balance_at | DateTime(tz) | nullable — when that was read |
+| persistent_account_id | String(255) | nullable — Plaid: the institution's id for the account that survives a relink |
+| mask | String(4) | nullable — Plaid: the real last four |
+| plaid_type, plaid_subtype | String(30), String(50) | nullable — Plaid: `investment`/`brokerage`, `depository`/`checking`, `credit`/`credit card`, `loan`/`mortgage`, … |
 
 Constraints: `UNIQUE(connection_id, external_account_ref)`.
 
@@ -521,7 +543,9 @@ source limited to one per account per day. Re-fetched rows replace the stored co
 
 There is no cash table. `CashLedger` (`services/cash_ledger.py`) derives the balance on any
 date as `brokerage_accounts.cash_balance` minus every `brokerage_activities.cash_amount` dated
-after it — today's reported balance walked backwards — so no opening balance is needed.
+after it — today's reported balance walked backwards. The balance before the first activity is
+the account's opening cash: the record opens the market day before at it (and at any opening
+trades), with nothing moved in, so money already there is never read as a gain.
 
 Views of **whole accounts** (account and client level) include it where it is known: value is
 securities plus cash, a trade or dividend only moves value between the two, and the only money
@@ -595,13 +619,15 @@ placeholders that are not tickers skipped).
 Six tables, none of them part of the portfolio hierarchy.
 
 ### `users`
-One row per login: `email` (unique, stored lower-case), `name`, `role` (`advisor` | `client`),
-`client_id` (unique, CASCADE; set for a client login and NULL for an advisor, enforced by a
-CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
+One row per login: `email` (unique, stored lower-case), `name`, `role` (`admin` | `advisor` |
+`client`: the admin is the platform's super user, an advisor manages the clients assigned to
+them, a client sees their own accounts and what the guardrails allow), `client_id` (unique,
+CASCADE; set for a client login and NULL for an admin or advisor, enforced by a CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
 cannot sign in), `is_active`, `failed_attempts`, `locked_until`, `last_login_at`. One login per
-client. The sign-in `email` is the advisor's to set, at the invite and afterwards
+client. The sign-in `email` is the admin's or advisor's to set, at the invite and afterwards
 (`AuthService.change_email`), and may differ from the client's contact email in `clients.email`:
-it has to when that address already belongs to another login. The first advisor is created with `python -m app.cli create-advisor`.
+it has to when that address already belongs to another login. The first admin is created with `python -m app.cli create-admin`; only an admin invites an
+advisor (`POST /api/v1/auth/advisors`).
 
 ### `user_sessions`
 A signed-in browser: `user_id` (CASCADE), `token_hash`, `expires_at`. The browser holds a random
@@ -633,7 +659,7 @@ Applied in one place, `app/api/deps.py::require_access`, where each router is mo
 
 | Caller | May |
 |---|---|
-| Nobody signed in | `/`, `/health`, `/api/v1/auth/login`, the invite/reset link routes, and the SnapTrade webhook (which verifies its own signature) |
+| Nobody signed in | `/`, `/health`, `/api/v1/auth/login`, the invite/reset link routes, and the invitation form |
 | Advisor | Everything |
 | Client user | Read only: `/clients/{their client}` roll-ups; any account they own or were granted and everything beneath it (sleeves, positions, trades, performance, the report); benchmarks |
 
@@ -680,7 +706,7 @@ from trades. Rebuild the reconstructed rows with `POST /admin/rebuild-performanc
   `external_id` still dedup as before. Quantity and price compare as normalized `Decimal`s,
   not floats, so fractional share counts compare exactly.
 - **Brokerage trades dedup on `external_id` alone.** For sources whose id is a complete
-  identity (`snaptrade`), the legacy tuple is not consulted: it has no action, so it would drop
+  identity (`plaid`, and `vanguard:` rows from a custodian's file), the legacy tuple is not consulted: it has no action, so it would drop
   one leg of a same-day buy and sell at one price, which real brokerage data contains.
 - **Options are trades counted in contracts.** `symbol` is the OCC symbol, `security_type` is
   `OPTION`, `quantity` is the contract count and `price` is **per contract** (the per-share

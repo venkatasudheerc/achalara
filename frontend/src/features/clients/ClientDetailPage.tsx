@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClient, useClientPositions, useClientTrades, useUpdateClient } from '@/hooks/useClients'
 import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
-import { useAccountAccess } from '@/hooks/useAuth'
+import { useAccountAccess, useIsAdmin, useUsers } from '@/hooks/useAuth'
 import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
 import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -12,9 +12,9 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatStoredPrice } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
-import { BrokerageConnections } from '@/features/connections/BrokerageConnections'
 import { ClientLoginSection } from '@/features/auth/ClientLoginSection'
 import { SharedAccountsSection } from '@/features/auth/SharedAccountsSection'
+import { FamilySection } from './FamilySection'
 
 export function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -39,13 +39,18 @@ export function ClientDetailPage() {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editError, setEditError] = useState('')
+  // Only the admin assigns a client to an advisor; the list of advisors is theirs alone.
+  const isAdmin = useIsAdmin()
+  const { data: users } = useUsers(isAdmin)
+  const advisors = (users ?? []).filter((u) => u.role === 'advisor')
+  const [advisorError, setAdvisorError] = useState('')
   useScopeFollowsPage(client && { id: client.id, name: client.name })
 
   if (isLoading) return <SkeletonCard />
   if (isError || !client) return <ErrorState message="Client not found." onRetry={() => refetch()} />
 
   const startEditing = () => {
-    setEditName(client.name); setEditEmail(client.email); setEditError('')
+    setEditName(client.name); setEditEmail(client.email ?? ''); setEditError('')
     setEditing(true)
   }
   const handleUpdateClient = async (e: FormEvent) => {
@@ -53,12 +58,22 @@ export function ClientDetailPage() {
     setEditError('')
     try {
       await updateClient.mutateAsync({
-        clientId: client.id, body: { name: editName.trim(), email: editEmail.trim().toLowerCase() },
+        clientId: client.id,
+        body: { name: editName.trim(), ...(editEmail.trim() ? { email: editEmail.trim().toLowerCase() } : {}) },
       })
       setEditing(false)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
       setEditError(typeof detail === 'string' ? detail : 'Could not save. Check the name and the email address.')
+    }
+  }
+
+  const assignAdvisor = async (advisorId: string) => {
+    setAdvisorError('')
+    try {
+      await updateClient.mutateAsync({ clientId: client.id, body: { advisor_id: advisorId || null } })
+    } catch (err) {
+      setAdvisorError(err instanceof Error ? err.message : 'Could not change the advisor.')
     }
   }
 
@@ -73,7 +88,7 @@ export function ClientDetailPage() {
       setAccName(''); setAccDesc(''); setAccNum('')
       setShowAccountForm(false)
     } catch (err) {
-      setFormError(String(err))
+      setFormError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -116,7 +131,7 @@ export function ClientDetailPage() {
             </div>
             <div>
               <label htmlFor="client-email" className="text-xs text-stone block mb-1">Contact email</label>
-              <input id="client-email" type="email" required value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
+              <input id="client-email" type="email" required={!!client.email} value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
                 className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm font-mono bg-surface focus:outline-none focus:border-pine" />
               <p className="text-xs text-stone mt-1">
                 For your records. The address the client signs in with is set under Client login below.
@@ -139,11 +154,26 @@ export function ClientDetailPage() {
             <p className="text-xs text-stone font-mono mb-1">CLIENT</p>
             <h1 className="font-display text-3xl text-summit-ink">{client.name}</h1>
             <p className="text-stone text-sm mt-1">
-              {client.email}
+              {client.email ?? 'No email'}
               <button onClick={startEditing} className="ml-3 text-xs text-pine underline underline-offset-2 hover:text-pine-deep">
                 Edit name or email
               </button>
             </p>
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <label htmlFor="client-advisor" className="text-xs text-stone">Advisor</label>
+                <select id="client-advisor" value={client.advisor_id ?? ''} disabled={updateClient.isPending}
+                  onChange={(e) => assignAdvisor(e.target.value)}
+                  className="border border-stone/30 rounded-btn px-2 py-1 text-xs bg-surface focus:outline-none focus:border-pine disabled:opacity-50">
+                  <option value="">None (yours)</option>
+                  {advisors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {client.advisor_id && !advisors.some((a) => a.id === client.advisor_id) && (
+                    <option value={client.advisor_id}>An advisor not on file</option>
+                  )}
+                </select>
+                {advisorError && <span className="text-loss text-xs">{advisorError}</span>}
+              </div>
+            )}
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -249,9 +279,10 @@ export function ClientDetailPage() {
 
       <ClientLoginSection clientId={clientId!} clientEmail={client.email} />
 
+      <FamilySection client={client} />
+
       <SharedAccountsSection clientId={clientId!} />
 
-      <BrokerageConnections clientId={clientId!} />
 
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">

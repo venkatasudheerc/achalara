@@ -32,7 +32,9 @@ function DayList({ days }: { days: ImportDay[] }) {
           <span className="text-[14px] font-semibold">{formatDate(d.date)}</span>
           <span className="text-[14px] text-summit-ink/80 leading-relaxed">
             {[
-              ...d.trades.map((t) => `${t.action === 'BUY' ? 'Bought' : 'Sold'} ${formatNumber(t.quantity, 0)} ${securityLabel(t.symbol)}`),
+              ...d.trades.map((t) => t.action === 'SPLIT'
+                ? `${securityLabel(t.symbol)} split: ${formatNumber(t.quantity, 0)} shares added`
+                : `${t.action === 'BUY' ? 'Bought' : 'Sold'} ${formatNumber(t.quantity, 0)} ${securityLabel(t.symbol)}`),
               ...d.cash.map((c) => `${CASH_LABELS[c.type] ?? c.type}${c.symbol ? ` ${c.symbol}` : ''} ${formatCurrency(c.amount)}`),
             ].join(' · ')}
           </span>
@@ -54,6 +56,12 @@ function Preview({ p }: { p: ImportPreview }) {
         The file covers {p.first_date ? `${formatDate(p.first_date)} to ${formatDate(p.last_date)}` : 'no dates'}.
         {onFile && ` Already here: ${onFile}.`}
       </p>
+      {p.first_date && p.history_starts && p.first_date < p.history_starts && (p.to_add_trades + p.to_add_cash) > 0 && (
+        <p className="text-[14px] leading-relaxed border border-line rounded-[14px] p-[16px]">
+          This reaches back before the account's history here, which starts on {formatDate(p.history_starts)}.
+          Adding it extends the record back to {formatDate(p.first_date)}, so figures since the start will change.
+        </p>
+      )}
       {p.days.length > 0 && (
         <div className="max-h-[260px] overflow-y-auto border border-line rounded-[14px] p-[16px]"><DayList days={p.days} /></div>
       )}
@@ -63,7 +71,7 @@ function Preview({ p }: { p: ImportPreview }) {
           <ul className="flex flex-col gap-[6px] pl-[4px] pb-[4px] leading-relaxed">
             {p.on_file_a_day_later > 0 && <li>{plural(p.on_file_a_day_later, 'trade')} found dated a trading day later: option expiries and assignments, and the shares they delivered.</li>}
             {p.on_file_other_symbol > 0 && <li>{plural(p.on_file_other_symbol, 'trade')} found under another symbol: a company since renamed or taken over.</li>}
-            {p.not_read.length > 0 && <li>{plural(p.not_read.length, 'row')} not read: stock splits and mergers, which are recorded from the daily feed ({p.not_read.slice(0, 4).map((r) => `${r.type} ${r.symbol}, ${formatDate(r.date)}`).join('; ')}{p.not_read.length > 4 ? '; …' : ''}).</li>}
+            {p.not_read.length > 0 && <li>{plural(p.not_read.length, 'row')} not read: a kind of row this cannot read yet, or one missing its symbol or amount ({p.not_read.slice(0, 4).map((r) => `${r.type} ${r.symbol}, ${formatDate(r.date)}`).join('; ')}{p.not_read.length > 4 ? '; …' : ''}).</li>}
           </ul>
         </details>
       )}

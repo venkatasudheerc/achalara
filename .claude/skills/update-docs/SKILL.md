@@ -10,6 +10,9 @@ that describe it is not done. Every doc below is in a **public** repository, exc
 *(local)*: everything in `docs/` is git-excluded, so update those files when present and never
 `git add` them.
 
+Run `check-impact` (`.claude/skills/check-impact/SKILL.md`) first: it finds what else the change
+touches, backend and frontend; the docs then describe all of it.
+
 ## 1. Find what changed
 
 ```sh

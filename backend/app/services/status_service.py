@@ -22,19 +22,17 @@ from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.trade import Trade
 from app.services import alerts, run_log, scheduler
 from app.services.auth_service import display_name
-from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.invitation_service import InvitationService
 from app.md import read as md_read
 from app.md.schedule import MD_JOBS
+from app.services.account_health import account_health
 from app.services.performance_build_service import last_market_day
 
 JOBS = (
+    ("plaid_refresh", "Plaid refresh"),
+    ("price_history", "Price history"),
     ("daily_sheets_sync", "Sheet sync"),
-    ("brokerage_link_check", "Brokerage link check"),
-    ("daily_brokerage_sync", "Brokerage sync"),
-    ("daily_capture", "Daily capture"),
     ("index_history", "Index history"),
-    ("capture_catch_up", "Catch-up capture at start"),
 )
 # A backup older than this, or transactions further behind than this, is pointed out.
 BACKUP_MAX_AGE = timedelta(hours=36)
@@ -227,7 +225,7 @@ class StatusService:
                 since = f" on {disabled_at.date().isoformat()}" if disabled_at else ""
                 attention.append(
                     f"The {name} link stopped sharing data{since}. "
-                    "Sign in to it again from the client's page."
+                    "Its owner needs to sign in to it again."
                 )
             links.append(
                 {
@@ -282,6 +280,15 @@ class StatusService:
                     f"Transactions for {name} stop at {through.isoformat()}.",
                     alert="Transactions are more than a few days behind for an account.",
                 )
+            if ba.status == "mapped" and account is not None:
+                health = account_health(self.db, account, now.date())
+                if health["state"] == "incomplete":
+                    start = health["download_from"]
+                    attention.append(
+                        f"The record of {name} is incomplete: {' '.join(health['reasons'])}"
+                        + (f" Download its activity from {start.isoformat()}." if start else ""),
+                        alert="An account's record is incomplete: a transaction is missing.",
+                    )
             accounts.append(
                 {
                     "id": ba.id,
@@ -291,7 +298,7 @@ class StatusService:
                     "status": ba.status,
                     "connection_status": connection.status,
                     "last_synced_at": last,
-                    "next_sync_allowed_at": last + MIN_SYNC_INTERVAL if last else None,
+                    "next_sync_allowed_at": None,
                     "transactions_synced_through": through,
                     "captured_through": captured.get(ba.account_id),
                     **self._holdings(account, reconciliation if ba.reconciliation else None),

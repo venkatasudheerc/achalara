@@ -163,11 +163,12 @@ def test_only_what_is_missing_is_planned(db, account):
     assert [(t.symbol, t.action.value, t.quantity) for _, t in plan.trades] == [
         ("DDD261009P00010000", "BUY", D(2)),  # another contract expiring that day
         ("EEE", "BUY", D(4)),
+        ("GGG", "SELL", D(10)),  # taken over for cash
     ]
     assert [(c.type, c.amount) for _, c in plan.cash] == [("DIVIDEND", D(3))]
     assert plan.held_trades == 5 and plan.held_cash == 1
     assert plan.skipped == {"sweep": 1, "internal transfer": 2}
-    assert [r.kind for r in plan.needs_a_look] == ["Corp Action (Merger)"]
+    assert plan.needs_a_look == []
     eee = plan.trades[1][1]
     assert eee.price == D(25) and eee.security_type == "ETF"
 
@@ -227,3 +228,48 @@ def test_the_feed_later_sending_a_day_the_report_filled_adds_nothing(db, account
         ba.default_sleeve_id,
     )
     assert cash["imported"] == 0
+
+
+
+def test_splits_and_mergers_are_read_as_the_feed_read_them(db, account):
+    """A split adds shares, and its ratio comes from what was held; a merger for
+    cash is a sale at the cash per share; an exchange for shares is two legs
+    whose cost carries across; a merger row without a symbol takes the
+    symbol another row gives the same company."""
+    from app.models.perf import CorporateAction
+    from app.services.corporate_actions import MERGER_NOTE
+
+    ba = account
+    rows = parse_rows(
+        _sheet(
+            _row("2/1/2024", "WWW", "WWW STORES INC", "Buy", "MARGIN", "20.0000", "$150.0000", "Free", "-$3,000.0000"),
+            _row("2/26/2024", "WWW", "WWW STORES INC", "Stock split", "MARGIN", "40.0000"),
+            _row("3/1/2024", "DDDX", "DEEPCO PHARMACEUTICALS INC", "Buy", "MARGIN", "50.0000", "$20.0000", "Free", "-$1,000.0000"),
+            _row("6/13/2024", "", "DEEPCO           CHG PHARMACEUTICALS", "Corp Action (Merger)", "MARGIN", "-50.0000", amount="$1,250.0000"),
+            _row("4/1/2025", "OLDH", "OLD HOUSE INC", "Buy", "MARGIN", "100.0000", "$5.0000", "Free", "-$500.0000"),
+            _row("1/9/2026", "NEWH", "NEW HOUSE INC CL A", "Corp Action (Merger)", "MARGIN", "150.0000"),
+            _row("1/9/2026", "OLDH", "OLD HOUSE INC", "Corp Action (Merger)", "MARGIN", "-100.0000"),
+        )
+    )
+    importer = _importer(db)
+    plan = importer.plan(ba, rows)
+    assert plan.needs_a_look == []
+    assert [(r.symbol, r.quantity) for r in plan.splits] == [("WWW", D(40))]
+    mergers = {t.symbol: (t.action.value, t.quantity, t.price) for _, t in plan.trades if t.notes.startswith(MERGER_NOTE)}
+    assert mergers == {
+        "DDDX": ("SELL", D(50), D(25)),
+        "NEWH": ("BUY", D(150), D(0)),
+        "OLDH": ("SELL", D(100), D(0)),
+    }
+
+    importer.apply(ba, plan)
+
+    (split,) = db.query(CorporateAction).filter(CorporateAction.symbol == "WWW").all()
+    assert (split.effective_date, split.ratio) == (date(2024, 2, 26), D(3))
+    # The shares given up carried their cost to the shares received.
+    legs = {t.symbol: t for t in db.query(Trade).filter(Trade.notes.like(f"{MERGER_NOTE}%"))}
+    assert abs(legs["OLDH"].price * legs["OLDH"].quantity - D(500)) < D("0.01")
+    assert abs(legs["NEWH"].price * legs["NEWH"].quantity - D(500)) < D("0.01")
+    # Read again, the split is on file and nothing is added twice.
+    again = importer.plan(ba, rows)
+    assert again.splits == [] and again.held_splits == 1 and again.trades == []

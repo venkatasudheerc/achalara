@@ -43,12 +43,14 @@ const sum = (xs: PortalAccount[]) => xs.reduce((t, a) => t + (a.value ?? 0), 0)
  */
 export function AccountRail({
   accounts, groups, viewerId, groupBy, onGroupBy, showPerson, selection, onSelect, onHide, onEditGroups,
-  canEditGroups, privateNote,
+  canEditGroups, privateNote, onAddAccount,
 }: {
   accounts: PortalAccount[]; groups: AccountGroup[]; viewerId?: string
   groupBy: GroupBy; onGroupBy: (g: GroupBy) => void; showPerson: boolean
   selection: Selection; onSelect: (s: Selection) => void; onHide: () => void
   onEditGroups: () => void; canEditGroups: boolean; privateNote?: string
+  /** Offered where the viewer may add accounts of their own */
+  onAddAccount?: () => void
 }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
@@ -147,6 +149,11 @@ export function AccountRail({
                         {a.number_last4 ? `··${a.number_last4} · ` : ''}{groupBy === 'kind' && showPerson ? a.owner_name.split(' ')[0] : k.label}
                       </span>
                     </span>
+                    {(a.health?.state === 'incomplete' || a.needs_sign_in) && (
+                      <span role="img" aria-label={a.needs_sign_in ? 'Needs signing in again' : 'Record incomplete'}
+                        title={a.needs_sign_in ? 'The institution needs a sign-in before it shares this account again' : "A transaction is missing from this account's record"}
+                        className="w-[18px] h-[18px] rounded-full bg-loss text-on-dark text-[12px] font-bold flex items-center justify-center shrink-0">!</span>
+                    )}
                     <span className="text-[15px] font-semibold tabular-nums">{a.value == null ? '—' : formatCurrency(a.value)}</span>
                   </button>
                 )
@@ -162,6 +169,12 @@ export function AccountRail({
           <button type="button" onClick={onEditGroups}
             className="h-[44px] rounded-[22px] border border-dashed border-stone/40 text-pine text-[14px] font-semibold hover:bg-line">
             {groups.length ? 'Edit my groups' : 'Make a group'}
+          </button>
+        )}
+        {onAddAccount && (
+          <button type="button" onClick={onAddAccount}
+            className="h-[44px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line">
+            + Add an account
           </button>
         )}
       </div>

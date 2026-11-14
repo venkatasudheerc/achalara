@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     false,
 )
@@ -19,9 +20,10 @@ from app.models.base import BaseModel
 class BrokerageConnection(BaseModel):
     """One brokerage login a client authorized through an aggregator.
 
-    Holds only references the aggregator hands back — never credentials. The
-    Personal SnapTrade flow issues no per-user secret, so there is nothing
-    secret to store here.
+    Holds only references the aggregator hands back, never credentials. The
+    Personal SnapTrade flow issues no per-user secret; a Plaid login's access
+    key is the one secret kept, encrypted (``access_token_enc``), so there is
+    nothing else secret to store here.
     """
 
     __tablename__ = "brokerage_connections"
@@ -39,6 +41,15 @@ class BrokerageConnection(BaseModel):
     # reported it as no longer sharing data (empty while it is active).
     status_checked_at = Column(DateTime(timezone=True))
     disabled_at = Column(DateTime(timezone=True))
+    # A Plaid login's access key, encrypted (utils/secret_box.py); never logged
+    # or returned. Empty for other sources, whose secret lives in settings.
+    access_token_enc = Column(Text)
+    # The Plaid products the login was linked for (comma-separated), and when
+    # the client's consent to share runs out, where the institution sets one.
+    products = Column(String(255))
+    consent_expires_at = Column(DateTime(timezone=True))
+    # Where Plaid's bank and card transactions were last read up to (its cursor).
+    transactions_cursor = Column(Text)
 
     __table_args__ = (
         UniqueConstraint(
@@ -76,6 +87,14 @@ class BrokerageAccount(BaseModel):
     external_account_ref = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     number_last4 = Column(String(4))
+    # Plaid only: the institution's id for the account that survives a relink
+    # (where it gives one), the real last four (mask), and Plaid's type and
+    # subtype (investment/brokerage, depository/checking, credit/credit card,
+    # loan/mortgage, …).
+    persistent_account_id = Column(String(255))
+    mask = Column(String(4))
+    plaid_type = Column(String(30))
+    plaid_subtype = Column(String(50))
     # A digest of the brokerage and the account's full number, where the source
     # shows one. The same account reached through a second login has the same
     # value, which is how it is kept from being brought in twice.

@@ -14,7 +14,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy.orm import Session
 
 from app.api.deps import PortalViewer, portal_viewer
+from app.api.schemas.auth import LinkResponse
+from app.api.schemas.client import Relative, RelativeCreate, RelativeInvite
+from app.models.client import Client
+from app.services.auth_service import AuthError, AuthService
 from app.api.schemas.portal import (
+    PortalAccountPrivacy,
     AccountGroupCreate,
     AccountGroupMembers,
     AccountGroupResponse,
@@ -29,6 +34,17 @@ from app.api.schemas.portal import (
     PortalRealizedResponse,
     PortalTradesResponse,
 )
+from app.api.schemas.plaid import (
+    PlaidRepaired,
+    PlaidConfirm,
+    PlaidConfirmed,
+    PlaidFound,
+    PlaidLinkAvailability,
+    PlaidLinkFinish,
+    PlaidLinkStart,
+)
+from app.connectors.plaid_connector import configured as plaid_configured
+from app.services.plaid_link_service import PlaidLinkError, PlaidLinkService
 from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.db.database import get_db
 from app.models.account import Account
@@ -100,9 +116,71 @@ def portal_accounts(
             "client_id": viewer.client_id,
             "name": viewer.name,
             "preview": viewer.preview,
+            "is_minor": bool(getattr(db.get(Client, viewer.client_id), "guardian_id", None)),
         },
         "accounts": _service(viewer, db).accounts(),
     }
+
+
+@router.patch("/accounts/{account_id}", response_model=PortalAccountPrivacy)
+def set_account_private(
+    account_id: str,
+    body: PortalAccountPrivacy,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Keep one of the viewer's own accounts private: their spouse no longer
+    sees it (a minor's guardians always do). Only the owner may change it."""
+    account = db.get(Account, account_id)
+    if account is None or account.client_id != viewer.client_id:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account.is_private = body.is_private
+    db.commit()
+    return PortalAccountPrivacy(is_private=account.is_private)
+
+
+@router.get("/relatives", response_model=List[Relative])
+def portal_relatives(viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """The viewer's spouse and minors."""
+    from app.api.routes.clients import _relatives
+
+    return _relatives(db, viewer.client_id)
+
+
+@router.post("/relatives/{relative_id}/invite", response_model=LinkResponse, status_code=201)
+def portal_invite_relative(
+    relative_id: str,
+    body: RelativeInvite,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A sign-in link for one's own spouse or minor, to pass on or email."""
+    service = AuthService(db)
+    if relative_id not in {c.id for c, _ in service.relatives(viewer.client_id)}:
+        raise HTTPException(status_code=404, detail="Not your spouse or minor")
+    try:
+        token, record = service.invite_client(relative_id, body.email)
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    from app.api.routes.auth import _link
+
+    return _link(token, record)
+
+
+@router.post("/relatives", response_model=Relative, status_code=201)
+def portal_add_relative(
+    body: RelativeCreate,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Add one's own spouse or a minor as a new client (with one's advisor).
+    Their login comes from an invite, as any client's does."""
+    try:
+        relative = AuthService(db).add_relative(viewer.client_id, body.name, body.relation, body.email)
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    return Relative(id=relative.id, name=relative.name, email=relative.email,
+                    relation=body.relation, has_login=False)
 
 
 def _groups(viewer: PortalViewer, db: Session) -> AccountGroupService:
@@ -495,3 +573,93 @@ def portal_import(
     """Add what the file holds that is not on file to one of the client's own
     accounts, rebuild its history and check its holdings."""
     return _import(viewer, db, account_id, file, write=True)
+
+
+# ----------------------------------------------------------------------
+# Linking with Plaid: the client links their own institution logins (an
+# advisor previewing does exactly what the client can)
+# ----------------------------------------------------------------------
+
+
+@contextmanager
+def _plaid_errors():
+    try:
+        yield
+    except PlaidLinkError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get("/links/plaid", response_model=PlaidLinkAvailability)
+def portal_plaid_availability(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """Whether linking with Plaid is offered, and how many logins the plan has left."""
+    service = PlaidLinkService(db)
+    return {"available": plaid_configured(), "logins_left": service.logins_left()}
+
+
+@router.post("/links/plaid/start", response_model=PlaidLinkStart)
+def portal_plaid_start(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """A token that opens Plaid Link for this client."""
+    with _plaid_errors():
+        return PlaidLinkService(db).start(viewer.client_id)
+
+
+@router.post("/links/plaid/finish", response_model=PlaidFound)
+def portal_plaid_finish(
+    body: PlaidLinkFinish,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Keep the login Plaid Link made, and say what each of its accounts may be."""
+    with _plaid_errors():
+        return PlaidLinkService(db).finish(viewer.client_id, body.public_token)
+
+
+@router.post("/links/plaid/{connection_id}/repair", response_model=PlaidLinkStart)
+def portal_plaid_repair(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A token that opens Plaid Link to sign in again to one of the viewer's logins."""
+    with _plaid_errors():
+        return PlaidLinkService(db).repair_start(viewer.client_id, connection_id)
+
+
+@router.post("/links/plaid/{connection_id}/repaired", response_model=PlaidRepaired)
+def portal_plaid_repaired(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """After signing in again: the login's state, and its accounts brought up to date."""
+    with _plaid_errors():
+        return PlaidLinkService(db).repaired(viewer.client_id, connection_id)
+
+
+@router.get("/links/plaid/{connection_id}", response_model=PlaidFound)
+def portal_plaid_found(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A linked login's accounts, each with what is proposed for it."""
+    with _plaid_errors():
+        return PlaidLinkService(db).found(viewer.client_id, connection_id)
+
+
+@router.post("/links/plaid/{connection_id}/confirm", response_model=PlaidConfirmed)
+def portal_plaid_confirm(
+    connection_id: str,
+    body: PlaidConfirm,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Link, add or skip each account as chosen; new and linked ones get their first pull."""
+    with _plaid_errors():
+        return PlaidLinkService(db).confirm(
+            viewer.client_id, connection_id, [c.model_dump() for c in body.choices]
+        )

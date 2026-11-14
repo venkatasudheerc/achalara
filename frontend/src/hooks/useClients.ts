@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { clientsApi } from '@/api/endpoints/clients'
-import type { ClientCreate, ClientUpdate } from '@/api/types'
+import type { ClientCreate, ClientUpdate, RelativeCreate } from '@/api/types'
 
 export const clientKeys = {
   list: (skip?: number, limit?: number) => ['clients', 'list', skip, limit] as const,
@@ -13,6 +13,7 @@ export const clientKeys = {
   positions: (id: string) => ['clients', id, 'positions'] as const,
   trades: (id: string, skip?: number, limit?: number) =>
     ['clients', id, 'trades', skip, limit] as const,
+  relatives: (id: string) => ['clients', id, 'relatives'] as const,
 }
 
 export function useClientsList(skip = 0, limit = 100) {
@@ -91,4 +92,36 @@ export function useUpdateClient() {
     // The name also shows on the client list and, through the login, in the portal.
     onSuccess: () => qc.invalidateQueries(),
   })
+}
+
+/** The client's spouse and minors, with whether each has a login. */
+export function useClientRelatives(clientId: string) {
+  return useQuery({
+    queryKey: clientKeys.relatives(clientId),
+    queryFn: () => clientsApi.relatives(clientId),
+    enabled: !!clientId,
+  })
+}
+
+/**
+ * Changes to who is whose spouse or minor. Each touches two clients and what
+ * both may see, so every client query is fetched again afterwards.
+ */
+export function useFamilyChanges() {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ['clients'] })
+  return {
+    setSpouse: useMutation({
+      mutationFn: (v: { clientId: string; spouseId: string | null }) => clientsApi.setSpouse(v.clientId, v.spouseId),
+      onSuccess: refresh,
+    }),
+    setGuardian: useMutation({
+      mutationFn: (v: { clientId: string; guardianId: string | null }) => clientsApi.setGuardian(v.clientId, v.guardianId),
+      onSuccess: refresh,
+    }),
+    addRelative: useMutation({
+      mutationFn: (v: { clientId: string; body: RelativeCreate }) => clientsApi.addRelative(v.clientId, v.body),
+      onSuccess: refresh,
+    }),
+  }
 }

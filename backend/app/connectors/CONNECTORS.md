@@ -1,7 +1,7 @@
 # Bridge — Connector Layer Conventions
 
 > Scope: `backend/app/connectors/`. This is **Bridge** — the layer that brings trade and
-> position data into Achalara from any source (CSV, Google Sheets, Webull, SnapTrade, and
+> position data into Achalara from any source (CSV, Google Sheets, Webull, Plaid, and
 > future brokers). Read this before adding or changing anything in this package.
 
 ---
@@ -39,7 +39,8 @@ backend/app/connectors/
 ├── csv_connector.py        # existing CSV import, refactored behind the interface
 ├── sheets_connector.py     # existing Google Sheets sync, behind the interface
 ├── webull_connector.py     # existing Webull price fetch, normalized
-├── snaptrade_connector.py  # aggregator adapter (added after the spike)
+├── plaid_connector.py      # Plaid's API: link tokens, accounts, transactions, holdings
+├── plaid_reader.py         # Plaid's rows as normalized trades, cash and day figures
 └── fake_connector.py       # deterministic, no network — for tests
 ```
 
@@ -93,7 +94,7 @@ class ConnectorCapabilities:
     data_freshness: str   # "realtime" | "daily" | "manual"
 ```
 
-No `if isinstance(c, SnapTradeConnector)` anywhere. If you need to know "can this be traded?",
+No `if isinstance(c, SomeConnector)` anywhere. If you need to know "can this be traded?",
 ask `connector.capabilities.can_trade`.
 
 ---
@@ -110,7 +111,7 @@ audit/debug only and must never be read by upstream code.
 - `RawAccount`: `external_ref`, `name`, `account_number?`, `institution`.
 
 **`external_id` is the dedup key.** Every trade from every source carries a stable source id so
-ingestion is idempotent — the same trade arriving via SnapTrade sync and a later CSV re-upload
+ingestion is idempotent — the same trade arriving from Plaid and a later file upload
 must collapse to one. Never bypass dedup (repo-wide rule; doubly true here).
 
 A custodian's activity report shares no ids with a feed. Its rows are matched on their
@@ -120,9 +121,9 @@ symbol, quantity and price, or a cash row with the same day and amount, as alrea
 
 ---
 
-## Secrets & per-client tokens (read before adding SnapTrade)
+## Secrets & per-client tokens
 
-- **App-level keys** (SnapTrade client id/secret, Webull keys): `.env` only, never committed,
+- **App-level keys** (Plaid client id and secret, Webull keys): `.env` only, never committed,
   never logged. `.env.example` lists names with empty values.
 - **Per-client connection tokens / OAuth secrets**: **encrypted at rest in the DB**, never in
   `.env`, never in logs, never in API responses. Treat them like passwords.

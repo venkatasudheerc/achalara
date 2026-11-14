@@ -9,7 +9,15 @@ export const KINDS: { kind: AccountKind; label: string; plural: string; text: st
   { kind: 'taxable', label: 'Taxable', plural: 'taxable accounts', text: 'text-k-taxable', bg: 'bg-k-taxable-bg', dot: 'bg-k-taxable' },
   { kind: 'retirement', label: 'Retirement', plural: 'retirement accounts', text: 'text-k-retire', bg: 'bg-k-retire-bg', dot: 'bg-k-retire' },
   { kind: 'kids', label: 'Kids', plural: 'accounts for the kids', text: 'text-k-kids', bg: 'bg-k-kids-bg', dot: 'bg-k-kids' },
+  { kind: 'checking', label: 'Checking', plural: 'checking accounts', text: 'text-k-bank', bg: 'bg-k-bank-bg', dot: 'bg-k-bank' },
+  { kind: 'savings', label: 'Savings', plural: 'savings accounts', text: 'text-k-bank', bg: 'bg-k-bank-bg', dot: 'bg-k-bank' },
+  { kind: 'credit_card', label: 'Credit cards', plural: 'credit cards', text: 'text-k-owed', bg: 'bg-k-owed-bg', dot: 'bg-k-owed' },
+  { kind: 'mortgage', label: 'Mortgage', plural: 'mortgages', text: 'text-k-owed', bg: 'bg-k-owed-bg', dot: 'bg-k-owed' },
+  { kind: 'car_loan', label: 'Car loan', plural: 'car loans', text: 'text-k-owed', bg: 'bg-k-owed-bg', dot: 'bg-k-owed' },
+  { kind: 'loan', label: 'Loan', plural: 'loans', text: 'text-k-owed', bg: 'bg-k-owed-bg', dot: 'bg-k-owed' },
 ]
+/** Kinds that hold investments: holdings, trades, cost basis and returns apply. */
+export const INVESTED: AccountKind[] = ['taxable', 'retirement', 'kids']
 export const kindOf = (kind: AccountKind) => KINDS.find((k) => k.kind === kind) ?? KINDS[1]
 
 export type GroupBy = 'person' | 'kind' | 'mine'

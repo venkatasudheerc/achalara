@@ -1,9 +1,9 @@
-"""APScheduler background jobs: the daily syncs and the daily capture.
+"""APScheduler background jobs: the Plaid refresh, price history, sheet syncs,
+index history and the status watch.
 
-Each market day's holdings, cash and total can only be recorded on the day, so
-the capture job also runs once at start-up if the day has not been captured —
-a server that was down at the scheduled time still gets the day, provided it
-comes up before the next one.
+The Plaid refresh records each account's previous day early in the morning
+(``plaid_refresh_service``); price history tops up the closes the rebuild values
+holdings with.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -15,9 +15,8 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db.database import SessionLocal
 from app.services import alerts, run_log
 from app.services.daily_sync import run_all_enabled_syncs
-from app.services.connection_service import run_all_brokerage_syncs, run_link_check
-from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
 from app.services.index_history_service import IndexHistoryService
+from app.services.plaid_refresh_service import run_plaid_refresh
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -39,30 +38,6 @@ def _job_wrapper() -> None:
         db.close()
 
 
-@run_log.tracked("daily_brokerage_sync")
-def _brokerage_job_wrapper() -> None:
-    """Open a DB session, sync mapped brokerage accounts, close session."""
-    db = SessionLocal()
-    try:
-        run_all_brokerage_syncs(db)
-    except Exception as exc:
-        logger.error(f"Unhandled error in brokerage sync job: {exc}")
-    finally:
-        db.close()
-
-
-@run_log.tracked("brokerage_link_check")
-def _link_check_wrapper() -> None:
-    """Ask the source whether each brokerage link is still sharing data."""
-    db = SessionLocal()
-    try:
-        run_link_check(db)
-    except Exception as exc:
-        logger.error(f"Unhandled error in brokerage link check: {exc}")
-    finally:
-        db.close()
-
-
 def _status_watch_wrapper() -> None:
     """Message the advisor about anything that has started or stopped needing a look."""
     db = SessionLocal()
@@ -74,19 +49,26 @@ def _status_watch_wrapper() -> None:
         db.close()
 
 
-@run_log.tracked("daily_capture")
-def _capture_job_wrapper() -> None:
-    """Record the day: prices first, then each account's holdings and totals."""
+@run_log.tracked("price_history")
+def _price_history_wrapper() -> None:
+    """Top up daily closes for every security held, which the rebuild values with."""
     db = SessionLocal()
     try:
-        try:
-            PriceHistoryService(db).backfill()
-        except Exception as exc:
-            db.rollback()
-            logger.error(f"Price history top-up failed: {exc}")
-        run_daily_capture(db)
+        PriceHistoryService(db).backfill()
     except Exception as exc:
-        logger.error(f"Unhandled error in daily capture job: {exc}")
+        logger.error(f"Price history top-up failed: {exc}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("plaid_refresh")
+def _plaid_refresh_wrapper() -> None:
+    """Bring every Plaid login up to date and record the day before."""
+    db = SessionLocal()
+    try:
+        run_plaid_refresh(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in Plaid refresh job: {type(exc).__name__}")
     finally:
         db.close()
 
@@ -101,22 +83,6 @@ def _index_history_wrapper() -> None:
         logger.error(f"Unhandled error in index history job: {exc}")
     finally:
         db.close()
-
-
-@run_log.tracked("capture_catch_up")
-def _catch_up_wrapper() -> None:
-    """Capture now if the latest market day has not been recorded yet."""
-    db = SessionLocal()
-    try:
-        needed = DailyCaptureService(db).needs_capture()
-    except Exception as exc:
-        logger.error(f"Could not check whether a capture is due: {exc}")
-        needed = False
-    finally:
-        db.close()
-    if needed:
-        logger.info("Latest market day not captured yet — capturing now")
-        _capture_job_wrapper()
 
 
 def index_history_trigger() -> OrTrigger:
@@ -152,23 +118,6 @@ def start_scheduler() -> None:
         id="daily_sheets_sync",
         replace_existing=True,
     )
-    # Brokerage transactions are a day-delayed daily batch, so once a day is
-    # as fresh as the source gets. 8am US Eastern all year: the previous day's
-    # trades are in before the market opens.
-    _scheduler.add_job(
-        _brokerage_job_wrapper,
-        CronTrigger(hour=8, minute=0, timezone=MARKET_TIMEZONE),
-        id="daily_brokerage_sync",
-        replace_existing=True,
-    )
-    # A brokerage ends a session without notice; every six hours is soon
-    # enough to say so, and well inside what the source allows.
-    _scheduler.add_job(
-        _link_check_wrapper,
-        CronTrigger(hour="*/6", minute=10),
-        id="brokerage_link_check",
-        replace_existing=True,
-    )
     # Alerts: look every ten minutes, and once shortly after start-up.
     _scheduler.add_job(
         _status_watch_wrapper,
@@ -178,11 +127,20 @@ def start_scheduler() -> None:
         id="status_watch",
         replace_existing=True,
     )
-    # After the US close (21:00 UTC) and the brokerage's own daily refresh.
+    # After the US close (21:00 UTC): the day's closes for everything held.
     _scheduler.add_job(
-        _capture_job_wrapper,
+        _price_history_wrapper,
         CronTrigger(day_of_week="mon-fri", hour=23, minute=30),
-        id="daily_capture",
+        id="price_history",
+        replace_existing=True,
+    )
+    # Plaid: early each weekday morning a balance is where the previous day
+    # ended, so Tuesday to Saturday record Monday to Friday. A weekend's
+    # movements arrive in Monday's record; a recorded day is never rewritten.
+    _scheduler.add_job(
+        _plaid_refresh_wrapper,
+        CronTrigger(day_of_week="tue-sat", hour=6, minute=30, timezone=MARKET_TIMEZONE),
+        id="plaid_refresh",
         replace_existing=True,
     )
     _scheduler.add_job(
@@ -191,18 +149,11 @@ def start_scheduler() -> None:
         id="index_history",
         replace_existing=True,
     )
-    # Once, shortly after start-up: catch the day if the schedule was missed.
-    _scheduler.add_job(
-        _catch_up_wrapper,
-        "date",
-        run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
-        id="capture_catch_up",
-        replace_existing=True,
-    )
     _scheduler.start()
     logger.info(
-        "APScheduler started — sheets sync 16:00 UTC, brokerage sync 08:00 US Eastern, "
-        "daily capture 23:30 UTC on weekdays, index history 22:00 and 06:00 US Eastern"
+        "APScheduler started — sheets sync 16:00 UTC, "
+        "price history 23:30 UTC on weekdays, Plaid refresh 06:30 US Eastern Tue-Sat, "
+        "index history 22:00 and 06:00 US Eastern"
     )
 
 

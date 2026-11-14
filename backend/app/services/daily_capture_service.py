@@ -1,7 +1,7 @@
-"""Daily capture — recording what the brokerage reports, on the day.
+"""Recording what the institution reports for a day.
 
-Each market day, for every linked account, this stores the holdings, cash and
-account total the brokerage reports. Those are the day's facts: nothing has to
+A feed that fetched an account's figures (the Plaid refresh, a first pull)
+stores the holdings, cash and account total through ``record``. Those are the day's facts: nothing has to
 be inferred from trades, price history or the timing of a transaction feed.
 What is captured is never rewritten; what cannot be captured on the day (a day
 the job did not run) can only be reconstructed afterwards, less surely.
@@ -15,7 +15,6 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
@@ -24,7 +23,6 @@ from app.services.performance_build_service import (
     CENT,
     ZERO,
     PerformanceBuildService,
-    last_market_day,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,77 +35,22 @@ class DailyCaptureService:
         self.db = db
         self.connections = connections or ConnectionService(db)
 
-    def capture_all(self, as_of: Optional[date] = None) -> Dict[str, str]:
-        """Capture every mapped account on an active connection.
-
-        One account failing does not stop the rest.
-        """
-        accounts = (
-            self.db.query(BrokerageAccount)
-            .join(BrokerageConnection)
-            .filter(
-                BrokerageAccount.status == "mapped",
-                BrokerageConnection.status == "active",
-            )
-            .all()
-        )
-        outcomes: Dict[str, str] = {}
-        for account_id in [a.id for a in accounts]:
-            try:
-                self.capture(account_id, as_of)
-                outcomes[account_id] = "captured"
-            except Exception as exc:  # noqa: BLE001
-                self.db.rollback()
-                logger.error("Daily capture failed for account %s: %s", account_id, exc)
-                outcomes[account_id] = "failed"
-        return outcomes
-
-    def needs_capture(self, today: Optional[date] = None) -> bool:
-        """Whether any mapped account lacks an observed row for the latest market day."""
-        day = last_market_day(today)
-        mapped = [
-            row[0]
-            for row in self.db.query(BrokerageAccount.account_id)
-            .join(BrokerageConnection)
-            .filter(
-                BrokerageAccount.status == "mapped",
-                BrokerageConnection.status == "active",
-            )
-        ]
-        if not mapped:
-            return False
-        captured = {
-            row[0]
-            for row in self.db.query(DailyValuation.account_id).filter(
-                DailyValuation.account_id.in_(mapped),
-                DailyValuation.as_of_date == day,
-                DailyValuation.basis == "observed",
-            )
-        }
-        return any(account_id not in captured for account_id in mapped)
-
-    def capture(self, brokerage_account_id: str, as_of: Optional[date] = None) -> Dict:
-        """Capture one account's holdings, cash and total for the day.
-
-        The figures are stored against the latest market day: read at the
-        weekend, they are Friday's close. Capturing the same day again replaces
-        that day's capture, so a later read supersedes an earlier one.
-        """
-        ba = self.connections.get_brokerage_account(brokerage_account_id)
+    def record(
+        self,
+        ba,
+        day: date,
+        holdings,
+        cash: Optional[Decimal],
+        reported_total,
+        valuation_adjustment: Optional[Decimal] = None,
+    ) -> Dict:
+        """Store one day as the institution reported it: its holdings (each with
+        the price it came with), its cash and its total. A feed that fetched the
+        figures itself (Plaid) records them through here. ``valuation_adjustment``
+        is passed to the reconciliation where the feed cannot work it out."""
         if ba.status != "mapped" or not ba.default_sleeve_id or not ba.account_id:
             raise ValueError("Map the account to a sleeve before capturing it")
-        day = as_of or last_market_day()
         now = datetime.now(timezone.utc)
-        user_id = ba.connection.external_user_id
-
-        holdings = self.connections.connector.fetch_positions(
-            user_id, ba.external_account_ref
-        )
-        self.connections._refresh_cash_balance(ba)
-        remote = self.connections._remote_account(user_id, ba.external_account_ref)
-        reported_total = remote.total_value if remote is not None else None
-        cash = Decimal(str(ba.cash_balance)) if ba.cash_balance is not None else None
-
         sleeve_ids = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(
@@ -214,7 +157,9 @@ class DailyCaptureService:
         # Brokerage figures are in hand, so refresh the comparison with our
         # trades from the same read, then work the day's flows and return in.
         try:
-            self.connections.reconcile(ba.id, holdings=holdings)
+            self.connections.reconcile(
+                ba.id, holdings=holdings, valuation_adjustment=valuation_adjustment
+            )
         except Exception as exc:  # noqa: BLE001
             self.db.rollback()
             logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)
@@ -281,8 +226,3 @@ class DailyCaptureService:
         row.flow_in = row.flow_in or ZERO
         row.flow_out = row.flow_out or ZERO
         row.advisory_fees = row.advisory_fees or ZERO
-
-
-def run_daily_capture(db: Session) -> Dict[str, str]:
-    """Called by the scheduler — captures every mapped account for the day."""
-    return DailyCaptureService(db).capture_all()

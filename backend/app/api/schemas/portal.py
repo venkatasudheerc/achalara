@@ -8,13 +8,24 @@ from pydantic import BaseModel, Field
 class PortalViewerResponse(BaseModel):
     client_id: str
     name: str
-    preview: bool  # an advisor looking at this client's portal
+    preview: bool  # an admin or advisor looking at this client's portal
+    # A minor sees only their own accounts and cannot add family members.
+    is_minor: bool = False
 
 
 class PortalSleeve(BaseModel):
     sleeve_id: str
     strategy_id: str
     strategy_name: str
+
+
+class AccountHealth(BaseModel):
+    # complete | provisional (recent transactions still posting) | incomplete
+    # (a transaction is missing: figures built on it are not to be trusted)
+    state: str
+    reasons: List[str] = []
+    # Where a download from the institution should start to repair it.
+    download_from: Optional[date] = None
 
 
 class PortalAccount(BaseModel):
@@ -24,8 +35,18 @@ class PortalAccount(BaseModel):
     name: str
     number_last4: Optional[str] = None
     shared: bool
-    # taxable | retirement | kids | cash, read from the brokerage's account name
+    # taxable | retirement | kids | cash | checking | savings | credit_card |
+    # mortgage | car_loan | loan: chosen when added, else read from its name
     kind: str
+    owed: bool = False  # a card or loan: its value is what is owed, negative
+    institution: Optional[str] = None
+    # The owner keeps it from their spouse (a minor's guardians still see it).
+    is_private: bool = False
+    # Its Plaid login needs the owner to sign in again (repair it with
+    # /portal/links/plaid/{login_id}/repair); login_id is set only for the owner.
+    needs_sign_in: bool = False
+    login_id: Optional[str] = None
+    health: Optional[AccountHealth] = None
     # The account now: holdings at live prices, options and cash as the custodian
     # last reported them; what the Holdings view's account tile shows.
     value: Optional[float] = None
@@ -37,6 +58,12 @@ class PortalAccount(BaseModel):
     source: Optional[str] = None  # the institution the figures come from
     synced_at: Optional[datetime] = None  # its last transactions sync
     sleeves: List[PortalSleeve] = []
+
+
+class PortalAccountPrivacy(BaseModel):
+    """An owner's own account kept from their spouse (never from a minor's guardians)."""
+
+    is_private: bool
 
 
 class PortalAccountsResponse(BaseModel):

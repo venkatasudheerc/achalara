@@ -1,7 +1,7 @@
-"""Vanguard's activity report: fill the days a brokerage feed left out.
+"""Vanguard's activity report: history from the custodian's own file.
 
-The feed (SnapTrade today) sometimes misses whole days of an account's
-activity, and asking it again does not bring them back. Vanguard's own
+A feed reaches back only so far, and an account's earlier history comes from
+the owner's files. Vanguard's own
 "custom activity report" (Excel) lists every trade and cash movement with its
 trade date. This reads that file, finds the rows we do not already hold, and
 adds only those, through the same routing and ingestion as a sync.
@@ -45,7 +45,9 @@ from app.models.brokerage_connection import BrokerageAccount
 from app.models.cash_activity import MARGIN_INTEREST, CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE
+from app.models.perf import CorporateAction
+from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE
+from app.services.opening_position import NOT_OPENING
 from app.utils.symbols import app_symbol
 
 SOURCE = "vanguard"
@@ -85,6 +87,11 @@ CASH_KINDS = {
     "Transfer (incoming)": ("TRANSFER", True),
     "Transfer (Outgoing)": ("TRANSFER", True),
 }
+# A split: the shares it added (``corporate_actions.record_splits`` works out the
+# ratio from what was held just before). A merger: shares taken for cash, or
+# exchanged for other shares, read as trades as the brokerage feed's were.
+SPLIT = "Stock split"
+MERGER = "Corp Action (Merger)"
 # Cash moving between the account and its settlement fund: cash either way.
 SWEEPS = {"Sweep in", "Sweep out"}
 _TRANSFERS = {"Transfer (incoming)", "Transfer (Outgoing)"}
@@ -141,7 +148,10 @@ class Plan:
     # another symbol: listed so a person can see each one.
     loose_matches: List[Tuple[ReportRow, Dict]] = field(default_factory=list)
     skipped: Counter = field(default_factory=Counter)
-    # Rows this cannot represent (splits, mergers, kinds not seen before).
+    # Splits not on file yet: each kept as a SPLIT source row for record_splits.
+    splits: List[ReportRow] = field(default_factory=list)
+    held_splits: int = 0
+    # Rows this cannot represent (kinds not seen before, a row missing a part).
     needs_a_look: List[ReportRow] = field(default_factory=list)
 
     @property
@@ -150,6 +160,8 @@ class Plan:
         for row, _ in self.trades:
             days[row.traded] += 1
         for row, _ in self.cash:
+            days[row.traded] += 1
+        for row in self.splits:
             days[row.traded] += 1
         return dict(sorted(days.items()))
 
@@ -327,10 +339,23 @@ def _external_id(row: ReportRow, occurrence: int) -> str:
     return ID_PREFIX + hashlib.sha1(content.encode()).hexdigest()[:24]
 
 
-def read_rows(rows: List[ReportRow]) -> Tuple[list, list, Counter, List[ReportRow]]:
-    """Trades and cash rows as the app holds them, with what was set aside."""
+def _symbol_by_name(name: str, rows: List[ReportRow]) -> str:
+    """The symbol of the security a merger row names without one: another row of
+    the report naming the same company (its first word) with a symbol."""
+    words = [w for w in re.split(r"\W+", name.upper()) if len(w) >= 4]
+    if not words:
+        return ""
+    for row in rows:
+        if row.symbol and not is_option_symbol(row.symbol) and words[0] in row.name.upper().split():
+            return row.symbol
+    return ""
+
+
+def read_rows(rows: List[ReportRow]) -> Tuple[list, list, List[ReportRow], Counter, List[ReportRow]]:
+    """Trades, cash rows and splits as the app holds them, with what was set aside."""
     trades: List[Tuple[ReportRow, NormalizedTrade]] = []
     cash: List[Tuple[ReportRow, NormalizedCashActivity]] = []
+    splits: List[ReportRow] = []
     skipped: Counter = Counter()
     needs_a_look: List[ReportRow] = []
     internal = _internal_transfers(rows)
@@ -394,6 +419,41 @@ def read_rows(rows: List[ReportRow]) -> Tuple[list, list, Counter, List[ReportRo
                     ),
                 )
             )
+        elif row.kind == SPLIT:
+            if not row.symbol or not row.quantity or row.quantity <= 0:
+                needs_a_look.append(row)
+                continue
+            splits.append(row)
+        elif row.kind == MERGER:
+            symbol = row.symbol or _symbol_by_name(row.name, rows)
+            if not symbol or not row.quantity:
+                needs_a_look.append(row)
+                continue
+            quantity = abs(row.quantity)
+            # Shares taken for cash are a sale at the cash per share; a leg of
+            # an exchange for other shares carries no price, and
+            # carry_exchange_costs moves the cost across afterwards.
+            if row.quantity < 0:
+                action = TradeAction.SELL
+                price = row.amount / quantity if row.amount and row.amount > 0 else Decimal(0)
+            else:
+                action, price = TradeAction.BUY, Decimal(0)
+            trades.append(
+                (
+                    row,
+                    NormalizedTrade(
+                        external_id=ext,
+                        symbol=symbol,
+                        action=action,
+                        quantity=quantity,
+                        price=price,
+                        executed_at=_at(row.traded),
+                        source=SOURCE,
+                        security_type=_security_type(row),
+                        notes=f"{MERGER_NOTE}{' '.join(row.name.split())}",
+                    ),
+                )
+            )
         elif row.kind == "Reinvestment":
             skipped["sweep"] += 1  # the settlement fund's own dividend, kept as cash
         elif row.kind in CASH_KINDS:
@@ -417,7 +477,7 @@ def read_rows(rows: List[ReportRow]) -> Tuple[list, list, Counter, List[ReportRo
             )
         else:
             needs_a_look.append(row)
-    return trades, cash, skipped, needs_a_look
+    return trades, cash, splits, skipped, needs_a_look
 
 
 # ----------------------------------------------------------------------
@@ -469,11 +529,22 @@ class VanguardReportImport:
         if rows:
             plan.first = min(r.traded for r in rows)
             plan.last = max(r.traded for r in rows)
-        trades, cash, plan.skipped, plan.needs_a_look = read_rows(rows)
+        trades, cash, splits, plan.skipped, plan.needs_a_look = read_rows(rows)
+        # A split is a fact about the security: one already recorded is on file.
+        known = {
+            (a.symbol, a.effective_date)
+            for a in self.db.query(CorporateAction).filter(CorporateAction.action_type == "SPLIT")
+        }
+        for row in splits:
+            if (row.symbol, row.traded) in known:
+                plan.held_splits += 1
+            else:
+                plan.splits.append(row)
 
         sleeve_ids = self.account_sleeves(ba)
+        # An opening position is not a transaction: a row is never matched to one.
         on_file = (
-            self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids)).all()
+            self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).all()
             if sleeve_ids
             else []
         )
@@ -487,7 +558,12 @@ class VanguardReportImport:
                     continue
                 if abs(Decimal(str(ours.quantity)) - trade.quantity) > _QUANTITY:
                     continue
-                if not _same_price(ours.price, trade.price, Decimal(multiplier)):
+                # A merger's leg is priced on file once its cost is carried
+                # across; it is the same leg whatever the price says now.
+                merger = (trade.notes or "").startswith(MERGER_NOTE) and (
+                    ours.notes or ""
+                ).startswith(MERGER_NOTE)
+                if not merger and not _same_price(ours.price, trade.price, Decimal(multiplier)):
                     continue
                 if not any_symbol and app_symbol(ours.symbol) != app_symbol(trade.symbol):
                     continue
@@ -559,6 +635,13 @@ class VanguardReportImport:
         for row, activity in plan.cash:
             external = CASH_KINDS[row.kind][1]
             raw.append(self._raw(row, activity.external_id, activity.amount, external))
+        # A split moves no cash; record_splits reads the shares it added.
+        for row in plan.splits:
+            split = self._raw(row, _external_id(row, 1), Decimal(0), False)
+            split.type = "SPLIT"
+            split.outcome = "split"
+            split.payload = {**row.as_dict(), "units": str(row.quantity)}
+            raw.append(split)
         batch = ActivityBatch(
             trades=[t for _, t in plan.trades],
             cash=[c for _, c in plan.cash],

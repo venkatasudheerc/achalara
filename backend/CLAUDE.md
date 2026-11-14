@@ -33,22 +33,15 @@ backend/venv/bin/pytest backend/tests --cov=backend/app          # with coverage
 backend/venv/bin/pytest backend/tests/test_sleeves.py -v         # single file
 backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # single test
 
-# Live API tests — opt-in only, read-only, need real credentials in .env
-export SNAPTRADE_TEST_USER_ID=<the userId you linked>
-backend/venv/bin/pytest backend/tests/integration -m live -v -s
-
 # Google Sheets sync against a sheet you name (opt-in; no sheet id is kept in the repo)
 export GOOGLE_SHEETS_TEST_SHEET_ID=<sheet id>
 backend/venv/bin/pytest backend/tests/test_google_sheets.py -m live -v
 
-# First advisor login (run from backend/, asks for a password)
-python -m app.cli create-advisor --email you@example.com --name "Your Name"
+# First admin login (run from backend/, asks for a password)
+python -m app.cli create-admin --email you@example.com --name "Your Name"
 
 # Year-end price of an index option (per share, as quoted), for its year-end mark
 python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
-
-# Post a signed test event to our own webhook address (reachability + signature)
-python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
 
 # Add what a custodian's activity report holds that is not on file (shows only; --apply writes)
 python -m app.cli import-vanguard-report --account 5678 --file customActivityReport_12345678.xlsx
@@ -84,7 +77,6 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 | `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
 | `/api/v1/portal`     | `portal` (a client's accounts read together: accounts, overview, positions, trades, realised gains, performance; CSV; the client's own account groups) |
-| `/api/v1`            | `connections` (brokerage link, discover, map, sync, reconcile, webhook) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 | `/api/v1/research`   | `research` (market insights from `md`, for every signed-in user; read-only) |
 
@@ -106,10 +98,13 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/trade_import.py`          | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes)                    |
 | `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
 | `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
-| `app/services/connection_service.py`    | Brokerage link/discover/map/reconcile + `sync_brokerage_account` (the one sync path)    |
+| `app/services/connection_service.py`    | The shared ingest of a feed's or a file's rows (`ingest_batch`) and the holdings reconciliation |
+| `app/services/plaid_refresh_service.py` | The daily Plaid refresh: transactions, balances, holdings; records the day before         |
+| `app/services/account_health.py`        | Each account's record: complete, provisional or incomplete, and where to download from    |
 | `app/models/perf.py`                    | The `perf` schema: daily valuation, holdings, prices, corporate actions                  |
 | `app/services/performance_build_service.py` | Rebuilds reconstructed daily rows from trades, prices and cash; `dietz_factor`       |
-| `app/services/daily_capture_service.py` | Captures the brokerage's holdings, cash and total as observed daily rows                 |
+| `app/services/opening_position.py`      | What an account held before its history: worked back, stored as opening trades           |
+| `app/services/daily_capture_service.py` | `record`: stores the institution's holdings, cash and total for a day as observed rows   |
 | `app/services/performance_stats_service.py` | Periods, account activity, drawdowns, risk — all read from daily rows                |
 | `app/services/price_history_service.py` | Daily closes from Webull for held securities and benchmarks                             |
 | `app/services/index_history_service.py` | Daily bars of the market indices (`index_bars`), for research only                        |
@@ -121,7 +116,6 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
 | `app/services/vanguard_report.py`       | Reads Vanguard's activity report; plans and adds only the rows not on file               |
 | `app/services/account_import_service.py` | Upload and import: the template, preview, import and the holdings check, for every door |
-| `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
 | `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
 | `app/md/read.py`                        | What the app may ask market data: the one way in from outside the package                |
 | `app/md/insights.py`                    | Market insights and `TOOLS`, the registry the Research page and a future chatbot call     |
@@ -139,7 +133,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/models/user.py`                    | Logins, sessions, one-time links, shared-account grants                                 |
 | `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
-| `app/cli.py`                            | `python -m app.cli create-advisor` — the first advisor login                            |
+| `app/cli.py`                            | `python -m app.cli create-admin` — the first admin login                            |
 | `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
 | `app/services/account_kind.py`          | An account's kind (taxable, retirement, kids, cash), read from the brokerage's account name |
 | `app/services/account_group_service.py` | A client's own named groups of accounts ("My groups")                                    |
@@ -169,8 +163,7 @@ accident on a machine that lacks them.
   returns. Treated as exploratory, not regression cover: third-party payloads change outside
   our control, so asserting exact values there would make the suite flaky.
 
-Live tests must stay **read-only**. Respect SnapTrade's limits (>=24h between transaction calls
-per account, <=4 background holdings calls per user per day) — never loop them.
+Live tests must stay **read-only** and never loop a third-party API.
 
 ## Dedup Rules (don't bypass)
 
@@ -185,13 +178,30 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 ## Sign-in and Access Rules
 
 - **Every data router is mounted with `dependencies=[Depends(require_access)]`** in `app/main.py`.
-  A new router must be mounted the same way; only sign-in, the link routes and the SnapTrade
-  webhook (`connections.public_router`) are open. Do not add per-handler role checks for data
+  A new router must be mounted the same way; only sign-in, the link routes and the
+  invitation form are open. Do not add per-handler role checks for data
   routes — extend `require_access`, so the rule stays in one place.
-- An advisor may call anything. A client user may only `GET`, and only: `/clients/{their id}`
-  roll-ups, an account they own or were granted (`account_access`) and everything beneath it, and
-  benchmarks. The rule reads `client_id` / `account_id` from the path, so **a route that exposes
-  client data must carry those path parameters** or it is advisor-only.
+- **Three roles** (`models/user.py`). An **admin** is the platform's super user and may call
+  anything. An **advisor** manages the clients assigned to them (`clients.advisor_id`): anything
+  under such a client, the client list and the list of logins (each answered with their own
+  clients only), creating a client (it becomes theirs), adding or moving trades in their clients'
+  sleeves (`/trades/*` checks the sleeve), the strategies' definitions and the shared reference
+  data; never `/admin/*` or strategy performance. Only an admin creates an advisor
+  (`POST /auth/advisors`) or assigns one to a client. A **client** may only `GET`, and only:
+  `/clients/{their id}` roll-ups, an account the guardrails let them see and everything beneath
+  it, and the shared reference data. The rule reads `client_id` / `account_id` from the path, so
+  **a route that exposes client data must carry those path parameters** or it is staff-only.
+  `AuthService.manages` is the one test of whether an admin or advisor may act for a client.
+- **Who sees which accounts is decided by guardrails**, in one place
+  (`AuthService.accounts_for_client`), from `clients.spouse_id` and `guardian_id`: (1) everyone
+  sees what they own; (2) spouses see each other's accounts except those the owner marks private
+  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only); (3) a minor's guardian and
+  the guardian's spouse see every account of the minor, which a minor cannot hide; (4) a minor sees
+  only their own; (5) anything else only when shared (`account_access`). A spouse pair is kept on
+  both sides; a minor has no spouse and cannot add anyone. An admin or advisor sets these
+  (`PUT /clients/{id}/spouse`, `/guardian`, `POST /clients/{id}/relatives`); a client adds and
+  invites their own spouse or minor (`/portal/relatives`). There is no "household" in the model or
+  on screen.
 - Never return a full account number to a client user; use `auth_service.display_name` and
   `last_four`.
 - **A link may be emailed** (`services/mailer.py`, Resend, when `RESEND_API_KEY` and `MAIL_FROM`
@@ -216,8 +226,8 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
   log or return a stored hash.
 - **The portal (`/api/v1/portal`) is the exception to the path rule.** Its routes carry no
-  client id; `deps.portal_viewer` answers for the signed-in client, or for the client an advisor
-  names in `as_client` (ignored from a client user). `PortalService` starts from
+  client id; `deps.portal_viewer` answers for the signed-in client, or for the client an admin
+  (any client) or advisor (their own) names in `as_client` (ignored from a client user). `PortalService` starts from
   `AuthService.accounts_for_client`, so nothing outside the viewer's accounts can be reached, and
   an `account_id` that is not in view is a 404.
 - **Any portal view can be narrowed to a set of accounts** (`account_ids`, repeated): the route
@@ -234,7 +244,7 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an
-  advisor previewing (`as_client`) sees and may change them exactly as the client can: a
+  admin or advisor previewing (`as_client`) sees and may change them exactly as the client can: a
   preview is what the client sees.
 - Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
   come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
@@ -284,6 +294,25 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   rebuilt only up to its last observed day: the next morning's record says what the days after
   were, and a rebuilt day would value written options from their last trade, far from market.
   An account with no daily report is rebuilt to the last market day.
+- **An account opens at what it held before its history** (`services/opening_position.py`).
+  A feed's history reaches back only so far (Plaid two years at most), so
+  `rebuild_account` first calls `OpeningPositionService.refresh`: each security's shares before
+  the first transaction are worked back from the institution's latest recorded holdings (a day
+  the transactions are complete through, `transactions_synced_through`; tried with and without
+  that day's own trades, as a day's holdings can be taken before its trades show), and the cash
+  from the ledger. They are stored as **opening trades**, a buy per security on the market day
+  before the first transaction, priced at the institution's cost where nothing since changed it,
+  else that day's market price, with notes starting `OPENING_NOTE` and ids `OPENING_ID_PREFIX`.
+  That day is the record's first, with nothing moved in and no return, so what was already
+  there is the opening value, never a gain (`PerformanceStatsService._opening` reads a first
+  day with no money moved as the opening). Opening trades are **derived, never fact**: refresh
+  deletes and works them out again every time, so history added later (a sync, a file) moves or
+  removes them, and it re-runs the reconciliation from the stored holdings when they change.
+  Never create or edit one elsewhere. The activity lists, the import's matching and the sync's
+  duplicate check leave them out (`NOT_OPENING`); positions, cost basis, the holdings check and
+  the ledger count them. **Nothing is guessed:** a security working back below zero shares, or
+  cash below zero in an account not owed money, means a transaction is missing; the account
+  opens empty, as before, and the reason is logged.
 - **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
   value or returns. It applies two things on reading and never changes a stored trade: splits,
   and the assignment rule below.
@@ -333,85 +362,123 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   does not. Keep both paths returning the same response shape.
 - Account and client views include cash where a `CashLedger` exists; sleeve and strategy views
   are securities-only.
-- **A cash account earns only its income.** For an account whose kind is `cash`
-  (`account_kind.py`), `rebuild_account` counts every change in the day's balance, less its
+- **A cash account earns only its income.** For an account whose kind is cash-like
+  (`CASH_LIKE`: cash, checking, savings and the owed kinds, `account_kind.py`), `rebuild_account` counts every change in the day's balance, less its
   interest, dividends, fees and tax withheld (`_cash_account_income`), as money in or out. The
   transfers on file are not used for it: for a bank-style account they can be missing or dated a
   day or two from the balance they moved, and the gap would read as a gain or a loss.
 - No return is quoted when no money was ever invested (written options, shorts): `None`, not 0.
 
-## Brokerage Sync Rules
+## Feeds and files
 
-- `sync_brokerage_account()` in `connection_service.py` is the only brokerage sync path. The
-  `/brokerage-accounts/{id}/sync` route, the scheduler job and the webhook handler all call it.
-- At most one transactions pull per account per 24h. The guard lives in the service; only a
-  source-initiated webhook passes `force=True`. Never loop or retry on a 429.
-  The daily job runs at 8am US Eastern and is not held to that guard: it is once a day by its
-  schedule, and a sync by hand the afternoon before must not cost the next morning's run. If the
-  source refuses, the account is reported as `rate_limited` and tried again the next day.
-- **Webhooks** (`connections.public_router`, `ConnectionService.handle_webhook`): the
-  signature is checked over the event written with sorted keys and no spaces, as the source
-  documents, or over the bytes as sent. An event id seen before (`run_log.first_delivery`) is
-  answered `duplicate`, so a redelivery never spends a second pull. The daily job skips an
-  account pulled in the last `SCHEDULED_SKIP_WINDOW`, which is one a webhook has just had
-  pulled. Every event received is noted with `run_log.note_webhook` for System status.
-- Brokerage sleeves use `accounting_method = "FIFO"`. Do not ingest brokerage trades into a
-  `ROUND_TRIP` sleeve, and keep one trade source per sleeve.
-- Sync dedups across **all sleeves of the account** (`dedup_sleeve_ids`), because symbols can
-  be reassigned to other strategy sleeves after ingestion.
-- **Mergers are read as trades** (`snaptrade_connector._to_merger_trade`): shares taken for cash
-  are a sale at the cash per share; shares exchanged for shares are legs priced afterwards by
-  `corporate_actions.carry_exchange_costs` so the cost carries across, and the lot matching
-  moves the lots themselves to the new shares, opening dates included, with nothing closed
-  (`PortfolioCalculationService._share_exchanges`, paired across the account's sleeves); a
-  change of ticker (the same symbol leaving and arriving on one day) is dropped. Their notes start
-  with `MERGER_NOTE`, which is how the rebuild knows they were not at a market price.
-- **Fees on a stock sale** are the gap between the quoted value and `amount`: Vanguard reports
-  `fee` as zero. `rederive` brings the fees of trades already on file up to date.
-- Splits are recorded from the brokerage's rows by `corporate_actions.record_splits`, with the
-  ratio worked out in the shares of the split's own day.
-- **A custodian's own file fills what a feed missed** (`services/vanguard_report.py`, through
-  `services/account_import_service.py`). The feed has skipped whole days and asking again does
-  not bring them back, so the account's owner (`POST /portal/accounts/{id}/imports`) or the
-  advisor (`POST /clients/{client_id}/accounts/{id}/imports`) uploads Vanguard's activity report
-  (Excel or CSV) or Achalara's template (`frontend/public/achalara-activity-template.csv`). A
-  `…/imports/preview` call shows what would change and writes nothing. A row counts as on file
-  on its economics, never on ids (the two share none): side, quantity, price within a cent a
-  share, on the same day and symbol; else within two weekdays (the feed dates option expiries,
-  assignments and their shares a trading day late); else under another spelling of the symbol;
-  an expiry or assignment matches its own contract only; cash matches on amount within 3 days.
-  Sweeps and same-day transfer pairs between the account's cash and margin sides are not
-  activity. Splits and mergers are not read. Added rows are stored in `brokerage_activities`
-  with their cash, under ids starting `vanguard:` (`REPORT_ID_PREFIX`); `rederive` leaves those
-  out, and ingestion recognises a feed trade or cash row that matches one, so a day is never
-  counted twice. **One holdings check** (`AccountImportService.holdings_check`) compares every
-  day the custodian recorded holdings with what the trades add up to and says which differ, when
-  they last agreed and first differed (`last_agreed`, `first_differed`), and where a report should
-  start (`download_from`: the last day they agreed, or 28 days before the first record when even
-  that differs). Options and the feed's "~" names of securities that no longer trade are not
-  compared. It is asked before an upload (`GET …/imports/check`, both doors), shown after one,
-  and System status reads it for its holdings column (`holdings_differ`,
-  `holdings_differ_since`, `download_from`), so all three always agree.
-  The file itself is never kept. A shared account takes no uploads. An advisor
-  previewing a client (`as_client`) sees and may use exactly what the client does.
-- Rows the connector still cannot represent are skipped **and counted**
-  — never dropped silently. Every fetched row, skipped or not, is stored verbatim in
-  `brokerage_activities`; use `ConnectionService.rederive` to re-read them before spending
-  another pull.
-- A synced trade goes to the sleeve already holding its symbol, else the sleeve routed for its
+**A fresh start (2026-11-14).** SnapTrade is retired and nothing it brought in is kept: the
+migration `d1e5c3a8b2f6` removes every client, client login, account and everything recorded for
+them when the deploy starts the backend (advisor logins, strategies, prices, recorded splits,
+market data and invitation requests stay). Clients and accounts are then added afresh: accounts
+through Plaid (below), their earlier history from the custodian's own files.
+
+- `ConnectionService.ingest_batch` is the one way rows reach an account, from a feed or a file:
+  kept verbatim in `brokerage_activities`, routed to the account's sleeves, deduplicated across
+  them (`dedup_sleeve_ids`, since symbols can be moved between sleeves), then splits, positions
+  and the daily record brought up to date.
+- A trade goes to the sleeve already holding its symbol, else the sleeve routed for its
   `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
-  one symbol in two sleeves of an account.
-- **One brokerage account is brought in once**, however many logins reach it (an owner's and an
-  agent's). The source gives each login its own ids for the account, so
-  `ConnectionService.duplicate_of` goes by `account_fingerprint` (brokerage + full number):
-  `map_account` refuses a `same` match and wants `confirmed_distinct` for a `likely` one
-  (brokerage + last four). A second client sees the account through `account_access`, never
-  through a second mapping. The hint names another client's account, so it is sent to
-  advisors only.
-- **A new link belongs to the client whose page started it.** Every link sits under one identity
-  at the source, so `discover` sees them all whichever client it is run for; `start_link`
-  stamps `clients.brokerage_link_started_at` and `discover` files a link seen for the first
-  time under that client, falling back to the client asked about only when none started one.
+  one symbol in two sleeves of an account. Feed sleeves use `accounting_method = "FIFO"`.
+- Rows a reader cannot represent are skipped **and counted**, never dropped silently, and every
+  row is stored verbatim.
+- **A custodian's own file brings the history** (`services/vanguard_report.py`, through
+  `services/account_import_service.py`). The account's owner (`POST /portal/accounts/{id}/imports`)
+  or the advisor (`POST /clients/{client_id}/accounts/{id}/imports`) uploads Vanguard's activity
+  report (Excel or CSV) or Achalara's template (`frontend/public/achalara-activity-template.csv`).
+  A `…/imports/preview` call shows what would change and writes nothing. A row counts as on file
+  on its economics, never on ids: side, quantity, price within a cent a share, on the same day
+  and symbol; else within two weekdays; else under another spelling of the symbol; an expiry or
+  assignment matches its own contract only; cash matches on amount within 3 days. Sweeps and
+  same-day transfer pairs between the account's cash and margin sides are not activity. Added
+  rows are stored under ids starting `vanguard:` (`REPORT_ID_PREFIX`), and ingestion recognises a
+  Plaid trade or cash row that matches one, so a day is never counted twice. **One holdings
+  check** (`AccountImportService.holdings_check`) compares every day the custodian recorded
+  holdings with what the trades add up to and says which differ, when they last agreed and first
+  differed, and where a report should start (`download_from`). Options and "~" names are not
+  compared. It is asked before an upload (`GET …/imports/check`), shown after one, and read by
+  System status and the account's health. The file itself is never kept. A shared account takes
+  no uploads. An admin or advisor previewing a client (`as_client`) sees and may use exactly what the
+  client does.
+- **Splits and mergers are read from the custodian's file** (`vanguard_report.read_rows`). A
+  "Stock split" row (the shares it added) is kept as a `SPLIT` source row whose `payload.units`
+  `corporate_actions.record_splits` turns into a ratio, worked out in the shares held just before
+  on its own day; a split already recorded for that symbol and day is on file. A "Corp Action
+  (Merger)" row is a trade noted `MERGER_NOTE`: shares taken for cash are a sale at the cash per
+  share; a leg of an exchange for other shares is recorded at no price and
+  `corporate_actions.carry_exchange_costs` carries the cost across (lot moves in
+  `PortfolioCalculationService._share_exchanges`). A merger row with no symbol takes the symbol
+  another row of the report gives the same company. A merger leg on file matches its row whatever
+  its price, since carrying the cost changed it. **Plaid's splits and mergers are not read yet**:
+  none has been seen in real data; the account's health flags the difference until one is.
+
+## Linking with Plaid
+
+A client adds their own accounts through Plaid (`connectors/plaid_connector.py`,
+`connectors/plaid_reader.py`, `services/plaid_link_service.py`, routes under
+`/portal/links/plaid`). One developer account (`PLAID_CLIENT_ID`, `PLAID_SECRET`) serves every
+client; each login a client links is a `brokerage_connections` row with `source = "plaid"` and
+its accounts are `brokerage_accounts` rows. Rules:
+
+- **The access key is stored only encrypted** (`access_token_enc`, `utils/secret_box.py`, key
+  `PLAID_TOKEN_KEY`). Never log it, return it, or keep it anywhere else.
+- **An account's identity is its own id; a link is Plaid's ids.** Institution and last four
+  (Plaid's `mask`, the real last four) are clues, never unique. `account_fingerprint` is not set
+  for Plaid: it needs the full number, which Plaid does not give for investments.
+- **Matching needs evidence and a person.** Candidates are only the client's own and shared
+  accounts. "same" needs exactly one candidate agreeing on institution and last four *and* on
+  holdings (symbol by symbol) or the observed balance to the cent; agreeing on less is "choose";
+  nothing is "new". Nothing is linked until `confirm`.
+- **Two feeds never write to one account.** Linking an account another link already feeds is
+  refused (409): a second Plaid login gives the same transactions ids of its own, so it would
+  count them twice. Repairing a login that needs signing in again is to come (update mode).
+- **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
+  the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
+  day late) with the total moved to match; same-day internal transfer pairs and sweeps are not
+  activity; bank and card rows are money in or out, with interest and bank fees their own
+  types. A card's or loan's balance is stored negative (`account_kind.OWED`), so totals are net
+  worth.
+- **Every link asks for two years of transactions** (`TRANSACTION_DAYS`, Plaid's most). Plaid
+  gives 90 days otherwise, and it can only be asked for when a login is linked.
+- **The plan's limit:** every Plaid login ever linked counts (`PLAID_MAX_LOGINS`, the trial's
+  10); `start` refuses at the limit and the dialog warns when two or fewer are left.
+- A feed records an account's day through `DailyCaptureService.record` (holdings with their
+  prices, cash, total), which reconciles and rebuilds.
+- **The daily refresh** (`services/plaid_refresh_service.py`, job `plaid_refresh`, 6:30 AM US
+  Eastern Tuesday to Saturday) records the **day before** for every mapped account: an
+  early-morning balance is where the previous day ended, so a weekend's movements land in
+  Monday's record and no recorded day is rewritten. Bank and card rows come through
+  `/transactions/sync` from the login's `transactions_cursor`, saved only once all it handed
+  back is on file; a changed row is changed in place and a removed one (or one gone back to
+  pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
+  `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
+  and skipped until repaired; one failing login never stops the rest.
+- **Repairing a login** (`PlaidLinkService.repair_start` / `repaired`, routes
+  `/portal/links/plaid/{id}/repair` and `/repaired`): Plaid Link opens in update mode for the
+  same login (a link token made with its access key), so no new place on the plan is used and its
+  transaction ids, and so its history, carry on. Afterwards Plaid is asked whether the login reads
+  again; if so it is `active` again and refreshed at once. Only the login's owner can repair it.
+  `/portal/accounts` says which accounts wait on it (`needs_sign_in`, and `login_id` for the
+  owner); the Dashboard asks the owner to sign in again and tells anyone else whose login it is.
+- Tests never reach Plaid: they pass a fake client to `PlaidLinkService` / `PlaidRefreshService`.
+
+## How far a record can be trusted
+
+`services/account_health.py` gives every account one state, on `/portal/accounts` as `health`:
+**complete**, **provisional** (a difference in the last `SETTLE_DAYS` that may clear as
+transactions post) or **incomplete** (a transaction is missing), with plain reasons and
+`download_from`. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
+written by `OpeningPositionService.refresh`), the holdings check, and `cash_check`, which compares
+each day the institution recorded cash with what the history works back to. The record is worked
+back from today, so the latest day always agrees and an earlier day that differs means a movement
+after it is missing; every day before it is out by that amount, so **an opening is never worked
+back through a cash difference**. The rail marks an incomplete account, the Dashboard says which
+to repair and from when, and System status lists it (alert wording names no account). Nothing
+here changes a figure; **no nudge may be built on an account that is not complete.**
 
 ## Market data: the `md` schema
 
@@ -563,9 +630,9 @@ only the wording `StatusService` marks as safe: a "needs a look" line that names
 account must be added with an `alert=` twin that does not. Never log the bot token; it is part
 of the address the message is posted to.
 
-A brokerage link's state is only as fresh as the last time the source was asked.
-`ConnectionService.check_links` asks (every six hours, and from the page's "Check now") and
-records `status_checked_at` and `disabled_at`; the stored `status` alone can be days out of date.
+A Plaid login's state is as fresh as its last morning refresh, which records
+`status_checked_at`, and `disabled_at` when Plaid says the login needs signing in again. Each
+account with an incomplete record is a "needs a look" line (`account_health`).
 
 ## What "Done" Looks Like
 

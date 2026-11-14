@@ -1,25 +1,23 @@
 import { useEffect, useState } from 'react'
-import { useChangeSignInEmail, useEmailLink, useInviteClient, usePasswordReset, useUsers } from '@/hooks/useAuth'
+import { useChangeSignInEmail, useInviteClient, usePasswordReset, useUsers } from '@/hooks/useAuth'
 import { formatDate } from '@/lib/formatters'
 import type { LinkResponse } from '@/api/types'
+import { OneTimeLink } from './OneTimeLink'
 
 /**
- * Advisor's view of one client's login: its state, the email it signs in
- * with (the advisor's to set and to change), and the link to pass on.
+ * Staff's view of one client's login: its state, the email it signs in with
+ * (staff's to set and to change), and the link to pass on. An advisor's list of
+ * logins holds their own clients' only, which is all this page needs.
  */
-export function ClientLoginSection({ clientId, clientEmail }: { clientId: string; clientEmail: string }) {
+export function ClientLoginSection({ clientId, clientEmail }: { clientId: string; clientEmail: string | null }) {
   const { data: users, isLoading, isError } = useUsers()
   const invite = useInviteClient()
   const reset = usePasswordReset()
   const changeEmail = useChangeSignInEmail()
   const [link, setLink] = useState<LinkResponse | null>(null)
-  const [copied, setCopied] = useState(false)
-  const emailLink = useEmailLink()
-  // What became of emailing the link on screen: nothing yet, sent, or not accepted.
-  const [emailed, setEmailed] = useState<'sent' | 'failed' | null>(null)
 
   const user = users?.find((u) => u.client_id === clientId)
-  const current = user?.email ?? clientEmail
+  const current = user?.email ?? clientEmail ?? ''
   const [email, setEmail] = useState(current)
   // Follow the login once it loads or its address changes on the server.
   useEffect(() => setEmail(current), [current])
@@ -31,8 +29,7 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
   const error = invite.error ?? reset.error ?? changeEmail.error
 
   const run = async (make: () => Promise<LinkResponse>) => {
-    setCopied(false)
-    setEmailed(null)
+    setLink(null)
     invite.reset(); reset.reset(); changeEmail.reset()
     try {
       setLink(await make())
@@ -46,23 +43,6 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
     if (!user) return run(() => invite.mutateAsync({ clientId, email: typed }))
     if (changed) return run(() => changeEmail.mutateAsync({ userId: user.id, email: typed }))
     return run(() => (user.has_password ? reset.mutateAsync(user.id) : invite.mutateAsync({ clientId })))
-  }
-
-  const url = link ? `${window.location.origin}${link.path}` : ''
-  const copy = async () => {
-    await navigator.clipboard.writeText(url)
-    setCopied(true)
-  }
-
-  // A link is a way in, so the address is put in front of the advisor before it goes.
-  const send = async () => {
-    if (!link) return
-    if (!window.confirm(`Email this link to ${link.email}?\n\nWhoever opens it can set the password for this client's login.`)) return
-    try {
-      setEmailed((await emailLink.mutateAsync(link.token)).sent ? 'sent' : 'failed')
-    } catch {
-      setEmailed('failed')
-    }
   }
 
   let status = 'No login yet. Create an invite link and send it to the client.'
@@ -102,31 +82,7 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
       </p>
       {error && <p className="text-loss text-xs mt-3">{error.message}</p>}
 
-      {link && (
-        <div className="mt-16 p-16 bg-mist/40 rounded-btn space-y-2">
-          <p className="text-xs text-stone">
-            Send this link to {link.email}. It works once and expires {formatDate(link.expires_at)}. It is
-            not shown again.
-          </p>
-          <div className="flex items-center gap-2">
-            <input readOnly value={url} aria-label="One-time link" onFocus={(e) => e.target.select()}
-              className="flex-1 min-w-0 border border-stone/30 rounded-btn px-2 py-1.5 text-xs font-mono bg-surface" />
-            <button onClick={copy} className="shrink-0 px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep">
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-            {link.can_email && (
-              <button onClick={send} disabled={emailLink.isPending || emailed === 'sent'}
-                className="shrink-0 px-3 py-1.5 border border-pine text-pine text-xs rounded-btn hover:bg-pine hover:text-on-dark transition-colors disabled:opacity-50">
-                {emailLink.isPending ? 'Sending…' : emailed === 'sent' ? 'Emailed' : 'Email it'}
-              </button>
-            )}
-          </div>
-          {emailed === 'sent' && <p className="text-xs text-gain">Sent to {link.email}.</p>}
-          {emailed === 'failed' && (
-            <p className="text-xs text-loss">The email could not be sent. Copy the link and pass it on yourself.</p>
-          )}
-        </div>
-      )}
+      {link && <OneTimeLink link={link} whose="this client's login" />}
     </section>
   )
 }

@@ -2,7 +2,9 @@
 
 export type TradeAction = 'BUY' | 'SELL'
 
-export type UserRole = 'advisor' | 'client'
+/** admin: the platform's super user. advisor: the clients assigned to them. client: their own accounts
+ * and what the guardrails let them see (a spouse's, a minor's). */
+export type UserRole = 'admin' | 'advisor' | 'client'
 export interface LoginRequest { email: string; password: string }
 /** An account a client user may view; never carries a full account number */
 export interface VisibleAccount {
@@ -14,7 +16,7 @@ export interface VisibleAccount {
 export interface MeResponse {
   id: string; email: string; name: string; role: UserRole
   client_id: string | null
-  /** Empty for an advisor, who sees every account */
+  /** Empty for an admin or advisor, who reach accounts through their clients */
   accounts: VisibleAccount[]
 }
 export interface UserResponse {
@@ -42,9 +44,20 @@ export interface AccountAccessResponse {
   client_id: string; account_id: string; account_name: string
   owner_client_id: string; owner_name: string
 }
-export interface ClientCreate { name: string; email: string }
-/** Only what is changing; `email` is the contact email, not the sign-in one */
-export interface ClientUpdate { name?: string; email?: string }
+/** `email` may be left out (a minor may have none); `advisor_id` counts only from an admin.
+ * An advisor's new client is theirs. */
+export interface ClientCreate { name: string; email?: string | null; advisor_id?: string | null }
+/** Only what is changing; `email` is the contact email, not the sign-in one.
+ * `advisor_id` is an admin's alone to send; null leaves the client with no advisor. */
+export interface ClientUpdate { name?: string; email?: string; advisor_id?: string | null }
+/** A client's spouse, or a minor in their (or their spouse's) care */
+export type Relation = 'spouse' | 'minor'
+export interface Relative {
+  id: string; name: string; email: string | null; relation: Relation
+  /** Whether they have a login (invited or signed in) */
+  has_login: boolean
+}
+export interface RelativeCreate { name: string; relation: Relation; email?: string | null }
 export type InvitationStatus = 'new' | 'contacted' | 'dismissed'
 /** What the public page's form sends; `website` is the hidden field a person leaves empty */
 export interface InvitationRequestCreate {
@@ -57,7 +70,12 @@ export interface InvitationRequest {
   status: InvitationStatus; created_at: string; handled_at: string | null
 }
 export interface ClientResponse {
-  id: string; name: string; email: string
+  id: string; name: string; email: string | null
+  /** The advisor login managing this client, if any */
+  advisor_id: string | null
+  spouse_id: string | null
+  /** Set for a minor: the adult client responsible for them */
+  guardian_id: string | null
   created_at: string; updated_at: string
 }
 
@@ -255,8 +273,6 @@ export interface BenchmarkResponse {
 export type ConnectionStatus = 'active' | 'broken' | 'deleted'
 export type BrokerageAccountStatus = 'unmapped' | 'mapped' | 'ignored'
 
-export interface LinkResponse { redirect_url: string; expires_in_seconds: number }
-
 export interface ReconciliationDrift {
   symbol: string; brokerage_quantity: number; derived_quantity: number
   difference: number; awaiting_transactions: boolean
@@ -359,10 +375,26 @@ export type SecurityGroup = 'stock' | 'etf' | 'option' | 'other'
 
 export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy_name: string }
 /** What kind of account it is, read from the brokerage's name for it */
-export type AccountKind = 'taxable' | 'retirement' | 'kids' | 'cash'
+export type AccountKind =
+  | 'taxable' | 'retirement' | 'kids' | 'cash' | 'checking' | 'savings'
+  | 'credit_card' | 'mortgage' | 'car_loan' | 'loan'
+/** complete; provisional: recent transactions still posting; incomplete: one is missing */
+export interface AccountHealth {
+  state: 'complete' | 'provisional' | 'incomplete'
+  reasons: string[]
+  /** Where a download from the institution should start to repair it */
+  download_from?: string | null
+}
 export interface PortalAccount extends VisibleAccount {
   owner_name: string
   kind: AccountKind
+  /** A card or loan: its value is what is owed, negative */
+  owed: boolean; institution: string | null
+  /** Its Plaid login needs the owner to sign in again; `login_id` is set only for the owner */
+  needs_sign_in?: boolean
+  login_id?: string | null
+  /** How far its record can be trusted; figures on an incomplete account are not */
+  health?: AccountHealth | null
   /** The account now: holdings at live prices, options and cash as last reported;
    * what the Holdings view's account tile shows. `priced_at` is when prices were fetched. */
   value: number | null; priced_at: string | null
@@ -371,12 +403,15 @@ export interface PortalAccount extends VisibleAccount {
   /** The institution the figures come from, and its last transactions sync */
   source: string | null; synced_at: string | null
   sleeves: PortalSleeve[]
+  /** The owner keeps it from their spouse; a minor's guardians still see it */
+  is_private: boolean
 }
 /** One of the client's own named groups of accounts */
 export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
 export interface PortalAccountsResponse {
-  /** `preview` is true when an advisor is looking at this client's portal */
-  viewer: { client_id: string; name: string; preview: boolean }
+  /** `preview` is true when an admin or advisor is looking at this client's portal.
+   * A minor (`is_minor`) sees only their own accounts and cannot add family. */
+  viewer: { client_id: string; name: string; preview: boolean; is_minor: boolean }
   accounts: PortalAccount[]
 }
 
@@ -796,7 +831,8 @@ export interface RsIndices { indices: RsIndex[]; notes: string[] }
 // ── Upload and import ─────────────────────────────────────────────────────
 // A custodian's file read against one account: what it would add, then what it did.
 
-export interface ImportTrade { action: TradeAction; symbol: string; quantity: number; price: number }
+/** `SPLIT` is a stock split, as the shares it added (`quantity`); its ratio is worked out on import */
+export interface ImportTrade { action: TradeAction | 'SPLIT'; symbol: string; quantity: number; price: number }
 /** `amount` is positive for money received */
 export interface ImportCash { type: string; symbol: string | null; amount: number }
 export interface ImportDay { date: string; trades: ImportTrade[]; cash: ImportCash[] }
@@ -813,6 +849,8 @@ export interface ImportPreview {
   account_id: string
   file_kind: 'vanguard_activity' | 'template'
   rows: number; first_date: string | null; last_date: string | null
+  /** The first day of the account's history here before this file */
+  history_starts?: string | null
   on_file_trades: number; on_file_cash: number
   /** Recognised although dated a trading day later (option expiries and assignments) */
   on_file_a_day_later: number
@@ -830,3 +868,28 @@ export interface ImportResult extends ImportPreview {
   /** Our holdings against the custodian's last recorded ones; null when none are on file */
   check: HoldingsCheck | null
 }
+
+// ── Linking with Plaid ────────────────────────────────────────────────────
+
+export interface PlaidLinkAvailability { available: boolean; logins_left: number }
+export interface PlaidLinkStart { link_token: string; expiration: string | null; logins_left: number }
+export interface PlaidCandidate {
+  account_id: string; name: string; last_four: string | null; shared: boolean
+  relinked: boolean; same_last_four: boolean; same_institution: boolean
+  /** null: no holdings on one side to compare */
+  same_holdings: boolean | null; same_balance: boolean
+}
+export interface PlaidFoundAccount {
+  link_id: string; name: string; mask: string | null
+  plaid_type: string | null; plaid_subtype: string | null
+  kind: AccountKind; owed: boolean; balance: number | null
+  status: 'unmapped' | 'mapped' | 'matched' | 'ignored'
+  proposal: 'same' | 'choose' | 'new'; account_id: string | null
+  candidates: PlaidCandidate[]
+}
+export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
+export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
+export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }
+
+/** After signing in again: `active` once Plaid reads the login again */
+export interface PlaidRepaired { status: 'active' | 'needs signing in' }

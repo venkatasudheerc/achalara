@@ -1,21 +1,11 @@
 import { Link } from 'react-router-dom'
-import { useCheckBrokerageLinks, useSendTestAlert, useSystemStatus } from '@/hooks/useAdmin'
+import { useSendTestAlert, useSystemStatus } from '@/hooks/useAdmin'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatDate, formatNumber } from '@/lib/formatters'
 import type { StatusJob, SystemStatusResponse } from '@/api/types'
 import { Dot, Section, Tile, bytes, distance, mono, td, th, when, type Tone } from './parts'
 
-const WEBHOOK_OUTCOME: Record<string, string> = {
-  synced: 'Pulled the account’s new transactions',
-  captured: 'Recorded the account’s holdings for the day',
-  discovered: 'Read the link’s accounts again',
-  status_updated: 'Updated the link’s state',
-  ignored: 'Nothing to do',
-  duplicate: 'Already handled; a repeat delivery',
-  rejected: 'Refused: the signature did not match',
-  failed: 'Could not be handled; see warnings below',
-}
 
 function jobTone(job: StatusJob): Tone {
   return job.last_ok === false ? 'attention' : job.last_ok === true ? 'ok' : 'quiet'
@@ -78,23 +68,21 @@ function Alerts({ on }: { on: boolean }) {
 }
 
 function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
-  const check = useCheckBrokerageLinks()
   return (
     <section className="bg-surface border border-stone/20 rounded-card">
       <div className="px-6 py-4 border-b border-stone/15">
         <h2 className="text-sm font-medium text-summit-ink">Brokerage links</h2>
         <p className="text-xs text-stone mt-0.5">
-          Whether each brokerage is still sharing data. Checked every six hours, and when you ask.
+          Whether each Plaid login is still sharing data, as of its last morning refresh.
         </p>
       </div>
-      {check.isError && <p className="px-6 pt-3 text-xs text-loss">Could not check: {check.error.message}</p>}
       <div className="overflow-x-auto">
         {status.brokerage_links.length === 0 ? <p className="px-6 py-6 text-sm text-stone">No brokerage is linked yet.</p> : (
           <table className="w-full min-w-[720px] border-collapse">
             <thead>
               <tr>
                 <th className={th}>Brokerage</th><th className={th}>State</th><th className={th}>Last checked</th>
-                <th className={th}>Accounts</th><th className={th}>Managed from</th><th className={th} />
+                <th className={th}>Accounts</th><th className={th}>Managed from</th>
               </tr>
             </thead>
             <tbody>
@@ -110,7 +98,7 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
                       </span>
                       {!active && (
                         <div className="text-xs text-stone mt-1">
-                          {link.disabled_at ? `Since ${when(link.disabled_at)}. ` : ''}Sign in to it again from the client’s page.
+                          {link.disabled_at ? `Since ${when(link.disabled_at)}. ` : ''}Its owner needs to sign in to it again.
                         </div>
                       )}
                     </td>
@@ -123,12 +111,6 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
                       <Link to={`/app/clients/${link.client_id}`} className="text-pine underline underline-offset-2">
                         {link.client ?? 'Client'}
                       </Link>
-                    </td>
-                    <td className={`${td} text-right`}>
-                      <button type="button" onClick={() => check.mutate(link.id)} disabled={check.isPending}
-                        className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-pine whitespace-nowrap">
-                        {check.isPending && check.variables === link.id ? 'Checking…' : 'Check now'}
-                      </button>
                     </td>
                   </tr>
                 )
@@ -280,25 +262,6 @@ export function StatusPage() {
         </table>
       </Section>
 
-      <Section title="Notices from the brokerage source"
-        sub="What SnapTrade has told the app since it last started, newest first, and what the app did. Empty until its webhook is set up.">
-        {status.webhooks.length === 0 ? <p className="px-6 py-6 text-sm text-stone">None received.</p> : (
-          <table className="w-full min-w-[520px] border-collapse">
-            <thead><tr><th className={th}>When</th><th className={th}>Notice</th><th className={th}>What the app did</th></tr></thead>
-            <tbody>
-              {status.webhooks.map((notice, i) => (
-                <tr key={`${notice.at}:${i}`} className="border-t border-stone/10">
-                  <td className={mono}>{when(notice.at)}</td>
-                  <td className={mono}>{notice.event}</td>
-                  <td className={`${td} ${notice.outcome === 'rejected' || notice.outcome === 'failed' ? 'text-loss' : ''}`}>
-                    {WEBHOOK_OUTCOME[notice.outcome] ?? notice.outcome}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
 
       <Section title="Recent warnings and errors" sub="Since the app last started, newest first. The server's own log holds the full record.">
         {status.recent_log.length === 0 ? <p className="px-6 py-6 text-sm text-stone">None.</p> : (

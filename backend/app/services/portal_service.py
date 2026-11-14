@@ -22,9 +22,11 @@ from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services import benchmarks
-from app.services.account_kind import account_kind
+from app.services.account_kind import OWED, kind_of
 from app.services.auth_service import AuthService, display_name, last_four
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, option_event
+from app.services.opening_position import NOT_OPENING
+from app.services.account_health import account_health
 from app.services.live_quotes import live_quotes
 from app.services.performance_stats_service import Day, PerformanceStatsService
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -300,10 +302,11 @@ class PortalService:
         ids = [account.id for account, _ in self.visible]
         reported = {account_id: self._last_reported(account_id) for account_id in ids}
         live, priced_at = self.live_values()
+        # The feed writing to each account now (a link set aside is not one).
         links = {
             link.account_id: link
             for link in self.db.query(BrokerageAccount).filter(
-                BrokerageAccount.account_id.in_(ids)
+                BrokerageAccount.account_id.in_(ids), BrokerageAccount.status == "mapped"
             )
         }
 
@@ -313,7 +316,19 @@ class PortalService:
         return [
             {
                 **self._account_fields(account, shared),
-                "kind": account_kind(account.name),
+                "kind": kind_of(account),
+                "owed": kind_of(account) in OWED,
+                "institution": account.institution,
+                "is_private": bool(account.is_private),
+                "needs_sign_in": account.id in links
+                and links[account.id].status == "mapped"
+                and links[account.id].connection.status == "broken",
+                # Only the login's owner can sign in to it again.
+                "login_id": links[account.id].connection_id
+                if account.id in links and not shared
+                else None,
+                # How far its record can be trusted; screens and nudges read it.
+                "health": account_health(self.db, account),
                 "value": live.get(account.id),
                 "priced_at": priced_at,
                 "recorded_value": money(reported[account.id].total_value)
@@ -821,7 +836,7 @@ class PortalService:
         if not by_sleeve:
             return empty
 
-        filters = [Trade.sleeve_id.in_(list(by_sleeve))]
+        filters = [Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING]
         if start:
             filters.append(Trade.trade_date >= start)
         if end:
@@ -958,7 +973,7 @@ class PortalService:
 
         trades: List[Trade] = []
         if by_sleeve and show in ("all", "trades"):
-            filters = [Trade.sleeve_id.in_(list(by_sleeve))]
+            filters = [Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING]
             if start:
                 filters.append(Trade.trade_date >= start)
             if end:
@@ -1731,7 +1746,7 @@ class PortalService:
             return []
         trades = (
             self.db.query(Trade)
-            .filter(Trade.sleeve_id.in_(list(by_sleeve)))
+            .filter(Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING)
             .order_by(Trade.trade_date.desc(), Trade.id)
             .limit(limit)
         )

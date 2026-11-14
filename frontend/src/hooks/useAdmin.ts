@@ -29,14 +29,6 @@ export function useSendTestAlert() {
   return useMutation({ mutationFn: () => adminApi.testAlert() })
 }
 
-export function useCheckBrokerageLinks() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (connectionId?: string) => adminApi.checkLinks(connectionId),
-    onSuccess: (status) => qc.setQueryData(['admin', 'status'], status),
-  })
-}
-
 export function useSyncLogs(clientId: string, skip = 0, limit = 50) {
   return useQuery({
     queryKey: adminKeys.syncLogs(clientId, skip),

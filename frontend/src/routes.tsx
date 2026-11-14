@@ -24,6 +24,7 @@ import { RequireAuth } from '@/features/auth/RequireAuth'
 import { HomeShell, MorePage } from '@/features/home/HomeShell'
 import { LandingPage } from '@/features/home/LandingPage'
 import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
+import { FamilyPage } from '@/features/home/FamilyPage'
 
 /** Where each of the old portal's pages now lives in the new app. */
 const OLD_PORTAL: Record<string, string> = {
@@ -32,7 +33,7 @@ const OLD_PORTAL: Record<string, string> = {
   markets: '/home/research', research: '/home/research',
 }
 
-/** An old `/portal/...` address: the same page in the new app, keeping an advisor's `?as=`. */
+/** An old `/portal/...` address: the same page in the new app, keeping a staff preview's `?as=`. */
 function OldPortalRedirect() {
   const { pathname, search } = useLocation()
   const page = pathname.replace(/^\/portal\/?/, '').split('/')[0]
@@ -62,7 +63,8 @@ export function AppRoutes() {
       <Route path="/invite/:token" element={<AcceptLinkPage />} />
       <Route path="/reset/:token" element={<AcceptLinkPage />} />
       <Route path="/request-invitation/confirm/:token" element={<ConfirmInvitationPage />} />
-      <Route element={<RequireAuth role="advisor" />}>
+      {/* The workspace: an admin sees everything, an advisor their own clients. */}
+      <Route element={<RequireAuth role="staff" />}>
         <Route path="/app" element={<AppShell />}>
           <Route index element={<Navigate to="performance" replace />} />
           <Route path="performance" element={<PerformancePage />} />
@@ -71,13 +73,16 @@ export function AppRoutes() {
           <Route path="clients/:clientId/accounts/:accountId" element={<AccountDetailPage />} />
           <Route path="clients/:clientId/accounts/:accountId/sleeves/:sleeveId" element={<SleeveDetailPage />} />
           <Route path="strategies" element={<StrategiesPage />} />
-          <Route path="imports" element={<ImportsPage />} />
-          <Route path="requests" element={<RequestsPage />} />
-          <Route path="status" element={<StatusPage />} />
           <Route path="markets" element={<ResearchPage forAdvisor />} />
           <Route path="research" element={<Navigate to="/app/markets" replace />} />
-          <Route path="market-data" element={<MarketDataPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          {/* The platform's own pages: the admin's alone (the API refuses them to an advisor). */}
+          <Route element={<RequireAuth role="admin" />}>
+            <Route path="imports" element={<ImportsPage />} />
+            <Route path="requests" element={<RequestsPage />} />
+            <Route path="status" element={<StatusPage />} />
+            <Route path="market-data" element={<MarketDataPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="risk" element={<RiskPage />} />
           <Route path="grow" element={<GrowPage />} />
@@ -89,6 +94,7 @@ export function AppRoutes() {
           <Route path="plan" element={<PlanPage />} />
           <Route path="tax" element={<TaxPage />} />
           <Route path="research" element={<HomeResearch />} />
+          <Route path="family" element={<FamilyPage />} />
           <Route path="more" element={<MorePage />} />
         </Route>
         {/* The old portal's addresses, kept for bookmarks: each opens the matching place in the new app. */}
