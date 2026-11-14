@@ -46,7 +46,10 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 
 ### Routing
 
-`/login`, `/invite/:token` and `/reset/:token` are open. Everything else sits under
+There is no public front page: `/` (and any unknown address) opens `/login`, whose "Request an
+invitation" link is the way in for someone new. `/login`, `/request-invitation`,
+`/request-invitation/confirm/:token`, `/invite/:token` and `/reset/:token` are open, all in the
+sign-in look (`AuthFrame`). Everything else sits under
 `<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the advisor workspace at `/app/*`,
 **the new app at `/home/*`** (where a client lands after signing in). The old client portal is
 retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
@@ -153,7 +156,7 @@ Each feature directory contains its page component(s). Implemented:
 - `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
-- `invitations/RequestInvitationForm` (on the public page: name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
+- `invitations/RequestInvitationPage` (`/request-invitation`, in `AuthFrame` beside sign-in) holding `invitations/RequestInvitationForm` ( name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public, in `AuthFrame`; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
 - `status/StatusPage` (`/app/status`) — system status for the advisor: what needs a look, daily jobs, brokerage accounts, data freshness, backup, notices received from the brokerage source, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
 - `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
@@ -274,7 +277,6 @@ Rules that keep both themes working:
   (set under `textColor` / `borderColor` in the config); the `bg-*` of the same names are not.
 - **Charts take colours from `useChartColours()`** (`src/context/ThemeContext.tsx`), not from
   hex literals: Recharts writes into SVG attributes, where CSS variables do not resolve.
-- The marketing page (`features/HomePage`) is dark in both themes. Its top bar has "Sign in"; the way in for someone new is "Request an invitation".
 - In dark the page is the brand's mid green; the near-black green is for `chrome` only.
 - **The headline card** (`<Card dark>`, `StatCard highlight`): a dark-green card in light mode;
   in dark mode an ordinary card with a gold outline (`dark:bg-surface dark:border-gold/70`).

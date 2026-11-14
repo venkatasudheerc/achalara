@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useLogin, useMe } from '@/hooks/useAuth'
 import { homeFor } from '@/features/auth/RequireAuth'
 import { AuthFrame, authInput, authLabel, authSubmit } from '@/features/auth/AuthFrame'
@@ -70,6 +70,10 @@ export function LoginPage() {
         </button>
         <p className="text-sm text-stone leading-relaxed">
           Forgot your password? Ask your Achalara contact for a reset link.
+        </p>
+        <p className="text-sm text-stone leading-relaxed">
+          New to Achalara?{' '}
+          <Link to="/request-invitation" className="text-pine underline underline-offset-2">Request an invitation</Link>
         </p>
       </form>
     </AuthFrame>
