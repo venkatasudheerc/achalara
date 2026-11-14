@@ -3,7 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, Responsiv
 import type { PortalAccount } from '@/api/types'
 import { usePortalPerformance } from '@/hooks/usePortal'
 import { useChartColours } from '@/context/ThemeContext'
-import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { KINDS, type Selection } from './selection'
@@ -49,6 +49,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   const total = accounts.reduce((t, a) => t + (a.value ?? 0), 0)
   const allCash = accounts.every((a) => a.kind === 'cash')
   const latest = accounts.map((a) => a.as_of).filter(Boolean).sort().pop()
+  const priced = accounts.map((a) => a.priced_at).filter(Boolean).sort().shift()
 
   const summary = data?.summary
   const change = summary ? summary.closing_value - summary.opening_value : null
@@ -63,7 +64,8 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
     <div className="flex flex-col gap-[28px]">
       <section aria-label="Summary" className="flex flex-col gap-[10px]">
         <span className="text-[14px] text-stone">
-          {one?.source ? `From ${one.source}` : 'Up to date'}{latest ? ` · as of ${formatDate(latest)}` : ''}
+          {priced ? `At prices of ${formatTime(priced)}` : 'At the last reported prices'}
+          {latest ? ` · holdings and cash as ${one?.source ?? 'your institution'} reported them on ${formatDate(latest)}` : ''}
         </span>
         <h1 className="font-display text-[30px] md:text-[40px] leading-[1.15]">
           {lead} <span className="text-pine tabular-nums">{formatCurrency(total)}</span>

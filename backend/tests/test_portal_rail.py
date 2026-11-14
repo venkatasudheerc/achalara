@@ -13,7 +13,8 @@ from app.services.account_group_service import AccountGroupService
 from app.services.account_kind import CASH, KIDS, RETIREMENT, TAXABLE, account_kind
 from tests.test_portal import _browser_for, maya, world  # noqa: F401  (fixtures)
 
-ACCOUNTS = "/api/v1/portal/accounts"
+PORTAL = "/api/v1/portal"
+ACCOUNTS = f"{PORTAL}/accounts"
 GROUPS = "/api/v1/portal/groups"
 
 
@@ -78,12 +79,25 @@ def test_accounts_carry_owner_kind_last_value_and_source(maya, db, world):  # no
 
     brokerage, ira = accounts["Brokerage"], accounts["Rollover IRA"]
     assert brokerage["owner_name"] == "Maya Rao" and brokerage["kind"] == TAXABLE
-    assert (brokerage["value"], brokerage["cash"]) == (5100, 250)
+    assert (brokerage["recorded_value"], brokerage["cash"]) == (5100, 250)
     assert brokerage["as_of"] == "2026-11-03"
+    # The value now is what the Holdings view's tile adds up to: holdings at
+    # live prices (the price on file here), options and cash as last reported.
+    held = maya.get(f"{PORTAL}/positions").json()
+    tile = sum(
+        p["market_value"] for p in held["positions"]
+        if p["account_id"] == world["brokerage"].id and p["market_value"] is not None
+    ) + sum(
+        (b["options_value"] or 0) + (b["cash_value"] or 0)
+        for b in held["account_balances"] if b["account_id"] == world["brokerage"].id
+    )
+    assert brokerage["value"] == pytest.approx(tile)
     assert brokerage["source"] == "Example Brokerage"
     # No record yet, no link: the fields are empty rather than invented.
     assert ira["kind"] == RETIREMENT
-    assert ira["value"] is None and ira["source"] is None
+    assert ira["recorded_value"] is None and ira["source"] is None
+    # With nothing recorded, its value now is what it holds.
+    assert ira["value"] == pytest.approx(1040)
 
 
 def test_a_shared_account_names_its_owner(maya, db, world):  # noqa: F811
@@ -214,3 +228,58 @@ def test_an_advisor_previewing_sees_and_changes_the_groups_as_the_client_does(
     assert changed.status_code == 201
     # The group is the client's: the client sees it.
     assert "Advisor's" in [g["name"] for g in AccountGroupService(db, world["maya"].id).list()]
+
+
+def test_an_account_of_options_and_cash_values_its_options_as_the_custodian_does(
+    maya, db, world  # noqa: F811
+):
+    """The custodian lists no holdings for an account holding only options; its
+    securities total is then the options' value, not their last trade."""
+    from app.models.account import Account
+    from app.models.sleeve import Sleeve
+    from tests.test_portal import _trade
+
+    account = Account(client_id=world["maya"].id, name="Options IRA")
+    db.add(account)
+    db.flush()
+    sleeve = Sleeve(account_id=account.id, strategy_id=world["growth"].id)
+    db.add(sleeve)
+    db.flush()
+    _trade(db, sleeve, date(2026, 9, 1), "BUY", 2, 300, "ZZZ270115C00020000", "OPTION")
+    _valuation(db, account, date(2026, 11, 3), 1500, 500)  # 1,000 of options, 500 cash
+    db.commit()
+
+    held = maya.get(f"{PORTAL}/positions").json()
+    balance = next(b for b in held["account_balances"] if b["account_id"] == account.id)
+    assert balance["options_value"] == pytest.approx(1000)
+    rail = next(a for a in maya.get(ACCOUNTS).json()["accounts"] if a["id"] == account.id)
+    assert rail["value"] == pytest.approx(1500)
+
+
+def test_a_report_listing_no_holdings_means_the_account_holds_none(maya, db, world):  # noqa: F811
+    """The shares sold since the custodian's last list are not held: a later
+    report that lists nothing replaces that list, it does not fall back to it."""
+    from app.models.account import Account
+    from app.models.perf import DailyHolding
+    from app.models.sleeve import Sleeve
+    from tests.test_portal import _trade
+
+    account = Account(client_id=world["maya"].id, name="Second IRA")
+    db.add(account)
+    db.flush()
+    sleeve = Sleeve(account_id=account.id, strategy_id=world["growth"].id)
+    db.add(sleeve)
+    db.flush()
+    _trade(db, sleeve, date(2026, 9, 1), "BUY", 10, 50, "QQQQ")  # its sale never arrived
+    _trade(db, sleeve, date(2026, 10, 5), "BUY", 2, 300, "ZZZ270115C00020000", "OPTION")
+    db.add(DailyHolding(account_id=account.id, as_of_date=date(2026, 10, 1), symbol="QQQQ",
+                        quantity=D(10), price=D(50), market_value=D(500)))
+    _valuation(db, account, date(2026, 10, 1), 1100, 600)
+    _valuation(db, account, date(2026, 11, 3), 1500, 500)  # options and cash only
+    db.commit()
+
+    held = maya.get(f"{PORTAL}/positions").json()
+    mine = [p["symbol"] for p in held["positions"] if p["account_id"] == account.id]
+    assert mine == ["ZZZ270115C00020000"]
+    rail = next(a for a in maya.get(ACCOUNTS).json()["accounts"] if a["id"] == account.id)
+    assert rail["value"] == pytest.approx(1500)

@@ -1240,3 +1240,49 @@ def test_assignment_moves_money_between_sleeves_but_not_in_total(db):
     assert (day[options.id].flow_in, day[stocks.id].flow_in) == (D(1000), D(9000))
     # The shares are worth the market price, not the strike or the adjusted cost.
     assert day[stocks.id].securities_value == D(500 * 18)
+
+
+def test_an_account_reported_each_day_is_not_rebuilt_past_its_last_report(db):
+    """After the custodian's last reported day only its next report can say
+    what the account held at market: a rebuilt day would value options from
+    their last trade."""
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    start = date(2025, 1, 6)
+    _closes(db, "SPY", start, [1, 1, 1, 1])  # the market calendar
+    _closes(db, "ABC", start, [100, 110, 99, 121])
+    _trade(db, sleeve, start, "BUY", 10, 100)
+    db.add(
+        DailyValuation(
+            account_id=account.id, as_of_date=date(2025, 1, 7), basis="observed",
+            securities_value=D(1100), cash_value=D(0), total_value=D(1100),
+            flow_in=D(0), flow_out=D(0),
+        )
+    )
+    db.commit()
+    _linked(db, account, sleeve)
+
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 1, 9))
+
+    days = [
+        r.as_of_date
+        for r in db.query(DailyValuation).filter(DailyValuation.account_id == account.id)
+    ]
+    assert max(days) == date(2025, 1, 7)
+
+
+def test_an_account_without_a_daily_report_is_rebuilt_to_today(db):
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    start = date(2025, 1, 6)
+    _closes(db, "SPY", start, [1, 1, 1, 1])
+    _closes(db, "ABC", start, [100, 110, 99, 121])
+    _trade(db, sleeve, start, "BUY", 10, 100)
+
+    PerformanceBuildService(db).rebuild_account(account.id, today=date(2025, 1, 9))
+
+    days = [
+        r.as_of_date
+        for r in db.query(DailyValuation).filter(DailyValuation.sleeve_id == sleeve.id)
+    ]
+    assert max(days) == date(2025, 1, 9)

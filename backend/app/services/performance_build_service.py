@@ -201,6 +201,12 @@ class PerformanceBuildService:
             self.db.commit()
             return 0
         end = last_market_day(today)
+        # An account the custodian reports on each day ends at its last reported
+        # day: the next morning's record will say what today was. A rebuilt day
+        # after it would value options from their last trade, far from market.
+        observed_days = [day for (owner, day) in observed if owner == account_id]
+        if observed_days and self._reported_daily(account_id):
+            end = min(end, max(observed_days))
         days = self.prices.market_days(min(starts), end)
         if not days:
             self.db.commit()
@@ -528,6 +534,18 @@ class PerformanceBuildService:
                 row.sleeve_id,
             )
         return by_day
+
+    def _reported_daily(self, account_id: str) -> bool:
+        """Whether a feed records this account's holdings and total each day."""
+        return (
+            self.db.query(BrokerageAccount.id)
+            .filter(
+                BrokerageAccount.account_id == account_id,
+                BrokerageAccount.status == "mapped",
+            )
+            .first()
+            is not None
+        )
 
     def _observed_rows(self, account_id: str, sleeve_ids: List[str]):
         rows = (

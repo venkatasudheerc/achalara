@@ -26,8 +26,12 @@ class PortalAccount(BaseModel):
     shared: bool
     # taxable | retirement | kids | cash, read from the brokerage's account name
     kind: str
-    # The custodian's last recorded day: total, of which cash. None before the first.
+    # The account now: holdings at live prices, options and cash as the custodian
+    # last reported them; what the Holdings view's account tile shows.
     value: Optional[float] = None
+    priced_at: Optional[datetime] = None  # when the live prices were fetched
+    # The custodian's last reported day: its total, of which cash.
+    recorded_value: Optional[float] = None
     cash: Optional[float] = None
     as_of: Optional[date] = None
     source: Optional[str] = None  # the institution the figures come from
