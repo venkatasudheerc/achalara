@@ -105,14 +105,9 @@ def portal_accounts(
     }
 
 
-def _groups(
-    viewer: PortalViewer, db: Session, change: bool = False
-) -> AccountGroupService:
-    """The viewer's groups. An advisor previewing a client may look but not change."""
-    if change and viewer.preview:
-        raise HTTPException(
-            status_code=403, detail="Only the client can change their groups"
-        )
+def _groups(viewer: PortalViewer, db: Session) -> AccountGroupService:
+    """The viewer's groups. An advisor previewing a client sees and may change
+    them exactly as the client can."""
     return AccountGroupService(db, viewer.client_id)
 
 
@@ -132,7 +127,7 @@ def portal_create_group(
 ):
     """A new group, optionally with its accounts. Names are unique per client."""
     with _http_errors():
-        return _groups(viewer, db, change=True).create(body.name, body.account_ids)
+        return _groups(viewer, db).create(body.name, body.account_ids)
 
 
 @router.patch("/groups/{group_id}", response_model=AccountGroupResponse)
@@ -144,7 +139,7 @@ def portal_update_group(
 ):
     """Rename a group or move it in the list."""
     with _http_errors():
-        return _groups(viewer, db, change=True).update(
+        return _groups(viewer, db).update(
             group_id, body.name, body.position
         )
 
@@ -158,7 +153,7 @@ def portal_set_group_accounts(
 ):
     """Replace the group's accounts. Each must be an account the client can see."""
     with _http_errors():
-        return _groups(viewer, db, change=True).set_accounts(group_id, body.account_ids)
+        return _groups(viewer, db).set_accounts(group_id, body.account_ids)
 
 
 @router.delete("/groups/{group_id}", status_code=204)
@@ -169,7 +164,7 @@ def portal_delete_group(
 ):
     """Remove a group. Its accounts are not touched."""
     with _http_errors():
-        _groups(viewer, db, change=True).delete(group_id)
+        _groups(viewer, db).delete(group_id)
     return Response(status_code=204)
 
 

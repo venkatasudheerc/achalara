@@ -213,7 +213,7 @@ def test_one_clients_groups_are_out_of_anothers_reach(maya, db, world):  # noqa:
     assert ravi.delete(f"{GROUPS}/{group['id']}").status_code == 404
 
 
-def test_an_advisor_previewing_sees_the_groups_but_cannot_change_them(
+def test_an_advisor_previewing_sees_and_changes_the_groups_as_the_client_does(
     client, db, world  # noqa: F811
 ):
     # The advisor fixture signs every request in as the advisor, so the client's
@@ -225,7 +225,9 @@ def test_an_advisor_previewing_sees_the_groups_but_cannot_change_them(
     changed = client.post(GROUPS, params=preview, json={"name": "Advisor's"})
 
     assert [g["name"] for g in seen] == ["Mine"]
-    assert changed.status_code == 403
+    assert changed.status_code == 201
+    # The group is the client's: the client sees it.
+    assert "Advisor's" in [g["name"] for g in AccountGroupService(db, world["maya"].id).list()]
 
 
 def test_an_account_of_options_and_cash_values_its_options_as_the_custodian_does(

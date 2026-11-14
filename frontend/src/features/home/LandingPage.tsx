@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMe } from '@/hooks/useAuth'
 import { usePortalAccounts, usePortalGroups, usePreviewClient } from '@/hooks/usePortal'
 import { formatCurrency } from '@/lib/formatters'
 import { Tabs } from '@/features/research/ui'
@@ -25,7 +24,7 @@ const narrowScreen = () => window.matchMedia?.('(max-width: 767px)').matches ?? 
  * tabs across the page choose the view, and every view answers for that choice.
  */
 export function LandingPage() {
-  const { data: me } = useMe()
+  // An advisor previewing this client: uploads go through the client's door for them.
   const preview = usePreviewClient()
   const { data: portal, isLoading, isError, error, refetch } = usePortalAccounts()
   const { data: groups = [] } = usePortalGroups()
@@ -116,7 +115,7 @@ export function LandingPage() {
             accounts={accounts} groups={groups} viewerId={viewerId}
             groupBy={grouping} onGroupBy={setGroupBy} showPerson={showPerson}
             selection={selection} onSelect={pick} onHide={() => setRailOpen(false)}
-            onEditGroups={() => setEditing(true)} canEditGroups={!preview && me?.role !== 'advisor'}
+            onEditGroups={() => setEditing(true)} canEditGroups
           />
         </div>
       )}

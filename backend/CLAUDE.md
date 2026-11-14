@@ -234,7 +234,8 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an
-  advisor previewing (`as_client`) may read the groups but not change them (403).
+  advisor previewing (`as_client`) sees and may change them exactly as the client can: a
+  preview is what the client sees.
 - Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
   come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
   cost included (`avg_cost`; the trade history's average is the fallback when the custodian

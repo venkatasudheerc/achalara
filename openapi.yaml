@@ -3839,12 +3839,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: An advisor previewing cannot change a client's groups
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '404':
           description: Group, or an account in it, not in view
           content:
@@ -3903,12 +3897,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: An advisor previewing cannot change a client's groups
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '404':
           description: Group, or an account in it, not in view
           content:
@@ -3946,12 +3934,6 @@ paths:
           description: Successful Response
         '401':
           description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: An advisor previewing cannot change a client's groups
           content:
             application/json:
               schema:
@@ -4004,12 +3986,6 @@ paths:
                 $ref: '#/components/schemas/AccountGroupResponse'
         '401':
           description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: An advisor previewing cannot change a client's groups
           content:
             application/json:
               schema:
