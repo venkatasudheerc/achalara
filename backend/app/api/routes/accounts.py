@@ -1,5 +1,5 @@
 """Account endpoints"""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date
@@ -11,9 +11,15 @@ from app.models.account import Account
 from app.models.client import Client
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
+from app.services.account_import_service import (
+    MAX_FILE_BYTES,
+    AccountImportError,
+    AccountImportService,
+)
 from app.services.auth_service import AuthService
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
+from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -284,3 +290,59 @@ def get_account_positions(
     svc = PerformanceService(db)
     payload = svc.positions_payload(sleeve_ids)
     return {"account_id": account_id, **payload}
+
+
+# ----------------------------------------------------------------------
+# Upload and import (the advisor's door; clients use the portal's)
+# ----------------------------------------------------------------------
+
+
+def _import(db: Session, client_id: str, account_id: str, file: UploadFile, write: bool):
+    account = _account_or_404(db, client_id, account_id)
+    content = file.file.read(MAX_FILE_BYTES + 1)
+    service = AccountImportService(db)
+    try:
+        if write:
+            return service.apply(account, file.filename or "", content)
+        return service.preview(account, file.filename or "", content)
+    except AccountImportError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get(
+    "/{client_id}/accounts/{account_id}/imports/check",
+    response_model=Optional[ImportCheck],
+)
+def account_holdings_check(client_id: str, account_id: str, db: Session = Depends(get_db)):
+    """Whether the account's holdings agree with the custodian's record, and if
+    not, from which date a report should be downloaded. None before any record."""
+    return AccountImportService(db).holdings_check(_account_or_404(db, client_id, account_id))
+
+
+@router.post(
+    "/{client_id}/accounts/{account_id}/imports/preview",
+    response_model=ImportPreview,
+)
+def preview_account_import(
+    client_id: str,
+    account_id: str,
+    file: UploadFile = File(..., description="The custodian's activity report or Achalara's template"),
+    db: Session = Depends(get_db),
+):
+    """What the file would add to the account. Nothing is written."""
+    return _import(db, client_id, account_id, file, write=False)
+
+
+@router.post(
+    "/{client_id}/accounts/{account_id}/imports",
+    response_model=ImportResult,
+)
+def import_into_account(
+    client_id: str,
+    account_id: str,
+    file: UploadFile = File(..., description="The same file as the preview"),
+    db: Session = Depends(get_db),
+):
+    """Add what the file holds that is not on file, rebuild the account's history,
+    and check its holdings against the custodian's last recorded ones."""
+    return _import(db, client_id, account_id, file, write=True)

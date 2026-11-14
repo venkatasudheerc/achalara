@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field
 _OCC_SYMBOL = re.compile(r"^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$")
 
 
+# Ids of rows added from a custodian's own activity report
+# (``services/vanguard_report.py``) rather than from a feed. They share no id
+# with the feed, so ingestion matches them on their economics instead.
+REPORT_ID_PREFIX = "vanguard:"
+
+
 def is_option_symbol(symbol: str) -> bool:
     """Whether ``symbol`` is an option contract rather than a security."""
     return bool(_OCC_SYMBOL.match(symbol or ""))

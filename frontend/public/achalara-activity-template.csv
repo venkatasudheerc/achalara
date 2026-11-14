@@ -1,0 +1,8 @@
+Date,Type,Symbol,Quantity,Price,Fees,Amount
+2026-01-15,Deposit,,,,,5000.00
+2026-01-16,Buy,ABC,10,120.50,0,
+2026-02-03,Dividend,ABC,,,,4.20
+2026-03-10,Sell,ABC,5,131.00,0.02,
+2026-03-31,Interest,,,,,1.15
+2026-04-02,Fee,,,,,-2.00
+2026-04-20,Withdrawal,,,,,-1000.00

@@ -29,6 +29,9 @@ snaptrade-python-sdk==13.0.30
 # pinning keeps that shared transitive dependency from drifting.
 cryptography==49.0.0
 
+# Reads a custodian's activity report downloaded as Excel (services/vanguard_report.py).
+openpyxl==3.1.5
+
 # Logging & Monitoring
 python-json-logger==2.0.7
 

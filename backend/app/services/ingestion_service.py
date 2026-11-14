@@ -21,7 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.connectors.models import NormalizedTrade
+from app.connectors.models import REPORT_ID_PREFIX, NormalizedTrade
 from app.models.account import Account
 from app.models.client import Client
 from app.models.sleeve import Sleeve
@@ -37,7 +37,11 @@ logger = logging.getLogger(__name__)
 # legacy ``(date, symbol, qty, price)`` tuple is *not* consulted: it has no
 # action, so it would collapse a same-day buy and sell at one price — which
 # real brokerage data contains — and silently drop a leg.
-_ID_AUTHORITATIVE_SOURCES = {"snaptrade"}
+# A custodian's activity report is one too: its rows are matched against what
+# is on file before they reach here (``vanguard_report``).
+_ID_AUTHORITATIVE_SOURCES = {"snaptrade", "vanguard"}
+# Identical trades (day, side, symbol, quantity, price) one report may hold.
+_MAX_SAME_TRADES = 50
 
 
 def _is_duplicate(trade: NormalizedTrade, keys: set) -> bool:
@@ -45,6 +49,21 @@ def _is_duplicate(trade: NormalizedTrade, keys: set) -> bool:
     if trade.source in _ID_AUTHORITATIVE_SOURCES and trade.external_id:
         if trade.external_id in keys:
             return True
+        if not trade.external_id.startswith(REPORT_ID_PREFIX):
+            # A trade a custodian's report added shares no id with the feed:
+            # it is the same trade when the day, side, symbol, quantity and
+            # price agree. Each report trade answers for one feed trade only.
+            report = _report_key(
+                trade.executed_at.date(),
+                trade.action.value,
+                trade.symbol,
+                trade.quantity,
+                trade.price,
+            )
+            for number in range(1, _MAX_SAME_TRADES + 1):
+                if report + (number,) in keys:
+                    keys.discard(report + (number,))
+                    return True
         keys.add(trade.external_id)
         return False
     # Either identity matching means we already have this trade: the source's
@@ -76,6 +95,12 @@ def _trade_dedup_key(trade_date, symbol, quantity, price) -> tuple:
         _exact(quantity),
         _exact(price),
     )
+
+
+def _report_key(trade_date, action, symbol, quantity, price) -> tuple:
+    """Identity of a trade added from a custodian's report, with its side, so a
+    same-day buy and sale at one price stay two trades."""
+    return ("report", action) + _trade_dedup_key(trade_date, symbol, quantity, price)
 
 
 def _exact(value) -> Decimal:
@@ -398,10 +423,19 @@ class IngestionService:
             return set()
         existing = self.db.query(Trade).filter(Trade.sleeve_id == sleeve_id).all()
         keys = set()
+        # Report trades by their economics, numbered so that two identical
+        # trades on one day answer for two feed trades, not one.
+        reported: Dict[tuple, int] = {}
         for e in existing:
             keys.add(_trade_dedup_key(e.trade_date, e.symbol, e.quantity, e.price))
             if e.external_id:
                 keys.add(e.external_id)
+                if e.external_id.startswith(REPORT_ID_PREFIX):
+                    report = _report_key(
+                        e.trade_date, e.action, e.symbol, e.quantity, e.price
+                    )
+                    reported[report] = reported.get(report, 0) + 1
+                    keys.add(report + (reported[report],))
         return keys
 
     def _refresh_positions(self, sleeve_ids: Iterable[str]) -> None:

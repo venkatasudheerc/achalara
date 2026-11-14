@@ -20,7 +20,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.connectors.models import NotSupported, RawAccount, is_option_symbol
+from app.connectors.models import (
+    REPORT_ID_PREFIX,
+    NotSupported,
+    RawAccount,
+    is_option_symbol,
+)
 from app.connectors.registry import get_connector
 from app.models.account import Account
 from app.models.brokerage_connection import (
@@ -606,6 +611,39 @@ class ConnectionService:
 
         return earliest
 
+    def ingest_batch(
+        self, ba: BrokerageAccount, batch, holdings: Optional[list] = None
+    ) -> Dict:
+        """Add rows that came from outside the feed, such as a custodian's own
+        activity report, as a sync would: routed to the account's sleeves,
+        deduplicated across them, kept as source rows (so the cash ledger has
+        their cash), then everything derived brought up to date.
+
+        ``holdings`` (the custodian's last recorded holdings) refreshes the
+        reconciliation without asking the source; the option correction is
+        kept as it was, since working it out needs the source's total.
+        """
+        if ba.status != "mapped" or not ba.default_sleeve_id:
+            raise ValueError("Map the account to a sleeve before adding rows to it")
+        result = {"imported": 0, "duplicates": 0, "cash_imported": 0}
+        self._store_raw(ba, batch.raw)
+        self._ingest(ba, batch, result)
+        self.db.commit()
+        if holdings is not None:
+            try:
+                self.reconcile(
+                    ba.id,
+                    holdings=holdings,
+                    valuation_adjustment=Decimal(
+                        str((ba.reconciliation or {}).get("valuation_adjustment", 0))
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.db.rollback()
+                logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)
+        self._after_trades_changed(ba)
+        return result
+
     def _after_trades_changed(self, ba: BrokerageAccount) -> None:
         """Bring everything derived from the account's trades up to date.
 
@@ -646,9 +684,13 @@ class ConnectionService:
         if ba.status != "mapped" or not ba.default_sleeve_id:
             raise ValueError("Map the account to a sleeve before re-deriving it")
 
+        # Rows added from a custodian's report are not the feed's to read.
         records = (
             self.db.query(BrokerageActivity)
-            .filter(BrokerageActivity.brokerage_account_id == ba.id)
+            .filter(
+                BrokerageActivity.brokerage_account_id == ba.id,
+                ~BrokerageActivity.source_activity_id.like(f"{REPORT_ID_PREFIX}%"),
+            )
             .order_by(BrokerageActivity.activity_date, BrokerageActivity.id)
             .all()
         )
@@ -820,6 +862,7 @@ class ConnectionService:
         brokerage_account_id: str,
         skipped_rows: Optional[Dict] = None,
         holdings: Optional[list] = None,
+        valuation_adjustment: Optional[Decimal] = None,
     ) -> Dict:
         """Compare the brokerage's holdings with what our trades add up to.
 
@@ -933,7 +976,9 @@ class ConnectionService:
             ) * price
         report["holdings_adjustment"] = float(adjustment)
         report["valuation_adjustment"] = float(
-            self._valuation_adjustment(ba, holdings, sleeve_ids)
+            valuation_adjustment
+            if valuation_adjustment is not None
+            else self._valuation_adjustment(ba, holdings, sleeve_ids)
         )
         ba.reconciliation = report
 
