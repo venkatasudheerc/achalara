@@ -6,7 +6,7 @@ import type { ImportPreview, ImportResult } from '../types'
  * portal; the advisor imports into any client's account from its page.
  */
 export type ImportDoor =
-  | { kind: 'portal'; accountId: string }
+  | { kind: 'portal'; accountId: string; /** An advisor previewing this client */ asClient?: string }
   | { kind: 'advisor'; clientId: string; accountId: string }
 
 const path = (door: ImportDoor) =>
@@ -20,11 +20,14 @@ const form = (file: File) => {
   return body
 }
 
+const params = (door: ImportDoor) =>
+  door.kind === 'portal' && door.asClient ? { as_client: door.asClient } : undefined
+
 export const importsApi = {
   /** What the file would add. Nothing is written. */
   preview: (door: ImportDoor, file: File) =>
-    apiClient.post<ImportPreview>(`${path(door)}/preview`, form(file)).then((r) => r.data),
+    apiClient.post<ImportPreview>(`${path(door)}/preview`, form(file), { params: params(door) }).then((r) => r.data),
   /** Add what is not on file, rebuild the account's history, check its holdings. */
   apply: (door: ImportDoor, file: File) =>
-    apiClient.post<ImportResult>(path(door), form(file)).then((r) => r.data),
+    apiClient.post<ImportResult>(path(door), form(file), { params: params(door) }).then((r) => r.data),
 }

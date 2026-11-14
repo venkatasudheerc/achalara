@@ -114,13 +114,13 @@ def test_a_client_cannot_import_into_a_shared_account_or_by_the_advisor_door(
     assert advisor_door.status_code == 403
 
 
-def test_an_advisor_previewing_a_client_imports_from_the_clients_page(client, db, account):
+def test_an_advisor_previewing_a_client_can_import_as_the_client_does(client, db, account):
     acct = db.get(Account, account.account_id)
     response = client.post(
-        f"/api/v1/portal/accounts/{acct.id}/imports/preview?as_client={acct.client_id}",
+        f"/api/v1/portal/accounts/{acct.id}/imports?as_client={acct.client_id}",
         files=_files(TEMPLATE.encode()),
     )
-    assert response.status_code == 403
+    assert response.status_code == 200 and response.json()["added_trades"] == 1
 
 
 def test_an_account_not_set_up_for_files_says_so(client, db):

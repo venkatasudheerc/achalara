@@ -443,12 +443,9 @@ def portal_performance(
 
 
 def _own_account(viewer: PortalViewer, db: Session, account_id: str) -> Account:
-    """An account the viewer owns. Shared accounts are read-only, and an advisor
-    previewing a client imports from the client's page instead."""
-    if viewer.preview:
-        raise HTTPException(
-            status_code=403, detail="Import from the client's page, not the preview"
-        )
+    """An account the viewer owns; shared accounts are read-only. An advisor
+    previewing a client sees and may use exactly what the client does: the
+    advisor may import into any client's account in any case."""
     account = (
         db.query(Account)
         .filter(Account.id == account_id, Account.client_id == viewer.client_id)

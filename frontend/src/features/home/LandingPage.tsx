@@ -87,9 +87,9 @@ export function LandingPage() {
     }
   })()
   const total = chosen.reduce((t, a) => t + (a.value ?? 0), 0)
-  // One of the client's own accounts can be brought up to date from a file.
-  const own = selection.type === 'account' && chosen[0] && !chosen[0].shared && !preview && me?.role === 'client'
-    ? chosen[0] : undefined
+  // One of the client's own accounts can be brought up to date from a file. An
+  // advisor's preview shows exactly what the client sees, this button included.
+  const own = selection.type === 'account' && chosen[0] && !chosen[0].shared ? chosen[0] : undefined
   const pick = (s: Parameters<typeof select>[0]) => {
     select(s)
     if (narrow) setRailOpen(false)
@@ -150,7 +150,7 @@ export function LandingPage() {
       )}
       <GroupsDialog open={editing} onClose={() => setEditing(false)} groups={groups} accounts={accounts} />
       {own && (
-        <ImportDialog open={importing} onClose={() => setImporting(false)} door={{ kind: 'portal', accountId: own.id }}
+        <ImportDialog open={importing} onClose={() => setImporting(false)} door={{ kind: 'portal', accountId: own.id, asClient: preview }}
           accountName={`${accountName(own)}${own.number_last4 ? ` ··${own.number_last4}` : ''}`} />
       )}
     </div>

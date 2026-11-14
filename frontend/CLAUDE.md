@@ -185,8 +185,8 @@ Each feature directory contains its page component(s). Implemented:
   members found it confusing, so `/home/research`, previews included, leaves it out.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
-  new app when the rail's selection is one account the signed-in client owns (not a shared one, not
-  an advisor's preview)
+  new app when the rail's selection is one account the client owns (not a shared one). An advisor's
+  preview shows it too, since the preview is exactly what the client sees
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
 - `home/*` — the new app (see Routing). `portal/*` — the pages its Holdings, Transactions, Performance and Cost basis tabs show: `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls, the account/strategy filter and `HomeSelection` are in `portal/ui.tsx`.

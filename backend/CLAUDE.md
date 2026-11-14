@@ -373,8 +373,8 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   activity. Splits and mergers are not read. Added rows are stored in `brokerage_activities`
   with their cash, under ids starting `vanguard:` (`REPORT_ID_PREFIX`); `rederive` leaves those
   out, and ingestion recognises a feed trade or cash row that matches one, so a day is never
-  counted twice. The file itself is never kept. A shared account takes no uploads, and an
-  advisor previewing a client uploads from the client's page.
+  counted twice. The file itself is never kept. A shared account takes no uploads. An advisor
+  previewing a client (`as_client`) sees and may use exactly what the client does.
 - Rows the connector still cannot represent are skipped **and counted**
   — never dropped silently. Every fetched row, skipped or not, is stored verbatim in
   `brokerage_activities`; use `ConnectionService.rederive` to re-read them before spending
