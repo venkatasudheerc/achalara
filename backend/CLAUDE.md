@@ -305,7 +305,8 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   `rebuild_account` first calls `OpeningPositionService.refresh`: each security's shares before
   the first transaction are worked back from the institution's latest recorded holdings (a day
   the transactions are complete through, `transactions_synced_through`; tried with and without
-  that day's own trades, as a day's holdings can be taken before its trades show), and the cash
+  that day's own trades, as a day's holdings can be taken before its trades show; a recorded day
+  that listed no holdings, such as an account of options and cash, says no shares were held), and the cash
   from the ledger. They are stored as **opening trades**, a buy per security on the market day
   before the first transaction, priced at the institution's cost where nothing since changed it,
   else that day's market price, with notes starting `OPENING_NOTE` and ids `OPENING_ID_PREFIX`.
@@ -406,7 +407,14 @@ through Plaid (below), their earlier history from the custodian's own files.
   and the daily record brought up to date.
 - A trade goes to the sleeve already holding its symbol, else the sleeve routed for its
   `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
-  one symbol in two sleeves of an account. Feed sleeves use `accounting_method = "FIFO"`.
+  one symbol in two sleeves of an account. Feed sleeves use `accounting_method = "FIFO"`
+  (`PlaidLinkService._sleeve` sets it; round-trip pairing, meant for strategy sheets, drops a
+  sale of shares bought before the history and keeps later buys open).
+- **A feed's trade it cannot name keeps its cash.** Plaid sends many of Vanguard's option
+  trades with no symbol: the trade is set aside (`skipped:unreadable`, counted) but its source
+  row keeps the cash it moved, so the ledger is right. When a custodian's file names the same
+  trade (same cash to the cent, within three days), the file's row counts that cash and the
+  feed's row is marked `connection_service.ON_FILE` with none; a later refresh leaves it so.
 - Rows a reader cannot represent are skipped **and counted**, never dropped silently, and every
   row is stored verbatim.
 - **A custodian's own file brings the history** (`services/vanguard_report.py`, through

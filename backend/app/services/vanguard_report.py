@@ -41,7 +41,8 @@ from app.connectors.models import (
     TradeAction,
     is_option_symbol,
 )
-from app.models.brokerage_connection import BrokerageAccount
+from app.models.brokerage_connection import BrokerageAccount, BrokerageActivity
+from app.services.connection_service import ON_FILE
 from app.models.cash_activity import MARGIN_INTEREST, CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
@@ -642,6 +643,7 @@ class VanguardReportImport:
             split.outcome = "split"
             split.payload = {**row.as_dict(), "units": str(row.quantity)}
             raw.append(split)
+        self._take_back_unnamed(ba, plan)
         batch = ActivityBatch(
             trades=[t for _, t in plan.trades],
             cash=[c for _, c in plan.cash],
@@ -650,6 +652,37 @@ class VanguardReportImport:
             security_type_sources={},
         )
         return self.connections.ingest_batch(ba, batch, holdings=holdings)
+
+    def _take_back_unnamed(self, ba: BrokerageAccount, plan: Plan) -> int:
+        """A feed's trade it could not name keeps its cash on its source row; the
+        file names the same trade, so that cash is taken back from the feed's row
+        (same cash to the cent, within three days) and counted once."""
+        unnamed = (
+            self.db.query(BrokerageActivity)
+            .filter(
+                BrokerageActivity.brokerage_account_id == ba.id,
+                BrokerageActivity.outcome == "skipped:unreadable",
+                BrokerageActivity.cash_amount.isnot(None),
+                BrokerageActivity.cash_amount != 0,
+            )
+            .all()
+        )
+        taken = 0
+        for row, _ in plan.trades:
+            if not unnamed or row.amount is None:
+                break
+            for feed in unnamed:
+                if (
+                    abs(Decimal(str(feed.cash_amount)) - row.amount) <= Decimal("0.01")
+                    and feed.activity_date is not None
+                    and abs((feed.activity_date - row.traded).days) <= 3
+                ):
+                    feed.cash_amount = Decimal(0)
+                    feed.outcome = ON_FILE
+                    unnamed.remove(feed)
+                    taken += 1
+                    break
+        return taken
 
     @staticmethod
     def _raw(row: ReportRow, ext: str, cash_amount: Decimal, external: bool) -> RawActivity:

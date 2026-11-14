@@ -434,6 +434,26 @@ def test_an_opening_is_worked_back_across_a_ticker_change(db):
     assert after.shares["ABD"].quantity == D(60)
 
 
+def test_a_day_recorded_with_no_holdings_listed_anchors_the_opening(db):
+    """An account of options and cash lists no holdings; its recorded day still
+    says no shares are held, so shares sold in the history were held before it."""
+    from app.services.opening_position import OpeningPositionService
+
+    sale = {"investment_transaction_id": "s1", "account_id": "a", "type": "sell", "subtype": "sell",
+            "date": "2026-01-07", "security_id": "s-abc", "quantity": -10, "price": 100,
+            "amount": -1000, "fees": 0, "name": "Sell"}
+    ba = _fed_account(db, [sale], 1500.0, through=date(2026, 1, 8))
+    db.query(DailyValuation).filter(DailyValuation.account_id == ba.account_id,
+                                    DailyValuation.as_of_date == date(2026, 1, 8)).delete()
+    db.add(DailyValuation(account_id=ba.account_id, as_of_date=date(2026, 1, 8), securities_value=D(0),
+                          cash_value=D(1500), total_value=D(1500), basis="observed"))
+    db.commit()
+
+    opening = OpeningPositionService(db).refresh(ba.account_id)
+    assert opening.problems == []
+    assert opening.shares["ABC"].quantity == D(10)
+
+
 def test_value_is_continuous_across_a_split(db):
     account = _account(db)
     sleeve = _sleeve(db, account)
