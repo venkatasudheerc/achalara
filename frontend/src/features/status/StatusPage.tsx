@@ -26,7 +26,7 @@ function Jobs({ status, now }: { status: SystemStatusResponse; now: number }) {
               <td className={mono}>{when(job.last_finished_at)}</td>
               <td className={td}>
                 {job.last_ok == null ? <span className="text-stone">Not run yet</span>
-                  : job.last_ok ? 'Completed'
+                  : job.last_ok ? (job.last_skipped ? <span className="text-stone">Skipped: {job.last_skipped}</span> : 'Completed')
                   : <span className="text-loss">Failed{job.last_error ? `: ${job.last_error}` : ''}</span>}
               </td>
               <td className={mono}>
@@ -230,7 +230,9 @@ export function StatusPage() {
         <Tile label="Daily jobs"
           tone={!status.app.scheduler_enabled ? 'quiet' : failed > 0 ? 'attention' : 'ok'}
           value={!status.app.scheduler_enabled ? 'Switched off' : failed > 0 ? `${failed} failed` : 'Scheduled'}
-          note={`${status.capture.accounts - status.capture.missing.length} of ${status.capture.accounts} accounts recorded for ${formatDate(status.capture.market_day)}`} />
+          note={status.capture.accounts === 0
+            ? 'No linked accounts to record yet'
+            : `${status.capture.accounts - status.capture.missing.length} of ${status.capture.accounts} accounts recorded for ${formatDate(status.capture.market_day)}`} />
         <Tile label="Backup" tone={!status.backup.known ? 'quiet' : status.attention.some((a) => a.includes('backup')) ? 'attention' : 'ok'}
           value={status.backup.known ? when(status.backup.at) : 'Not reported'}
           note={status.backup.known ? `${bytes(status.backup.size_bytes)} · disk ${(diskUsed * 100).toFixed(0)}% used` : `Disk ${(diskUsed * 100).toFixed(0)}% used`} />

@@ -88,6 +88,12 @@ class StatusService:
             )
         if settings.python_env == "production" and not settings.scheduler_enabled:
             attention.append("The daily jobs are switched off on this server.")
+        from app.connectors.plaid_connector import configured as plaid_configured
+
+        if settings.python_env == "production" and not plaid_configured():
+            attention.append(
+                "Linking with Plaid is not set up on this server: nobody can add an account."
+            )
         return {
             "generated_at": now,
             "attention": list(attention),
@@ -194,9 +200,13 @@ class StatusService:
                     "next_run_at": next_run,
                     "last_started_at": _aware(last.started_at) if last else None,
                     "last_finished_at": _aware(last.finished_at) if last else None,
-                    "last_ok": (last.outcome == "ok") if last else None,
+                    # Skipped is not failed: the job ran and had nothing to do.
+                    "last_ok": (last.outcome in ("ok", "skipped")) if last else None,
                     "last_error": last.note
                     if last is not None and last.outcome == "failed"
+                    else None,
+                    "last_skipped": last.note
+                    if last is not None and last.outcome == "skipped"
                     else None,
                 }
             )

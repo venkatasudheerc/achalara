@@ -152,8 +152,9 @@ class DailyValuation(BaseModel):
 class CorporateAction(BaseModel):
     """An event that changes share counts without a trade.
 
-    Only splits are recorded and applied so far; ``action_type`` leaves room
-    for mergers and spin-offs.
+    Splits (``SPLIT``, with ``ratio``) and ticker changes (``RENAME``, with
+    ``new_symbol`` and a ratio of 1) are recorded and applied on read;
+    ``action_type`` leaves room for mergers and spin-offs.
     """
 
     __tablename__ = "corporate_action"
@@ -161,9 +162,11 @@ class CorporateAction(BaseModel):
     id = Column(String(36), primary_key=True, default=_uuid)
     symbol = Column(String(50), nullable=False, index=True)
     effective_date = Column(Date, nullable=False)
-    action_type = Column(String(20), nullable=False)  # SPLIT
-    # For a split: shares after / shares before.
+    action_type = Column(String(20), nullable=False)  # SPLIT | RENAME
+    # For a split: shares after / shares before. 1 for a rename.
     ratio = Column(Numeric(12, 6), nullable=False)
+    # For a rename: the symbol it trades under from ``effective_date``.
+    new_symbol = Column(String(50), nullable=True)
     source = Column(String(20), nullable=False)
 
     __table_args__ = (

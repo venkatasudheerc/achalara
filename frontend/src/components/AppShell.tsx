@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useLogout, useMe } from '@/hooks/useAuth'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useScope } from '@/context/ScopeContext'
+import { useClientsList } from '@/hooks/useClients'
 import { staffTitle } from '@/lib/roles'
 
 /** The menu. `admin` marks the platform's own pages, which an advisor neither sees nor may open. */
@@ -32,6 +34,13 @@ export function AppShell() {
   const isAdmin = me?.role === 'admin'
   const navItems = allNavItems.filter((item) => isAdmin || !item.admin)
   const signOut = () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })
+  // The scope is remembered in the tab; a client this login cannot see (removed,
+  // or another login's) is forgotten once the list of clients says so.
+  const { data: clients } = useClientsList()
+  const staleClient = !!scope.clientId && !!clients && !clients.some((c) => c.id === scope.clientId)
+  useEffect(() => {
+    if (staleClient) clearScope()
+  }, [staleClient, clearScope])
 
   return (
     <div className="min-h-screen bg-paper flex">

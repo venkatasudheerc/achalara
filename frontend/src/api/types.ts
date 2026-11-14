@@ -691,7 +691,7 @@ export interface StatusJob {
   id: string; label: string; next_run_at: string | null
   /** The last run since the app started; null until the job has run once */
   last_started_at: string | null; last_finished_at: string | null
-  last_ok: boolean | null; last_error: string | null
+  last_ok: boolean | null; last_error: string | null; last_skipped?: string | null
 }
 export interface StatusBrokerageAccount {
   id: string; name: string; number_last4: string | null; owner: string | null

@@ -62,14 +62,20 @@ export function LandingPage() {
 
   if (isLoading) return <div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>
   if (isError || !portal) return <div className="p-[24px]"><ErrorState message={error?.message ?? 'Could not load your accounts.'} onRetry={() => refetch()} /></div>
+  // One dialog, in the same place in both layouts: the first accounts arriving
+  // swaps the empty page for the rail, and a dialog mounted inside either would
+  // be replaced by a new one at its first step instead of showing what was added.
+  const adder = <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
   if (!accounts.length) {
     return (
-      <div className="p-[24px] flex flex-col items-center gap-[16px]">
-        <EmptyState title="No accounts yet" message="Add your first account: sign in to your bank, card, lender or brokerage." />
-        <button type="button" onClick={() => setAdding(true)}
-          className="h-[44px] px-[20px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold">+ Add an account</button>
-        <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
-      </div>
+      <>
+        <div className="p-[24px] flex flex-col items-center gap-[16px]">
+          <EmptyState title="No accounts yet" message="Add your first account: sign in to your bank, card, lender or brokerage." />
+          <button type="button" onClick={() => setAdding(true)}
+            className="h-[44px] px-[20px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold">+ Add an account</button>
+        </div>
+        {adder}
+      </>
     )
   }
 
@@ -118,6 +124,7 @@ export function LandingPage() {
   })()
 
   return (
+    <>
     <div className="flex-1 flex items-stretch">
       {railOpen && (
         <div className={`${narrow ? 'w-full' : 'w-[312px] shrink-0 border-r border-line'} bg-mist px-[14px] pt-[16px] pb-[24px]`}>
@@ -157,12 +164,13 @@ export function LandingPage() {
           </HomeSelection.Provider>
         </main>
       )}
-      <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
       <GroupsDialog open={editing} onClose={() => setEditing(false)} groups={groups} accounts={accounts} />
       {own && (
         <ImportDialog open={importing} onClose={() => setImporting(false)} door={{ kind: 'portal', accountId: own.id, asClient: preview }}
           accountName={`${accountName(own)}${own.number_last4 ? ` ··${own.number_last4}` : ''}`} />
       )}
     </div>
+    {adder}
+    </>
   )
 }

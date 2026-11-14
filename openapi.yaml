@@ -5088,7 +5088,7 @@ components:
         differences: {type: array, items: {$ref: "#/components/schemas/ImportDifference"}}
         last_agreed: {type: string, format: date, nullable: true, description: The last recorded day our holdings agreed with the custodian's}
         first_differed: {type: string, format: date, nullable: true, description: The first recorded day they differed after it; null while they agree now}
-        download_from: {type: string, format: date, nullable: true, description: "Where a report should start to cover what is missing: last_agreed, or four weeks before first_differed when even the first record differs; null while they agree"}
+        download_from: {type: string, format: date, nullable: true, description: "Where a report should start to cover what is missing: last_agreed; null when even the first record differs (download all of the activity), and while they agree"}
 
     ImportPreview:
       type: object
@@ -8553,6 +8553,10 @@ components:
         last_error:
           type: string
           nullable: true
+        last_skipped:
+          type: string
+          nullable: true
+          description: Why the last run did nothing, when it was skipped (not a failure)
       type: object
       required:
       - id

@@ -91,14 +91,38 @@ def account_health(db: Session, account: Account, today: Optional[date] = None) 
     reasons: List[str] = []
     starts: List[date] = []
 
-    problems = [
-        problem
-        for link in db.query(BrokerageAccount).filter(BrokerageAccount.account_id == account.id)
-        for problem in (link.reconciliation or {}).get("opening_problems") or []
-    ]
+    links = db.query(BrokerageAccount).filter(BrokerageAccount.account_id == account.id).all()
+    problems = [p for link in links for p in (link.reconciliation or {}).get("opening_problems") or []]
+    notes = [n for link in links for n in (link.reconciliation or {}).get("opening_notes") or []]
     if problems:
         states.append(INCOMPLETE)
         reasons.append("A transaction is missing from the start of the history: it does not add up to what is held.")
+    elif notes:
+        states.append(PROVISIONAL)
+        reasons.append("The start of the history is out by a few cents, read as rounding.")
+
+    # A holding of shares and cash is never worth less than nothing; a rebuilt day
+    # below it means the history is missing a transaction (a sale of shares it
+    # never saw bought), whatever the other checks say.
+    from app.services.account_kind import OWED, kind_of
+
+    if kind_of(account) not in OWED:
+        lowest = (
+            db.query(DailyValuation.as_of_date)
+            .filter(
+                DailyValuation.account_id == account.id,
+                DailyValuation.sleeve_id.is_(None),
+                DailyValuation.total_value < -_CENT,
+            )
+            .order_by(DailyValuation.as_of_date.desc())
+            .first()
+        )
+        if lowest is not None:
+            states.append(INCOMPLETE)
+            reasons.append(
+                f"Its rebuilt history is worth less than nothing on {lowest[0]:%-d %b %Y}, "
+                "which shares and cash cannot be: a transaction before it is missing."
+            )
 
     holdings = AccountImportService(db).holdings_check(account)
     if holdings and holdings["differences"]:

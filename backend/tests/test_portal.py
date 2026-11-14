@@ -792,6 +792,25 @@ def test_one_strategy_shows_no_money_weighted_return(maya, db, world):
     assert one["includes_cash"] is False and one["summary"] is None
 
 
+def test_an_account_joining_the_record_later_is_not_a_gain(maya, db, world):
+    """The brokerage is on record from 1 Sep; the IRA joins on 3 Sep already
+    holding 1,000. Together they are measured from 3 Sep, so the IRA's arrival
+    is not counted as 1,000 gained."""
+    _rows(db, world["brokerage"], [1000, 1000, 1000, 1010], start=date(2026, 9, 1))
+    _rows(db, world["ira"], [1000, 1000], start=date(2026, 9, 3))
+
+    summary = maya.get("/api/v1/portal/performance").json()["summary"]
+
+    assert summary["start"] == "2026-09-03"
+    assert (summary["opening_value"], summary["closing_value"]) == (2000, 2010)
+    assert summary["gain"] == pytest.approx(10)
+
+    # One account alone is measured from its own first day, as before.
+    alone = maya.get("/api/v1/portal/performance",
+                     params={"account_ids": [world["brokerage"].id]}).json()["summary"]
+    assert alone["start"] == "2026-09-01"
+
+
 def test_performance_rejects_a_backwards_window_and_an_unknown_grain(maya):
     backwards = maya.get(
         "/api/v1/portal/performance",

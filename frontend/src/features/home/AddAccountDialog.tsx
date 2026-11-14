@@ -200,6 +200,13 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
             {result.added > 0 && <p>Added {result.added} new account{result.added === 1 ? '' : 's'}.</p>}
             {result.linked > 0 && <p>Linked {result.linked} to account{result.linked === 1 ? '' : 's'} already here.</p>}
             {result.skipped > 0 && <p>Left out {result.skipped}.</p>}
+            {found?.accounts.some((a) => a.plaid_type === 'investment') && (
+              <p className="text-stone">
+                A brokerage shares only a few weeks of its history this way. To see further back, open each investment
+                account and use <strong className="text-summit-ink">Update from a file</strong> with its activity report.
+                Until then its record starts where the brokerage’s shared history does.
+              </p>
+            )}
           </div>
         )}
 

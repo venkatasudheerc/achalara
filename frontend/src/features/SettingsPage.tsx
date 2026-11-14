@@ -39,7 +39,7 @@ function AdvisorsSection() {
   }
 
   return (
-    <section className="border border-stone/20 rounded-card p-6">
+    <section id="advisors" className="border border-stone/20 rounded-card p-6 scroll-mt-4">
       <div className="flex items-center justify-between gap-3 mb-2">
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Advisors</h2>
         {!open && (

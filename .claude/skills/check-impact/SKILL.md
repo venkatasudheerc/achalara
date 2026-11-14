@@ -73,7 +73,10 @@ change to a route, response field, rule or role:
    - every role that can reach the screen: admin, advisor, client, and an admin or advisor
      previewing a client (`?as=`); the preview must show exactly what the client sees;
    - every state: loading, empty, error, incomplete or provisional records, and none of the
-     figures shown where the record is not trusted.
+     figures shown where the record is not trusted;
+   - every chart: no two axis labels the same, dates (not repeated month names) where the range
+     is a few months, and a year on a label that could be mistaken for another year
+     (`lib/chartTicks.ts`).
 4. **Prove it.** `cd frontend && npm run build`; screenshots of each changed screen at 390 and
    1440, light and dark (`ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`),
    looked at as the family member who will read it (`feedback` memory: the UX bar).

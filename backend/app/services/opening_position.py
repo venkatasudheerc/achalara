@@ -48,6 +48,8 @@ from app.services.corporate_actions import (
     MERGER_NOTE,
     _factor,
     adjusted_trades,
+    current_symbol,
+    renames,
     split_factors,
 )
 
@@ -104,6 +106,8 @@ class Opening:
     shares: Dict[str, OpeningShares] = field(default_factory=dict)
     # Why it cannot be worked out: a transaction is missing.
     problems: List[str] = field(default_factory=list)
+    # What was read past without a problem (cash out by under ROUNDING).
+    notes: List[str] = field(default_factory=list)
 
 
 def work_back_shares(
@@ -195,6 +199,12 @@ def opening_scale(
     return scale
 
 
+# Cash that works back below nothing by less than this is rounding in the
+# institution's figures, not a missing movement: it opens at nothing, and the
+# account's health says so.
+ROUNDING = Decimal("1.00")
+
+
 class OpeningPositionService:
     """Works out and stores an account's opening position."""
 
@@ -207,14 +217,26 @@ class OpeningPositionService:
         could not be worked out is kept on the account's links
         (``reconciliation["opening_problems"]``) for its health check."""
         opening = self._work_out(account_id)
+        changed = False
         for link in self.db.query(BrokerageAccount).filter(
             BrokerageAccount.account_id == account_id
         ):
             report = dict(link.reconciliation or {})
-            if report.get("opening_problems", []) != opening.problems:
+            if (report.get("opening_problems", []), report.get("opening_notes", [])) != (
+                opening.problems, opening.notes
+            ):
+                changed = changed or report.get("opening_problems", []) != opening.problems
                 report["opening_problems"] = list(opening.problems)
+                report["opening_notes"] = list(opening.notes)
                 link.reconciliation = report
         self.db.commit()
+        # Said once, when it changes: a rebuild works the opening out again each
+        # time, and the same reason every time is noise.
+        if changed and opening.problems:
+            logger.warning(
+                "Account %s cannot be worked back to its start (%s); it opens empty",
+                account_id, "; ".join(opening.problems),
+            )
         return opening
 
     def _work_out(self, account_id: str) -> Opening:
@@ -263,7 +285,10 @@ class OpeningPositionService:
         if not opening.problems:
             ledger = CashLedger.for_accounts(self.db, [account_id])
             opening.cash = ledger.balance_on(first - timedelta(days=1)) if ledger else ZERO
-            if opening.cash < 0 and not owed:
+            if -ROUNDING < opening.cash < 0 and not owed:
+                opening.notes.append(f"cash works back to {opening.cash:.2f}, read as nothing")
+                opening.cash = ZERO
+            elif opening.cash < 0 and not owed:
                 opening.problems.append(f"cash works back to {opening.cash:.2f}")
             # Worked back from today, a movement missing later shifts every
             # earlier day: the opening is only as good as the history after it.
@@ -273,10 +298,6 @@ class OpeningPositionService:
                     f"cash differs from the institution's record on {cash['last_differed'].isoformat()}"
                 )
         if opening.problems:
-            logger.warning(
-                "Account %s cannot be worked back to its start (%s); it opens empty",
-                account_id, "; ".join(opening.problems),
-            )
             if opening.shares:
                 self.db.query(Trade).filter(
                     Trade.sleeve_id.in_(sleeve_ids), Trade.notes.like(f"{OPENING_NOTE}%")
@@ -407,16 +428,19 @@ class OpeningPositionService:
     def _held(self, account_id: str, day: date):
         held: Dict[str, Tuple[Decimal, Optional[Decimal], Optional[str]]] = {}
         types: Dict[str, Optional[str]] = {}
+        changes = renames(self.db)
         for row in self.db.query(DailyHolding).filter(
             DailyHolding.account_id == account_id, DailyHolding.as_of_date == day
         ):
-            quantity, price, sleeve = held.get(row.symbol, (ZERO, None, None))
-            held[row.symbol] = (
+            # Under the symbol trades are read by (a ticker that changed since).
+            symbol = current_symbol(row.symbol, day, changes)[0] if changes else row.symbol
+            quantity, price, sleeve = held.get(symbol, (ZERO, None, None))
+            held[symbol] = (
                 quantity + Decimal(str(row.quantity)),
                 Decimal(str(row.price)) if row.price is not None else price,
                 row.sleeve_id or sleeve,
             )
-            types[row.symbol] = row.security_type
+            types[symbol] = row.security_type
         return held, types
 
     def _costs(self, account_id: str, day: date) -> Dict[str, Decimal]:

@@ -57,7 +57,7 @@ export function ClientsPage() {
         <div>
           <h1 className="font-display text-2xl text-summit-ink">Clients</h1>
           <p className="text-stone text-sm mt-1">
-            {isAdmin ? 'Every client of the firm.' : 'The clients assigned to you.'} Open one to manage its accounts, its login and its family.
+            {isAdmin ? 'Everyone you look after.' : 'The clients assigned to you.'} Open one to manage its accounts, its login and its family.
           </p>
         </div>
         <div className="flex gap-2">
@@ -93,7 +93,7 @@ export function ClientsPage() {
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Acme Corp"
+                placeholder="Pat Example"
                 className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm focus:outline-none focus:border-pine"
               />
             </div>
@@ -103,16 +103,19 @@ export function ClientsPage() {
                 type="email"
                 value={createEmail}
                 onChange={(e) => setCreateEmail(e.target.value)}
-                placeholder="contact@acme.com"
+                placeholder="pat@example.com"
                 className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm focus:outline-none focus:border-pine"
               />
             </div>
             {isAdmin && (
               <div>
-                <label htmlFor="new-client-advisor" className="text-xs text-stone block mb-1">Advisor</label>
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <label htmlFor="new-client-advisor" className="text-xs text-stone">Advisor</label>
+                  <Link to="/app/settings#advisors" className="text-xs text-pine underline">Invite a new advisor</Link>
+                </div>
                 <select id="new-client-advisor" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}
                   className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm bg-surface focus:outline-none focus:border-pine">
-                  <option value="">None (yours)</option>
+                  <option value="">No advisor (you look after them)</option>
                   {advisors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>

@@ -424,9 +424,11 @@ since (see `PerformanceBuildService`); an option assignment, which trades at the
 the market, is not used to calibrate.
 
 ### `perf.corporate_action`
-`symbol`, `effective_date`, `action_type` (`SPLIT` so far), `ratio`, `source`;
-`UNIQUE(symbol, effective_date, action_type)`. Recorded from the SPLIT rows in
-`brokerage_activities`. Trades are never altered: `corporate_actions.adjusted_trades` restates
+`symbol`, `effective_date`, `action_type` (`SPLIT` or `RENAME`), `ratio` (1 for a rename),
+`new_symbol` (a rename's new ticker), `source`; `UNIQUE(symbol, effective_date, action_type)`.
+Splits are recorded from the SPLIT rows in `brokerage_activities`; renames are entered with
+`python -m app.cli add-ticker-change`.
+A rename reads trades under the old ticker before it under the new one. Trades are never altered: `corporate_actions.adjusted_trades` restates
 earlier trades in today's shares **on read** (4 shares at 1,000 before a 10-for-1 split is read
 as 40 at 100), which every position, value and return calculation goes through.
 

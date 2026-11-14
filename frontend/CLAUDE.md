@@ -62,8 +62,9 @@ platform's own pages (`/app/status`, `/app/market-data`, `/app/requests`, `/app/
 `/app/settings`); `AppShell` leaves those out of an advisor's menu. Strategy creation and a
 strategy's performance show only for an admin (`useIsAdmin`), since the API refuses them to an
 advisor. An advisor adds trades, moves symbols and manages logins for their own clients (the API
-answers their `/auth/users` with those logins only). Staff land in `/app`, clients in
-`/home`. The word "Advisor" on screen means the limited role only. The old client portal is
+answers their `/auth/users` with those logins only). Staff land in `/app/clients`, clients in
+`/home`. A client remembered in the tab's scope that this login cannot see is forgotten
+(`AppShell` checks it against the clients list; Performance clears it on a 404). The word "Advisor" on screen means the limited role only. The old client portal is
 retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
 in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
