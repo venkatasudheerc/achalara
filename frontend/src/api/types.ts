@@ -785,3 +785,32 @@ export interface RsIndex {
   group: string; volatility: boolean; first_day: string | null; last_day: string | null
 }
 export interface RsIndices { indices: RsIndex[]; notes: string[] }
+
+// ── Upload and import ─────────────────────────────────────────────────────
+// A custodian's file read against one account: what it would add, then what it did.
+
+export interface ImportTrade { action: TradeAction; symbol: string; quantity: number; price: number }
+/** `amount` is positive for money received */
+export interface ImportCash { type: string; symbol: string | null; amount: number }
+export interface ImportDay { date: string; trades: ImportTrade[]; cash: ImportCash[] }
+export interface ImportPreview {
+  account_id: string
+  file_kind: 'vanguard_activity' | 'template'
+  rows: number; first_date: string | null; last_date: string | null
+  on_file_trades: number; on_file_cash: number
+  /** Recognised although dated a trading day later (option expiries and assignments) */
+  on_file_a_day_later: number
+  /** Recognised under another spelling of the symbol (delisted or renamed) */
+  on_file_other_symbol: number
+  /** Rows that are not activity (sweeps, transfers within the account), by reason */
+  set_aside: Record<string, number>
+  to_add_trades: number; to_add_cash: number
+  days: ImportDay[]
+  /** Splits and mergers, which the feed records */
+  not_read: { line: number; date: string; type: string; symbol: string }[]
+}
+export interface ImportResult extends ImportPreview {
+  added_trades: number; added_cash: number
+  /** Our holdings against the custodian's last recorded ones; null when none are on file */
+  check: { as_of: string; matched: number; differences: { symbol: string; custodian_quantity: number; our_quantity: number }[] } | null
+}

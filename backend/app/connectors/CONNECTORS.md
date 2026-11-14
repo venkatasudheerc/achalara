@@ -113,6 +113,11 @@ audit/debug only and must never be read by upstream code.
 ingestion is idempotent — the same trade arriving via SnapTrade sync and a later CSV re-upload
 must collapse to one. Never bypass dedup (repo-wide rule; doubly true here).
 
+A custodian's activity report shares no ids with a feed. Its rows are matched on their
+economics before they are added (`services/vanguard_report.py`), carry ids starting
+`REPORT_ID_PREFIX` (`vanguard:`), and ingestion treats a feed trade with the same day, side,
+symbol, quantity and price, or a cash row with the same day and amount, as already on file.
+
 ---
 
 ## Secrets & per-client tokens (read before adding SnapTrade)

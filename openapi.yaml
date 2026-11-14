@@ -938,6 +938,136 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/clients/{client_id}/accounts/{account_id}/imports/preview:
+    post:
+      tags: [accounts]
+      summary: What a custodian's file would add to an account
+      description: Reads the file and matches it against what is on file. Nothing is written. Advisor only.
+      operationId: previewAccountImport
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The custodian's activity report (Vanguard, Excel or CSV) or Achalara's template (CSV)
+      responses:
+        "200":
+          description: What the file holds and what of it is not on file yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreview"
+        "403":
+          description: Not the account's owner, or an advisor previewing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The account is not set up to take files yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The file is larger than 5 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Not an Excel or CSV file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The file cannot be read, or names another account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/imports:
+    post:
+      tags: [accounts]
+      summary: Add what a custodian's file holds that is not on file
+      description: Reads the file again, adds only what is missing, rebuilds the account's history and checks its holdings against the custodian's last recorded ones. Advisor only.
+      operationId: importIntoAccount
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The custodian's activity report (Vanguard, Excel or CSV) or Achalara's template (CSV)
+      responses:
+        "200":
+          description: The preview as written, what was added, and the holdings check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "403":
+          description: Not the account's owner, or an advisor previewing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The account is not set up to take files yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The file is larger than 5 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Not an Excel or CSV file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The file cannot be read, or names another account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/clients/{client_id}/accounts/{account_id}/performance/monthly:
     get:
       tags: [accounts]
@@ -3428,6 +3558,156 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/portal/accounts/{account_id}/imports/preview:
+    post:
+      tags: [portal]
+      summary: What a custodian's file would add to an account
+      description: Reads the file and matches it against what is on file. Nothing is written. Only for an account the signed-in client owns; shared accounts are read-only.
+      operationId: portalImportPreview
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: as_client
+          in: query
+          required: false
+          schema:
+            type: string
+            nullable: true
+          description: An advisor previewing is refused (403)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The custodian's activity report (Vanguard, Excel or CSV) or Achalara's template (CSV)
+      responses:
+        "200":
+          description: What the file holds and what of it is not on file yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreview"
+        "403":
+          description: Not the account's owner, or an advisor previewing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The account is not set up to take files yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The file is larger than 5 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Not an Excel or CSV file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The file cannot be read, or names another account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/portal/accounts/{account_id}/imports:
+    post:
+      tags: [portal]
+      summary: Add what a custodian's file holds that is not on file
+      description: Reads the file again, adds only what is missing, rebuilds the account's history and checks its holdings against the custodian's last recorded ones. Only for an account the signed-in client owns; shared accounts are read-only.
+      operationId: portalImport
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: as_client
+          in: query
+          required: false
+          schema:
+            type: string
+            nullable: true
+          description: An advisor previewing is refused (403)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The custodian's activity report (Vanguard, Excel or CSV) or Achalara's template (CSV)
+      responses:
+        "200":
+          description: The preview as written, what was added, and the holdings check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "403":
+          description: Not the account's owner, or an advisor previewing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The account is not set up to take files yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The file is larger than 5 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Not an Excel or CSV file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The file cannot be read, or names another account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/portal/groups:
     get:
       tags:
@@ -4555,6 +4835,91 @@ components:
         detail:
           type: string
       required: [detail]
+
+    # ── Upload and import ────────────────────────────────────────────────────
+
+    ImportTrade:
+      type: object
+      required: [action, symbol, quantity, price]
+      properties:
+        action: {type: string, enum: [BUY, SELL]}
+        symbol: {type: string}
+        quantity: {type: number}
+        price: {type: number, description: Per share; per contract (100 shares) for an option}
+
+    ImportCash:
+      type: object
+      required: [type, amount]
+      properties:
+        type: {type: string}
+        symbol: {type: string, nullable: true}
+        amount: {type: number, description: Positive is money received}
+
+    ImportDay:
+      type: object
+      required: [date, trades, cash]
+      properties:
+        date: {type: string, format: date}
+        trades: {type: array, items: {$ref: "#/components/schemas/ImportTrade"}}
+        cash: {type: array, items: {$ref: "#/components/schemas/ImportCash"}}
+
+    ImportNotRead:
+      type: object
+      required: [line, date, type, symbol]
+      properties:
+        line: {type: integer}
+        date: {type: string, format: date}
+        type: {type: string}
+        symbol: {type: string}
+
+    ImportDifference:
+      type: object
+      required: [symbol, custodian_quantity, our_quantity]
+      properties:
+        symbol: {type: string}
+        custodian_quantity: {type: number}
+        our_quantity: {type: number}
+
+    ImportCheck:
+      type: object
+      description: Our holdings against the custodian's last recorded ones
+      required: [as_of, matched, differences]
+      properties:
+        as_of: {type: string, format: date}
+        matched: {type: integer}
+        differences: {type: array, items: {$ref: "#/components/schemas/ImportDifference"}}
+
+    ImportPreview:
+      type: object
+      description: What the file holds and what of it is not on file yet. Nothing is written.
+      required: [account_id, file_kind, rows, on_file_trades, on_file_cash, on_file_a_day_later, on_file_other_symbol, set_aside, to_add_trades, to_add_cash, days, not_read]
+      properties:
+        account_id: {type: string}
+        file_kind: {type: string, enum: [vanguard_activity, template]}
+        rows: {type: integer}
+        first_date: {type: string, format: date, nullable: true}
+        last_date: {type: string, format: date, nullable: true}
+        on_file_trades: {type: integer}
+        on_file_cash: {type: integer}
+        on_file_a_day_later: {type: integer, description: Recognised although dated a trading day later (option expiries and assignments)}
+        on_file_other_symbol: {type: integer, description: Recognised under another spelling of the symbol (delisted or renamed)}
+        set_aside: {type: object, additionalProperties: {type: integer}, description: Rows that are not activity, by reason}
+        to_add_trades: {type: integer}
+        to_add_cash: {type: integer}
+        days: {type: array, items: {$ref: "#/components/schemas/ImportDay"}}
+        not_read: {type: array, items: {$ref: "#/components/schemas/ImportNotRead"}, description: Splits and mergers, which the feed records}
+
+    ImportResult:
+      allOf:
+        - $ref: "#/components/schemas/ImportPreview"
+        - type: object
+          required: [added_trades, added_cash]
+          properties:
+            added_trades: {type: integer}
+            added_cash: {type: integer}
+            check:
+              nullable: true
+              allOf: [{$ref: "#/components/schemas/ImportCheck"}]
 
     # ── Clients ──────────────────────────────────────────────────────────────
 

@@ -378,33 +378,6 @@ def _brokerage_account(db, key: str):
     return None
 
 
-def _last_holdings(db, account_id: str):
-    """The custodian's holdings on the last day they were recorded, or None."""
-    from sqlalchemy import func
-
-    from app.connectors.models import NormalizedPosition
-    from app.models.perf import DailyHolding
-
-    last = (
-        db.query(func.max(DailyHolding.as_of_date))
-        .filter(DailyHolding.account_id == account_id)
-        .scalar()
-    )
-    if last is None:
-        return None
-    return [
-        NormalizedPosition(
-            symbol=h.symbol,
-            quantity=Decimal(str(h.quantity)),
-            avg_cost=Decimal(str(h.avg_cost or 0)),
-            market_price=Decimal(str(h.price)) if h.price is not None else None,
-        )
-        for h in db.query(DailyHolding).filter(
-            DailyHolding.account_id == account_id, DailyHolding.as_of_date == last
-        )
-    ]
-
-
 def import_vanguard_report(
     account_key: str,
     path: str,
@@ -417,6 +390,7 @@ def import_vanguard_report(
     import re
     from pathlib import Path
 
+    from app.services.account_import_service import AccountImportService
     from app.services.connection_service import ConnectionService
     from app.utils.symbols import app_symbol
     from app.services.vanguard_report import (
@@ -503,7 +477,8 @@ def import_vanguard_report(
         if not plan.trades and not plan.cash:
             print("\nNothing to add.")
             return 0
-        result = importer.apply(ba, plan, _last_holdings(db, ba.account_id))
+        holdings = AccountImportService(db).last_holdings(ba.account_id)
+        result = importer.apply(ba, plan, holdings)
         print(
             f"\nAdded {result['imported']} trades and {result['cash_imported']} cash rows "
             f"({result['duplicates']} recognised as already on file); history rebuilt."

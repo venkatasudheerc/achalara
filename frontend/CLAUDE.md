@@ -142,6 +142,7 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `PeriodTable` | Performance by day / week / month / quarter for the entity in scope, from `…/performance/periods`; shows whether each period was observed or rebuilt |
 | `SleeveFilter` | Dropdown in the performance headline that re-scopes the page to one sleeve or back to all; sets `ScopeContext`, holds no state of its own |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
+| `ImportDialog` | "Update from a file": choose a custodian's file, see what it would add (`…/imports/preview`), then add it and show the holdings check. One dialog for both doors (`ImportDoor`: the portal for a client's own account, the advisor's account route); hook `useAccountImport` in `src/hooks/useImports.ts`. The template it offers is `public/achalara-activity-template.csv` |
 
 The headline card, returns chart, monthly grid and period table are all at market value (each day's closing prices). The three period widgets pass `basis: PERIOD_BASIS` from `src/api/endpoints/performance.ts`; the API also supports `realized` (holdings at cost). Change the constant, not individual calls.
 
@@ -183,6 +184,9 @@ Each feature directory contains its page component(s). Implemented:
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
   members found it confusing, so `/home/research`, previews included, leaves it out.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
+- "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
+  new app when the rail's selection is one account the signed-in client owns (not a shared one, not
+  an advisor's preview)
 - `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
 - `home/*` — the new app (see Routing). `portal/*` — the pages its Holdings, Transactions, Performance and Cost basis tabs show: `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls, the account/strategy filter and `HomeSelection` are in `portal/ui.tsx`.
