@@ -2,10 +2,10 @@ import { THEME_CHOICE_OFFERED, useTheme } from '@/context/ThemeContext'
 
 /** Switches between the light and dark themes. Sits on dark chrome by default. */
 export function ThemeToggle({ className = '' }: { className?: string }) {
-  const { theme, toggleTheme } = useTheme()
+  const { theme, toggleTheme, oneApp } = useTheme()
   const dark = theme === 'dark'
-  // The app is dark for everyone for now (see THEME_CHOICE_OFFERED).
-  if (!THEME_CHOICE_OFFERED) return null
+  // Offered wherever the new look is on (the staff workspace, the client app).
+  if (!THEME_CHOICE_OFFERED && !oneApp) return null
   return (
     <button
       type="button"

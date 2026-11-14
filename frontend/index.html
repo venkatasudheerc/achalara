@@ -13,13 +13,13 @@
     />
     <script>
       // The theme before first paint, so nobody sees a flash of the wrong one.
-      // Mirrors ThemeContext: the new app (/home) and the sign-in pages honour
-      // the viewer's choice (light, dark, or the device's own); the older
-      // screens stay dark for everyone.
+      // Mirrors ThemeContext: the client app (/home), the staff workspace (/app)
+      // and the sign-in pages honour the viewer's choice (light, dark, or the
+      // device's own); the old marketing page stays dark.
       (function () {
         var root = document.documentElement
         var p = location.pathname
-        var oneApp = /^\/(home|portal|login|invite|reset|request-invitation)(\/|$)/.test(p)
+        var oneApp = /^\/(app|home|portal|login|invite|reset|request-invitation)(\/|$)/.test(p)
         var dark = true
         if (oneApp) {
           root.classList.add('one-app')

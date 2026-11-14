@@ -4,6 +4,7 @@ import { useLogout, useMe } from '@/hooks/useAuth'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useScope } from '@/context/ScopeContext'
+import { useOneAppLook } from '@/context/ThemeContext'
 import { useClientsList } from '@/hooks/useClients'
 import { staffTitle } from '@/lib/roles'
 
@@ -26,6 +27,8 @@ const fastFollowers = [
 ]
 
 export function AppShell() {
+  // The staff workspace wears the same look as the client app, light or dark.
+  useOneAppLook()
   const { startDate, endDate, setDateRange } = useDateRange()
   const { scope, clearScope } = useScope()
   const navigate = useNavigate()
@@ -86,7 +89,11 @@ export function AppShell() {
           {isAdmin && (
             <NavLink
               to="/app/settings"
-              className="block px-3 py-2 rounded-btn text-sm text-stone/60 hover:text-on-dark transition-colors"
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded-btn text-sm transition-colors ${
+                  isActive ? 'bg-pine text-on-dark font-medium' : 'text-on-dark/70 hover:text-on-dark hover:bg-pine/30'
+                }`
+              }
             >
               Settings
             </NavLink>
