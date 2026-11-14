@@ -1,7 +1,7 @@
-"""Vanguard's activity report: fill the days a brokerage feed left out.
+"""Vanguard's activity report: history from the custodian's own file.
 
-The feed (SnapTrade today) sometimes misses whole days of an account's
-activity, and asking it again does not bring them back. Vanguard's own
+A feed reaches back only so far, and an account's earlier history comes from
+the owner's files. Vanguard's own
 "custom activity report" (Excel) lists every trade and cash movement with its
 trade date. This reads that file, finds the rows we do not already hold, and
 adds only those, through the same routing and ingestion as a sync.

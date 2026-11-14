@@ -71,17 +71,17 @@ def test_status_reports_accounts_capture_and_data(db, client):
 
     assert body["database"]["ok"] is True
     assert [j["id"] for j in body["jobs"]][:4] == [
+        "plaid_refresh",
+        "price_history",
         "daily_sheets_sync",
-        "brokerage_link_check",
-        "daily_brokerage_sync",
-        "daily_capture",
+        "index_history",
     ]
     (linked,) = body["brokerage_accounts"]
     # The full account number never appears, only its last four.
     assert (linked["name"], linked["number_last4"]) == ("Brokerage", "5678")
     assert linked["owner"] == "Maya Rao"
     assert linked["transactions_synced_through"] == "2026-10-05"
-    assert linked["next_sync_allowed_at"].startswith("2026-10-07T16:30")
+    assert linked["next_sync_allowed_at"] is None  # no pull limit since SnapTrade left
     assert (linked["holdings_differ"], linked["skipped_rows"]) == (0, 2)
     assert body["data"]["clients"] == 1 and body["data"]["accounts"] == 1
     assert body["backup"]["known"] is False
@@ -102,7 +102,7 @@ def test_status_points_out_what_needs_a_look(db):
     # Said once for the link, not once for each account under it.
     assert (
         "The A Brokerage link stopped sharing data. "
-        "Sign in to it again from the client's page."
+        "Its owner needs to sign in to it again."
     ) in status["attention"]
     (link,) = status["brokerage_links"]
     assert (link["institution"], link["status"], link["accounts"]) == (
@@ -127,25 +127,25 @@ def test_a_day_not_captured_is_pointed_out(db):
 def test_a_job_that_logs_an_error_is_marked_failed(db):
     run_log.install()
 
-    @run_log.tracked("daily_capture")
+    @run_log.tracked("price_history")
     def failing_job():
         logging.getLogger("app.test").error("the source did not answer")
 
     failing_job()
     status = StatusService(db).status(now=NOW)
 
-    capture = next(j for j in status["jobs"] if j["id"] == "daily_capture")
+    capture = next(j for j in status["jobs"] if j["id"] == "price_history")
     assert capture["last_ok"] is False
     assert capture["last_error"] == "the source did not answer"
-    assert "Daily capture failed on its last run." in status["attention"]
+    assert "Price history failed on its last run." in status["attention"]
     assert status["recent_log"][0]["message"] == "the source did not answer"
 
-    @run_log.tracked("daily_capture")
+    @run_log.tracked("price_history")
     def working_job():
         return None
 
     working_job()
-    assert "Daily capture failed on its last run." not in (
+    assert "Price history failed on its last run." not in (
         StatusService(db).status(now=NOW)["attention"]
     )
 

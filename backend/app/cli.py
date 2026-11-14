@@ -5,23 +5,15 @@
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
     python -m app.cli md-index-membership
-    python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
+    python -m app.cli retire-snaptrade [--apply]
 """
 import argparse
 from typing import Optional
-import base64
 import getpass
-import hashlib
-import hmac
-import json
 import sys
-import urllib.error
-import urllib.request
-import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from app.config import settings
 from app.db.database import SessionLocal
 from app.services.auth_service import (
     MIN_PASSWORD_LENGTH,
@@ -126,42 +118,25 @@ def load_index_file(symbol: str, path: str, source: str, replace: bool) -> int:
     return 0
 
 
-def send_test_webhook(url: str) -> int:
-    """Post a harmless, properly signed event to our own webhook address.
+def retire_snaptrade_command(apply: bool) -> int:
+    """Remove everything SnapTrade brought in. Shows what would go unless --apply."""
+    from app.db.database import SessionLocal
+    from app.services.feed_records import retire_snaptrade
 
-    Proves the address is reachable from outside and that the signature check
-    passes with the configured key. The event type is one the app ignores.
-    """
-    if not settings.snaptrade_consumer_key:
-        print("SNAPTRADE_CONSUMER_KEY is not set.", file=sys.stderr)
-        return 1
-    event = {
-        "eventType": "ACHALARA_TEST",
-        "webhookId": str(uuid.uuid4()),
-        "eventTimestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    content = json.dumps(event, separators=(",", ":"), sort_keys=True).encode()
-    digest = hmac.new(
-        settings.snaptrade_consumer_key.encode(), content, hashlib.sha256
-    ).digest()
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(event).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Signature": base64.b64encode(digest).decode(),
-        },
-    )
+    db = SessionLocal()
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            print(f"{response.status} {response.read().decode()[:200]}")
-            return 0
-    except urllib.error.HTTPError as error:
-        print(f"Refused: {error.code} {error.read().decode()[:200]}", file=sys.stderr)
-    except OSError as error:
-        print(f"Could not reach {url}: {error}", file=sys.stderr)
-    return 1
-
+        summary = retire_snaptrade(db, apply=apply)
+    finally:
+        db.close()
+    print(
+        f"SnapTrade logins: {summary['logins']}, links: {summary['links']}, "
+        f"source rows: {summary['source_rows']}, accounts whose records go: {summary['accounts_cleared']}"
+    )
+    if apply:
+        print("Removed: " + ", ".join(f"{k} {v}" for k, v in summary["removed"].items()))
+    else:
+        print("Nothing changed. Back up the database, then run again with --apply.")
+    return 0
 
 def md_index_membership() -> int:
     """Fetch the index funds' holdings now and bring membership up to date."""
@@ -520,12 +495,10 @@ def main(argv=None) -> int:
     from_file.add_argument(
         "--replace", action="store_true", help="remove the index's stored days first"
     )
-    webhook = commands.add_parser(
-        "send-test-webhook", help="post a signed test event to our webhook address"
+    retire = commands.add_parser(
+        "retire-snaptrade", help="remove everything SnapTrade brought in (shows first)"
     )
-    webhook.add_argument(
-        "--url", required=True, help="https://<domain>/api/v1/webhooks/snaptrade"
-    )
+    retire.add_argument("--apply", action="store_true", help="remove it; without this, only show")
     commands.add_parser(
         "md-index-membership",
         help="market data: fetch index holdings now and update membership",
@@ -617,8 +590,8 @@ def main(argv=None) -> int:
         return md_set_sector(args.symbol, args.sector, args.industry)
     if args.command == "md-index-membership":
         return md_index_membership()
-    if args.command == "send-test-webhook":
-        return send_test_webhook(args.url)
+    if args.command == "retire-snaptrade":
+        return retire_snaptrade_command(args.apply)
     if args.command == "create-advisor":
         return create_advisor(args.email, args.name)
     if args.command == "set-price":

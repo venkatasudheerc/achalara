@@ -5,9 +5,6 @@ Callers resolve a source by its registered name and depend only on the
 in CONNECTORS.md). The Webull connector is *not* registered by default because
 constructing it reads API credentials; obtain it explicitly when needed.
 
-SnapTrade registers by default: it builds its SDK client lazily, so importing
-it without credentials is safe, and callers gate live use on
-``is_configured()``.
 """
 from __future__ import annotations
 
@@ -17,7 +14,6 @@ from app.connectors.base import BrokerageConnector
 from app.connectors.csv_connector import CSVConnector
 from app.connectors.fake_connector import FakeConnector
 from app.connectors.sheets_connector import SheetsConnector
-from app.connectors.snaptrade_connector import SnapTradeConnector
 
 _REGISTRY: Dict[str, BrokerageConnector] = {}
 
@@ -47,4 +43,3 @@ def available_sources() -> list[str]:
 register("csv", CSVConnector())
 register("sheets", SheetsConnector())
 register("fake", FakeConnector())
-register("snaptrade", SnapTradeConnector())

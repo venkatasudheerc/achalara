@@ -1,8 +1,8 @@
 # Achalara
 
 Investment portfolio tracking for a small advisory practice. It follows every trade through a
-**Client → Account → Sleeve** hierarchy (a sleeve is one strategy run in one account), pulls
-brokerage activity through SnapTrade, keeps a daily record of each account's value, and reports
+**Client → Account → Sleeve** hierarchy (a sleeve is one strategy run in one account), links
+each account through Plaid, takes earlier history from the custodian's own files, keeps a daily record of each account's value, and reports
 money- and time-weighted returns, realised gains as the brokerage reports them, and an account PDF
 report. Clients see their own accounts in a read-only portal. A separate market-data store keeps
 securities, index membership and sectors.

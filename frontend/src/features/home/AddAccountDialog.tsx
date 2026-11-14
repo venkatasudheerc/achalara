@@ -49,6 +49,8 @@ function initialPick(a: PlaidFoundAccount): Pick {
 function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick: Pick; onPick: (p: Pick) => void }) {
   const done = account.status === 'mapped' || account.status === 'matched'
   const value = pick.action === 'link' ? `link:${pick.accountId}` : pick.action
+  const replacing = pick.action === 'link'
+    ? account.candidates.find((c) => c.account_id === pick.accountId)?.replaces : null
   const field = 'h-[44px] px-[12px] rounded-[12px] border border-stone/40 bg-surface text-[14px]'
   return (
     <li className="border border-line rounded-[16px] p-[16px] flex flex-col gap-[12px]">
@@ -65,7 +67,7 @@ function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick:
       </div>
       {done ? (
         <span className="text-[14px] text-stone">Already linked.</span>
-      ) : (
+      ) : (<>
         <div className="flex flex-wrap gap-[8px]">
           <select aria-label={`What to do with ${account.name}`} value={value} className={`${field} flex-1 min-w-[220px]`}
             onChange={(e) => {
@@ -85,7 +87,13 @@ function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick:
             {KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
           </select>
         </div>
-      )}
+        {replacing && (
+          <p className="text-[13px] text-loss leading-relaxed">
+            This account is updated by {replacing} today. Linking it here starts it afresh from Plaid: the history from {replacing} is
+            removed, and earlier history can be added from your institution’s files with Update from a file.
+          </p>
+        )}
+      </>)}
     </li>
   )
 }
@@ -222,9 +230,6 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
           <div className="flex flex-col gap-[8px] text-[15px] leading-relaxed">
             {result.added > 0 && <p>Added {result.added} new account{result.added === 1 ? '' : 's'}.</p>}
             {result.linked > 0 && <p>Linked {result.linked} to account{result.linked === 1 ? '' : 's'} already here.</p>}
-            {result.waiting > 0 && (
-              <p>{result.waiting} account{result.waiting === 1 ? ' is' : 's are'} linked and will switch over once {result.waiting === 1 ? 'its' : 'their'} history is moved; until then {result.waiting === 1 ? 'it keeps' : 'they keep'} updating as before.</p>
-            )}
             {result.skipped > 0 && <p>Left out {result.skipped}.</p>}
           </div>
         )}

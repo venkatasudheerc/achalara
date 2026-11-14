@@ -31,6 +31,12 @@ SECURITIES = [
 ]
 
 
+CHECKING_ONLY = [
+    {"account_id": "p-chk", "name": "Everyday Checking", "mask": "1111",
+     "type": "depository", "subtype": "checking", "balances": {"current": 2500.0}},
+]
+
+
 class FakePlaid:
     """Plaid as the service sees it, with one login of three accounts."""
 
@@ -256,20 +262,65 @@ def test_a_new_account_is_added_of_its_kind_and_pulled(db, owner, plaid_keys):
     assert card.total_value == D("-300.00")
 
 
-def test_an_account_another_feed_still_writes_to_is_linked_but_not_pulled(db, owner, plaid_keys):
+def test_plaid_takes_over_an_account_another_feed_writes_to_as_a_clean_start(db, owner, plaid_keys):
+    """Linking replaces the old feed: its records go, Plaid's history comes in,
+    and the old link is set aside so it can never be mapped back."""
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.models.cash_activity import CashActivity
+
     existing = _existing(db, owner, "Pat Example — Brokerage Account — 12348069", {"AAA": 100}, fed=True)
+    old_link = db.query(BrokerageAccount).filter(BrokerageAccount.account_id == existing.id).one()
+    sleeve = db.query(Sleeve).filter(Sleeve.account_id == existing.id).one()
+    db.add_all([
+        Trade(sleeve_id=sleeve.id, trade_date=date(2024, 3, 1), symbol="OLD", action="BUY",
+              quantity=D(5), price=D(10), commission=D(0), external_id="snap-1"),
+        CashActivity(sleeve_id=sleeve.id, activity_date=date(2024, 3, 1), type="CONTRIBUTION",
+                     amount=D(50), external_id="snap-c1"),
+        BrokerageActivity(brokerage_account_id=old_link.id, source_activity_id="snap-1",
+                          activity_date=date(2024, 3, 1), type="BUY", outcome="trade", payload={}),
+    ])
+    db.commit()
+
     service = PlaidLinkService(db, FakePlaid())
     found = service.finish(owner.id, "public-token")
     brokerage = next(a for a in found["accounts"] if a["mask"] == "8069")
+    assert next(c for c in brokerage["candidates"] if c["account_id"] == existing.id)["replaces"] == INSTITUTION
 
     done = service.confirm(owner.id, found["connection_id"], [
         {"link_id": brokerage["link_id"], "action": "link", "account_id": existing.id},
     ])
-    assert done["waiting"] == 1
+    assert done["linked"] == 1
     link = db.get(BrokerageAccount, brokerage["link_id"])
-    assert (link.status, link.account_id) == ("matched", existing.id)
-    assert db.query(Trade).join(Sleeve).filter(Sleeve.account_id == existing.id).count() == 0
+    assert (link.status, link.account_id, link.default_sleeve_id) == ("mapped", existing.id, sleeve.id)
+    db.refresh(old_link)
+    assert (old_link.status, old_link.account_id) == ("ignored", None)
+    assert not db.query(BrokerageActivity).filter(BrokerageActivity.brokerage_account_id == old_link.id).count()
+    # Only Plaid's history is on file now.
+    trades = db.query(Trade).join(Sleeve).filter(Sleeve.account_id == existing.id).all()
+    assert {t.symbol for t in trades if not (t.notes or "").startswith("Opening")} == {"AAA"}
+    assert not db.query(CashActivity).filter(CashActivity.external_id == "snap-c1").count()
     assert db.get(Account, existing.id).last_four == "8069"
+
+
+def test_a_shared_account_fed_elsewhere_can_only_be_moved_by_its_owner(db, owner, plaid_keys):
+    from app.models.user import AccountAccess
+
+    other = Client(name="Sam Example", email="sam@example.com")
+    db.add(other)
+    db.flush()
+    theirs = _existing(db, other, "Sam Example — Brokerage Account — 12348069", {"AAA": 100}, fed=True)
+    db.add(AccountAccess(client_id=owner.id, account_id=theirs.id))
+    db.commit()
+    service = PlaidLinkService(db, FakePlaid())
+    found = service.finish(owner.id, "public-token")
+    brokerage = next(a for a in found["accounts"] if a["mask"] == "8069")
+
+    with pytest.raises(PlaidLinkError) as refused:
+        service.confirm(owner.id, found["connection_id"], [
+            {"link_id": brokerage["link_id"], "action": "link", "account_id": theirs.id},
+        ])
+    assert refused.value.status_code == 403
+    assert db.query(BrokerageAccount).filter(BrokerageAccount.account_id == theirs.id).one().status == "mapped"
 
 
 def test_an_account_of_another_client_cannot_be_chosen(db, owner, plaid_keys):

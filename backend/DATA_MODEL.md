@@ -454,7 +454,7 @@ fund's interest) are stored for audit and never counted. See `CashActivityServic
 |---|---|---|
 | id | String(36) PK | uuid |
 | client_id | String(36) FK→clients.id | not null, **ON DELETE CASCADE** |
-| source | String(50) | connector registry name, e.g. `snaptrade` |
+| source | String(50) | the feed: `plaid` (rows from the retired `snaptrade` are removed by `retire-snaptrade`) |
 | external_user_id | String(255) | the user id the login was linked under at the source |
 | external_connection_id | String(255) | the source's id for the login |
 | institution | String(255) | e.g. "Vanguard" |
@@ -464,8 +464,8 @@ fund's interest) are stored for audit and never counted. See `CashActivityServic
 | consent_expires_at | DateTime(tz) | nullable — when the client's consent to share runs out, where the institution sets one |
 | transactions_cursor | Text | nullable — where Plaid's bank and card transactions were last read to |
 
-Constraints: `UNIQUE(source, external_connection_id)`. One row per brokerage login. Holds
-references only — no credentials and no secret (the Personal SnapTrade flow issues none).
+Constraints: `UNIQUE(source, external_connection_id)`. One row per login. The only secret is a
+Plaid login's access key, kept encrypted.
 
 ### `brokerage_accounts`
 | Column | Type | Notes |
@@ -651,7 +651,7 @@ Applied in one place, `app/api/deps.py::require_access`, where each router is mo
 
 | Caller | May |
 |---|---|
-| Nobody signed in | `/`, `/health`, `/api/v1/auth/login`, the invite/reset link routes, and the SnapTrade webhook (which verifies its own signature) |
+| Nobody signed in | `/`, `/health`, `/api/v1/auth/login`, the invite/reset link routes, and the invitation form |
 | Advisor | Everything |
 | Client user | Read only: `/clients/{their client}` roll-ups; any account they own or were granted and everything beneath it (sleeves, positions, trades, performance, the report); benchmarks |
 
@@ -698,7 +698,7 @@ from trades. Rebuild the reconstructed rows with `POST /admin/rebuild-performanc
   `external_id` still dedup as before. Quantity and price compare as normalized `Decimal`s,
   not floats, so fractional share counts compare exactly.
 - **Brokerage trades dedup on `external_id` alone.** For sources whose id is a complete
-  identity (`snaptrade`), the legacy tuple is not consulted: it has no action, so it would drop
+  identity (`plaid`, and `vanguard:` rows from a custodian's file), the legacy tuple is not consulted: it has no action, so it would drop
   one leg of a same-day buy and sell at one price, which real brokerage data contains.
 - **Options are trades counted in contracts.** `symbol` is the OCC symbol, `security_type` is
   `OPTION`, `quantity` is the contract count and `price` is **per contract** (the per-share

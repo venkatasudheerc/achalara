@@ -117,7 +117,6 @@ Logins come across with the data. Delete the dump from both machines afterwards.
 ### 7. After it is live
 
 - Set `SCHEDULER_ENABLED=false` on the development machine (see the rules above).
-- Set up the brokerage source's webhook (see "Notices from the brokerage source" below).
 - Add a free uptime monitor on `https://<your domain>/health` that emails you.
 
 ## Alerts on your phone (optional)
@@ -192,47 +191,27 @@ institutions in Plaid's window, and each login uses one of the plan's places (th
 `https://<DOMAIN>/home/plaid-return`; add it under Allowed redirect URIs in Plaid's
 dashboard. With the keys empty, "Link with Plaid" says linking is not set up.
 
-## Notices from the brokerage source (webhook)
+## Retiring SnapTrade (once)
 
-Without this the app learns of changes only when it asks: the 8am sync, the evening capture
-and the six-hourly link check. With it, SnapTrade tells the app when a link breaks or mends,
-when an account's transactions or holdings have been refreshed, and when a new link appears,
-and the app acts at once. Each notice is signed with the consumer key; the app refuses any
-that is not.
+SnapTrade is no longer used: accounts are fed by Plaid and their history comes from the
+custodian's files. Linking an account through Plaid already replaces what SnapTrade left for
+it. To remove everything else SnapTrade brought in, take a backup first (`deploy/backup.sh`),
+then in `deploy/`:
 
-1. **Check the address answers.** From any machine:
+```sh
+docker compose exec backend python -m app.cli retire-snaptrade          # shows what would go
+docker compose exec backend python -m app.cli retire-snaptrade --apply  # removes it
+```
 
-   ```sh
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://<your domain>/api/v1/webhooks/snaptrade -d '{}'
-   ```
-
-   `401` is right: it is reachable and refuses an unsigned notice.
-2. **Check a signed notice is accepted.** On the server, in `deploy/`:
-
-   ```sh
-   docker compose exec backend python -m app.cli send-test-webhook --url https://<your domain>/api/v1/webhooks/snaptrade
-   ```
-
-   It prints `200 {"status":"ignored"}`. Open **System status**: the section "Notices from the
-   brokerage source" lists `ACHALARA_TEST`, and the refused one from step 1 above it.
-3. **Tell SnapTrade the address.** In the SnapTrade dashboard, open the webhook tab and enter
-   `https://<your domain>/api/v1/webhooks/snaptrade`.
-4. **Wait for a real one.** SnapTrade refreshes each account's holdings daily, so
-   `ACCOUNT_HOLDINGS_UPDATED` notices appear within a day. If they show as "Refused: the
-   signature did not match", the consumer key in `deploy/.env` is not the one for that
-   SnapTrade key pair.
-
-What each notice does: a broken or deleted link updates the link's state (and alerts you); a
-mended link or a new account re-reads the link's accounts; new transactions pull that account
-at once, and the 8am job then leaves it alone that morning; refreshed holdings record the
-account's day. A notice delivered twice is acted on once. The list is kept in memory and
-starts empty at each restart.
+The accounts and their strategies stay, empty until Plaid or a file fills them. The
+`SNAPTRADE_*` settings in `deploy/.env` can then be deleted, and the webhook removed from
+SnapTrade's dashboard.
 
 ## Routine
 
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
-The app's own daily jobs keep their UTC times, except the Plaid refresh, which runs at 6:30 AM
+The app's own daily jobs keep their UTC times (price history at 23:30 UTC on weekdays), except the Plaid refresh, which runs at 6:30 AM
 Eastern Tuesday to Saturday and records the day before. A server down at that time misses that
 day's record for Plaid accounts; the next run brings their transactions up to date.
 

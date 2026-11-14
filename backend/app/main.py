@@ -27,7 +27,6 @@ from app.api.routes import (
     auth,
     benchmarks,
     clients,
-    connections,
     invitations,
     performance,
     portal,
@@ -84,11 +83,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers. Signing in and the SnapTrade webhook (which checks its own
-# signature) are open; every data route goes through require_access.
+# Include routers. Signing in is open; every data route goes through require_access.
 _guarded = [Depends(require_access)]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(connections.public_router, prefix="/api/v1", tags=["connections"])
 # The public page's "request an invitation" form; it guards itself.
 app.include_router(invitations.public_router, prefix="/api/v1", tags=["invitations"])
 # The portal answers only for its viewer (see deps.portal_viewer).
@@ -132,9 +129,6 @@ app.include_router(
     prefix="/api/v1/benchmarks",
     tags=["benchmarks"],
     dependencies=_guarded,
-)
-app.include_router(
-    connections.router, prefix="/api/v1", tags=["connections"], dependencies=_guarded
 )
 app.include_router(
     performance.router, prefix="/api/v1", tags=["performance"], dependencies=_guarded

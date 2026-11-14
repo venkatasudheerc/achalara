@@ -402,7 +402,6 @@ def test_a_client_cannot_reach_anyone_else_or_any_firm_wide_route(as_maya, house
         "/api/v1/clients/",
         "/api/v1/strategies/",
         "/api/v1/admin/sync-logs",
-        f"/api/v1/clients/{maya.id}/connections",
         f"/api/v1/clients/{maya.id}/account-access",
     ]:
         assert as_maya.get(path).status_code == 403, path
@@ -505,13 +504,6 @@ def test_an_owner_is_not_granted_their_own_account(as_advisor, household):
 
 
 # -- the webhook stays outside sign-in ------------------------------------
-
-
-def test_webhook_is_judged_by_its_signature_not_by_a_session(anon_client):
-    response = anon_client.post("/api/v1/webhooks/snaptrade", json={"eventType": "x"})
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid signature"
 
 
 # ---------------------------------------------------------------------------

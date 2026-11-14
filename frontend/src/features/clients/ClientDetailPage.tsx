@@ -12,7 +12,6 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatDate, formatStoredPrice } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
-import { BrokerageConnections } from '@/features/connections/BrokerageConnections'
 import { ClientLoginSection } from '@/features/auth/ClientLoginSection'
 import { SharedAccountsSection } from '@/features/auth/SharedAccountsSection'
 
@@ -251,7 +250,6 @@ export function ClientDetailPage() {
 
       <SharedAccountsSection clientId={clientId!} />
 
-      <BrokerageConnections clientId={clientId!} />
 
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">

@@ -1,9 +1,8 @@
 """What an account held before its history on file begins.
 
-A feed's history reaches back only so far (Plaid two years at most, SnapTrade
-as far as it was given), and a client's file may reach further. An account can
-therefore begin its history already holding money and shares. That position is
-worked back from the institution's latest record: each security's shares then,
+A feed's history reaches back only so far (Plaid two years at most), and a
+client's file may reach further. An account can therefore begin its history
+already holding money and shares. That position is worked back from the institution's latest record: each security's shares then,
 less what was bought since and plus what was sold, and the cash less every
 movement since. It is stored as **opening trades**, one buy per security dated
 the market day before the first transaction, so positions, cost basis, the

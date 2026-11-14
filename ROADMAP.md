@@ -7,9 +7,10 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
 
 - **Hierarchy and trades.** Clients, accounts, firm-wide strategies and sleeves. Trades from CSV,
   public Google Sheets and brokerages, with duplicate detection on every path.
-- **Brokerage connections (Bridge).** One connector interface (`app/connectors/`) with SnapTrade
-  as the first adapter: linking, discovery, mapping, a daily sync at 8 AM US Eastern and a signed
-  webhook. Splits, mergers and assigned or expired options are read from the brokerage's rows.
+- **Accounts linked through Plaid.** Clients link their own bank, card, loan and brokerage
+  logins; each account is matched to one already here on evidence and confirmed by a person, and
+  refreshed each weekday morning. Earlier history comes from the custodian's own files, and every
+  account says whether its record is complete. SnapTrade, the first brokerage feed, is retired.
   A symbol's history can be moved between sleeves of one account.
 - **Performance.** Money- and time-weighted returns at sleeve, account, client and strategy
   level, from a daily record (`perf` schema) of observed and rebuilt days. Periods by day, week,
@@ -36,12 +37,12 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
   Plan and Tax, shown as "coming soon" in the new app, follow.
 - Deploy market data so its daily collection starts; then sectors on the Holdings page, daily
   prices for index members and chosen funds, and fundamentals.
-- Register the SnapTrade webhook on the public host and confirm a real delivery.
+- Read splits and mergers from Plaid's rows and from custodian files (only SnapTrade's were read).
 
 ## Deferred
 
 - **Portfolio, Risk and Grow** screens show "coming soon" and have no backend.
-- **Trading** through SnapTrade (`place_order`) waits until Grow is on the active roadmap.
+- **Trading** waits until Grow is on the active roadmap.
 - **Markets outside the US**: the model is ready; which markets and sources is decided later.
 
 ## Technical debt

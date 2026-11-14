@@ -1629,54 +1629,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/admin/status/check-links:
-    post:
-      tags:
-      - admin
-      summary: Check Brokerage Links
-      description: 'Ask the source now whether each brokerage link is still sharing data,
-  
-        then return the status afresh.'
-      operationId: check_brokerage_links_api_v1_admin_status_check_links_post
-      parameters:
-      - name: connection_id
-        in: query
-        required: false
-        schema:
-          type: string
-          nullable: true
-        description: Check only this link; every link when left out. 404 when it is not on file.
-      - name: achalara_session
-        in: cookie
-        required: false
-        schema:
-          type: string
-          nullable: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SystemStatusResponse'
-        '401':
-          description: Not signed in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '502':
-          description: The brokerage source did not answer
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: The brokerage source is not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
   /api/v1/research/this-week:
     get:
       tags:
@@ -2853,179 +2805,6 @@ paths:
 
   # ─── Brokerage connections ──────────────────────────────────────────────────
 
-  /api/v1/clients/{client_id}/connections/snaptrade/link:
-    post:
-      tags: [connections]
-      summary: Start linking a brokerage login
-      description: |
-        Returns a hosted SnapTrade portal URL where the client signs in to their
-        brokerage. **The URL expires in about five minutes** — open it immediately.
-        There is no callback; after the portal is finished, call `discover`.
-        Read-only access is requested.
-      operationId: startBrokerageLink
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LinkRequest"
-      responses:
-        "200":
-          description: Portal URL
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LinkResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          description: SnapTrade is not configured on the server
-
-  /api/v1/clients/{client_id}/connections/discover:
-    post:
-      tags: [connections]
-      summary: Record the logins and accounts the brokerage source reports
-      description: |
-        Run after the linking portal completes. Safe to repeat: existing rows are
-        updated, account mappings are untouched, and a login the source no longer
-        lists is marked deleted.
-      operationId: discoverConnections
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      responses:
-        "200":
-          description: The client's connections after discovery
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Connection"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          description: SnapTrade is not configured on the server
-
-  /api/v1/clients/{client_id}/connections:
-    get:
-      tags: [connections]
-      summary: List a client's brokerage connections and their accounts
-      operationId: listConnections
-      parameters:
-        - $ref: "#/components/parameters/client_id"
-      responses:
-        "200":
-          description: Connections (removed ones are omitted)
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Connection"
-
-  /api/v1/connections/{connection_id}:
-    delete:
-      tags: [connections]
-      summary: Revoke a brokerage login
-      description: Revokes access at the source. Trades already ingested are kept.
-      operationId: removeConnection
-      parameters:
-        - name: connection_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Removed
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}:
-    patch:
-      tags: [connections]
-      summary: Map a discovered account into the hierarchy, or ignore it
-      description: |
-        `mapped` creates an Achalara account (unless `account_id` names one) and
-        a FIFO sleeve for `strategy_id` (default: the "Unallocated" strategy).
-        The account may belong to a different client than the login: pass
-        `client_id` to name its owner.
-        The sleeve must not already hold trades. An account cannot be remapped
-        once it has synced.
-      operationId: updateBrokerageAccount
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BrokerageAccountUpdate"
-      responses:
-        "200":
-          description: Updated brokerage account
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrokerageAccount"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Mapping not allowed (sleeve holds trades, or already synced)
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}/sync:
-    post:
-      tags: [connections]
-      summary: Pull new trades and cash activity for a mapped account
-      description: |
-        At most once per 24 hours per account (the source's limit); an earlier
-        call returns `status: skipped`, `reason: synced_recently`. Also skipped
-        while the source is still loading history (`initial_sync_pending`) or
-        rate limiting (`rate_limited`). Brokerage transactions are a daily batch
-        and lag holdings by days — see `transactions_synced_through`.
-      operationId: syncBrokerageAccount
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-        - name: full_history
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: Reload from the account's first day instead of from the last watermark
-      responses:
-        "200":
-          description: Sync outcome
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrokerageSyncResult"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Account is not mapped, or its connection is broken
-        "502":
-          description: The brokerage source failed
-
-  /api/v1/brokerage-accounts/{brokerage_account_id}/reconciliation:
-    get:
-      tags: [connections]
-      summary: Brokerage holdings compared with positions derived from trades
-      operationId: getReconciliation
-      parameters:
-        - $ref: "#/components/parameters/brokerage_account_id"
-      responses:
-        "200":
-          description: Result of the last reconciliation (empty before the first sync)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Reconciliation"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
   /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities:
     get:
       tags: [sleeves]
@@ -3201,43 +2980,6 @@ paths:
                 $ref: "#/components/schemas/InvitationRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /api/v1/webhooks/snaptrade:
-    post:
-      tags: [connections]
-      summary: SnapTrade webhook receiver
-      security: []
-      description: |
-        Verifies the `Signature` header (HMAC-SHA256 keyed with the consumer key,
-        over the event written with sorted keys and no spaces as SnapTrade
-        documents, or over the body as sent) before anything is acted on. An
-        event delivered twice (same `webhookId`) is answered `duplicate` and not
-        acted on again. Called by SnapTrade, not by the frontend.
-      operationId: snaptradeWebhook
-      parameters:
-        - name: Signature
-          in: header
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Acknowledged
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-        "401":
-          description: Missing or invalid signature
 
   # ─── Performance: periods, statistics, report ───────────────────────────────
 
@@ -5209,6 +4951,12 @@ components:
         same_balance:
           type: boolean
           title: Same Balance
+        replaces:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Replaces
+          description: Another feed still writing to the account; linking replaces its history with Plaid's.
       type: object
       required:
       - account_id

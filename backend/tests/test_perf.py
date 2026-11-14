@@ -1,8 +1,8 @@
-"""The perf schema: daily valuation, capture, statistics and the report.
+"""The perf schema: daily valuation, recording a day, statistics and the report.
 
 Offline. Statistics are checked against hand-worked figures on daily rows
-written directly; the build and capture are checked end to end through the
-stub brokerage used in ``test_connections``.
+written directly; the build and a recorded day are checked end to end on an
+account fed through the Plaid reader (``_fed_account``).
 """
 from datetime import date, timedelta
 from decimal import Decimal
@@ -15,7 +15,9 @@ from app.models.perf import CorporateAction, DailyHolding, DailyPrice, DailyValu
 from app.models.sleeve import Sleeve
 from app.models.strategy import Strategy
 from app.models.trade import Trade
-from app.services.connection_service import sync_brokerage_account
+from app.connectors import plaid_reader
+from app.connectors.models import NormalizedPosition
+from app.services.connection_service import ConnectionService
 from app.models.brokerage_connection import (
     BrokerageAccount,
     BrokerageActivity,
@@ -34,14 +36,6 @@ from app.services.performance_build_service import (
 )
 from app.services.performance_stats_service import PerformanceStatsService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from tests.test_connections import (  # noqa: F401 - fixtures
-    _cash_account,
-    _cash_row,
-    _mapped_account,
-    client_id,
-    no_live_prices,
-    sdk,
-)
 
 D = Decimal
 
@@ -413,86 +407,110 @@ def test_value_is_continuous_across_a_split(db):
 
 
 # ---------------------------------------------------------------------------
-# Daily capture
+# A recorded day
 # ---------------------------------------------------------------------------
 
 
-def _captured_account(db, client, client_id, sdk, cash=6000.0, total=None):
-    ba = _cash_account(
-        db,
-        client,
-        client_id,
-        sdk,
-        [
-            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
-            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
-        ],
-        cash_now=cash,
-    )
-    sdk.total = total
+@pytest.fixture
+def no_live_prices(monkeypatch):
+    """Performance never asks the market-data source for a current price."""
+    from app.services import performance_service
+
+    monkeypatch.setattr(performance_service.WebullConnector, "is_configured", lambda self: False)
+
+SECURITIES = {
+    "s-abc": {"security_id": "s-abc", "ticker_symbol": "ABC", "type": "equity"},
+    "s-xyz": {"security_id": "s-xyz", "ticker_symbol": "XYZ", "type": "etf"},
+}
+
+
+def _deposit(row_id, amount, settled):
+    return {"investment_transaction_id": row_id, "account_id": "a", "type": "cash",
+            "subtype": "deposit", "date": settled, "amount": -amount, "quantity": 0,
+            "price": 0, "fees": 0, "name": "Deposit"}
+
+
+def _buy(row_id, symbol_id, quantity, price, settled):
+    return {"investment_transaction_id": row_id, "account_id": "a", "type": "buy",
+            "subtype": "buy", "date": settled, "security_id": symbol_id, "quantity": quantity,
+            "price": price, "amount": quantity * price, "fees": 0, "name": "Buy"}
+
+
+def _fed_account(db, rows, cash_now, routes=None, through=date(2026, 1, 5)):
+    """An account fed by Plaid: its rows read and ingested as a refresh does,
+    with the institution's cash now."""
+    owner = Client(name="Fed", email="fed@example.com")
+    strategy = Strategy(name="Fed strategy")
+    db.add_all([owner, strategy])
+    db.flush()
+    account = Account(client_id=owner.id, name="Fed — Brokerage Account")
+    db.add(account)
+    db.flush()
+    sleeve = Sleeve(account_id=account.id, strategy_id=strategy.id)
+    db.add(sleeve)
+    login = BrokerageConnection(client_id=owner.id, source="plaid", external_user_id=owner.id,
+                                external_connection_id=f"item-{account.id}", institution="Example")
+    db.add(login)
+    db.flush()
+    ba = BrokerageAccount(connection_id=login.id, external_account_ref="a", name=account.name,
+                          account_id=account.id, default_sleeve_id=sleeve.id, status="mapped",
+                          sleeve_routes=routes, cash_balance=Decimal(str(cash_now)),
+                          transactions_synced_through=through)
+    db.add(ba)
+    db.commit()
+    batch = plaid_reader.read_investment_transactions(rows, SECURITIES)
+    ConnectionService(db).ingest_batch(ba, batch)
     return ba
 
 
-def test_capture_records_the_days_holdings_and_totals_as_observed(
-    db, client, client_id, sdk
-):
-    ba = _captured_account(db, client, client_id, sdk, total=10400.0)
-    sdk.positions = {
-        "results": [
-            {
-                "instrument": {"symbol": "ABC", "raw_symbol": "ABC", "kind": "stock"},
-                "units": "40",
-                "price": "110",
-                "cost_basis": "100",
-            },
-        ]
-    }
+def _abc_account(db, cash=6000.0):
+    """10,000 paid in and 40 ABC bought at 100 on Monday 5 January 2026."""
+    return _fed_account(
+        db,
+        [_deposit("d1", 10000, "2026-01-05"), _buy("b1", "s-abc", 40, 100, "2026-01-06")],
+        cash,
+    )
 
-    result = DailyCaptureService(db).capture(ba.id)
 
+def _position(symbol, quantity, price, cost=None, kind="STOCK"):
+    return NormalizedPosition(symbol=symbol, quantity=D(quantity), market_price=D(price),
+                              avg_cost=D(cost) if cost else D(0), security_type=kind)
+
+
+def test_a_recorded_day_keeps_the_institutions_holdings_and_totals_as_observed(db):
+    ba = _abc_account(db)
     day = last_market_day()
-    assert result["as_of_date"] == day
+
+    DailyCaptureService(db).record(ba, day, [_position("ABC", 40, 110, 100)], D(6000), D(10400))
+
     (holding,) = db.query(DailyHolding).all()
     assert (holding.symbol, holding.quantity, holding.price, holding.market_value) == (
-        "ABC",
-        D(40),
-        D(110),
-        D(4400),
+        "ABC", D(40), D(110), D(4400),
     )
-    assert holding.avg_cost == D(100)  # the brokerage's own cost is kept
-    assert holding.security_type == "STOCK"
+    assert holding.avg_cost == D(100)  # the institution's own cost is kept
     assert holding.sleeve_id == ba.default_sleeve_id
     row = (
         db.query(DailyValuation)
-        .filter(
-            DailyValuation.account_id == ba.account_id, DailyValuation.as_of_date == day
-        )
+        .filter(DailyValuation.account_id == ba.account_id, DailyValuation.as_of_date == day)
         .one()
     )
     assert row.basis == "observed"
     assert (row.total_value, row.cash_value, row.securities_value) == (
-        D("10400.00"),
-        D("6000.00"),
-        D("4400.00"),
+        D("10400.00"), D("6000.00"), D("4400.00"),
     )
-    # The brokerage's price for the day joins the price history.
-    assert db.query(DailyPrice).filter(
-        DailyPrice.source == "brokerage"
-    ).one().close == D(110)
+    # The institution's price for the day joins the price history.
+    assert db.query(DailyPrice).filter(DailyPrice.source == "brokerage").one().close == D(110)
 
 
-def test_a_captured_day_survives_a_rebuild_unchanged(db, client, client_id, sdk):
-    ba = _captured_account(db, client, client_id, sdk, total=10400.0)
-    DailyCaptureService(db).capture(ba.id)
+def test_a_recorded_day_survives_a_rebuild_unchanged(db):
+    ba = _abc_account(db)
     day = last_market_day()
+    DailyCaptureService(db).record(ba, day, [_position("ABC", 40, 110)], D(6000), D(10400))
 
     def observed():
         return (
             db.query(DailyValuation)
-            .filter(
-                DailyValuation.account_id == ba.account_id,
-                DailyValuation.as_of_date == day,
-            )
+            .filter(DailyValuation.account_id == ba.account_id, DailyValuation.as_of_date == day)
             .one()
         )
 
@@ -502,32 +520,25 @@ def test_a_captured_day_survives_a_rebuild_unchanged(db, client, client_id, sdk)
 
     assert observed().basis == "observed"
     assert observed().total_value == before == D("10400.00")
-    # Every market day up to it has a row; the others are reconstructed.
-    rows = (
-        db.query(DailyValuation)
-        .filter(DailyValuation.account_id == ba.account_id)
-        .all()
-    )
+    rows = db.query(DailyValuation).filter(DailyValuation.account_id == ba.account_id).all()
     assert sum(1 for r in rows if r.basis == "observed") == 1
     assert len({r.as_of_date for r in rows}) == len(rows)
 
 
-def test_a_late_transaction_refines_the_flow_but_not_the_captured_value(
-    db, client, client_id, sdk
-):
-    ba = _captured_account(db, client, client_id, sdk, cash=6000.0, total=10000.0)
+def test_a_late_transaction_refines_the_flow_but_not_the_recorded_value(db):
+    ba = _abc_account(db, cash=6000.0)
     day = last_market_day()
-    DailyCaptureService(db).capture(ba.id, as_of=day)
+    DailyCaptureService(db).record(ba, day, [_position("ABC", 40, 100)], D(6000), D(10000))
 
     # A deposit of 2,500 made that day reaches the feed only afterwards.
-    sdk.activities["data"].append(_cash_row("CONTRIBUTION", 2500.0, day.isoformat()))
-    sync_brokerage_account(db, ba.id, force=True)
+    late = plaid_reader.read_investment_transactions(
+        [_deposit("d2", 2500, day.isoformat())], SECURITIES
+    )
+    ConnectionService(db).ingest_batch(ba, late)
 
     row = (
         db.query(DailyValuation)
-        .filter(
-            DailyValuation.account_id == ba.account_id, DailyValuation.as_of_date == day
-        )
+        .filter(DailyValuation.account_id == ba.account_id, DailyValuation.as_of_date == day)
         .one()
     )
     assert row.basis == "observed"
@@ -535,75 +546,36 @@ def test_a_late_transaction_refines_the_flow_but_not_the_captured_value(
     assert row.flow_in == D("2500.00")
 
 
-def test_a_holding_our_trades_have_not_seen_is_placed_by_its_type(
-    db, client, client_id, sdk
-):
-    etfs = client.post("/api/v1/strategies/", json={"name": "ETFs"}).json()["id"]
-    stocks = client.post("/api/v1/strategies/", json={"name": "Stocks"}).json()["id"]
-    sdk.activities = {
-        "data": [
-            _cash_row("CONTRIBUTION", 10000.0, "2026-01-05"),
-            _cash_row("BUY", -4000.0, "2026-01-05", "ABC", 40, 100),
-        ]
-    }
-    sdk.cash = 3000.0
-    (connection,) = client.post(
-        f"/api/v1/clients/{client_id}/connections/discover"
-    ).json()
-    ba_id = connection["brokerage_accounts"][0]["id"]
-    mapped = client.patch(
-        f"/api/v1/brokerage-accounts/{ba_id}",
-        json={
-            "status": "mapped",
-            "strategy_id": stocks,
-            "strategy_routes": {"ETF": etfs},
-        },
-    ).json()
-    sync_brokerage_account(db, ba_id)
-    # Bought since, and not yet in the transaction feed.
-    sdk.positions = {
-        "results": [
-            {
-                "instrument": {"symbol": "ABC", "raw_symbol": "ABC", "kind": "stock"},
-                "units": "40",
-                "price": "100",
-            },
-            {
-                "instrument": {"symbol": "XYZ", "raw_symbol": "XYZ", "kind": "etf"},
-                "units": "30",
-                "price": "100",
-            },
-        ]
-    }
+def test_a_holding_our_trades_have_not_seen_is_placed_by_its_type(db):
+    ba = _abc_account(db, cash=3000.0)
+    strategy = Strategy(name="ETFs")
+    db.add(strategy)
+    db.flush()
+    etfs = Sleeve(account_id=ba.account_id, strategy_id=strategy.id)
+    db.add(etfs)
+    db.flush()
+    ba.sleeve_routes = {"ETF": etfs.id}
+    db.commit()
 
-    DailyCaptureService(db).capture(ba_id)
+    # XYZ bought since, and not yet in the transaction feed.
+    DailyCaptureService(db).record(
+        ba, last_market_day(),
+        [_position("ABC", 40, 100), _position("XYZ", 30, 100, kind="ETF")],
+        D(3000), D(10000),
+    )
 
     placed = {h.symbol: h.sleeve_id for h in db.query(DailyHolding)}
-    assert placed["ABC"] == mapped["default_sleeve_id"]
-    assert placed["XYZ"] == mapped["sleeve_routes"]["ETF"]
+    assert placed["ABC"] == ba.default_sleeve_id
+    assert placed["XYZ"] == etfs.id
     # The ETF sleeve's value appeared because money went into it, not as a gain.
     row = (
         db.query(DailyValuation)
-        .filter(
-            DailyValuation.sleeve_id == mapped["sleeve_routes"]["ETF"],
-            DailyValuation.basis == "observed",
-        )
+        .filter(DailyValuation.sleeve_id == etfs.id, DailyValuation.basis == "observed")
         .one()
     )
     assert row.total_value == D("3000.00")
     assert row.flow_in == D("3000.00")
     assert row.is_provisional is True
-
-
-def test_capture_is_due_until_the_latest_market_day_is_recorded(
-    db, client, client_id, sdk
-):
-    ba = _captured_account(db, client, client_id, sdk, total=10000.0)
-    service = DailyCaptureService(db)
-
-    assert service.needs_capture() is True
-    service.capture(ba.id)
-    assert service.needs_capture() is False
 
 
 # ---------------------------------------------------------------------------
@@ -735,22 +707,17 @@ def test_unrealised_gain_is_the_balance_on_the_periods_last_day(db, no_live_pric
     assert today["total_cost_basis"] == 500.0
 
 
-def test_cash_in_a_past_period_is_what_was_held_then(
-    db, client, client_id, sdk, no_live_prices
-):
+def test_cash_in_a_past_period_is_what_was_held_then(db, no_live_prices):
     from app.services.performance_service import PerformanceService
 
-    ba = _cash_account(
+    ba = _fed_account(
         db,
-        client,
-        client_id,
-        sdk,
         [
-            _cash_row("CONTRIBUTION", 10000.0, "2025-01-06"),
-            _cash_row("BUY", -4000.0, "2025-01-06", "ABC", 40, 100),
-            _cash_row("CONTRIBUTION", 5000.0, "2026-02-02"),
+            _deposit("d1", 10000, "2025-01-06"),
+            _buy("b1", "s-abc", 40, 100, "2025-01-07"),
+            _deposit("d2", 5000, "2026-02-02"),
         ],
-        cash_now=11000.0,
+        11000.0,
     )
 
     past = PerformanceService(db).performance(

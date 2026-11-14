@@ -16,11 +16,6 @@ class Settings(BaseSettings):
     google_sheets_credentials_file: str = "./credentials.json"
     webull_app_key: str = ""
     webull_app_secret: str = ""
-    snaptrade_client_id: str = ""
-    snaptrade_consumer_key: str = ""
-    # The SnapTrade userId the brokerage logins were linked under. With a
-    # Personal key this is one fixed id for the key owner.
-    snaptrade_user_id: str = ""
     # Plaid: clients link their own bank, card, loan and brokerage logins. One
     # developer account (these keys) serves every client. PLAID_ENV is sandbox
     # or production. PLAID_TOKEN_KEY encrypts each login's access key at rest

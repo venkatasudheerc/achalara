@@ -36,6 +36,9 @@ class PlaidCandidate(BaseModel):
     # None: no holdings on one side or the other to compare.
     same_holdings: Optional[bool] = None
     same_balance: bool
+    # Another feed still writing to it: linking replaces that feed's history
+    # with Plaid's (earlier history comes from the owner's files).
+    replaces: Optional[str] = None
 
 
 class PlaidFoundAccount(BaseModel):
