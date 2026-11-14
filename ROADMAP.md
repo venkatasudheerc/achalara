@@ -37,7 +37,8 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
   Plan and Tax, shown as "coming soon" in the new app, follow.
 - Deploy market data so its daily collection starts; then sectors on the Holdings page, daily
   prices for index members and chosen funds, and fundamentals.
-- Read splits and mergers from Plaid's rows and from custodian files (only SnapTrade's were read).
+- Read splits and mergers from Plaid's rows once one is seen in real data (custodian files are read).
+- Plaid webhooks, so a login that needs signing in again is known the moment it happens (the morning refresh finds it today).
 
 ## Deferred
 

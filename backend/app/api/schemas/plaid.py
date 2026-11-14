@@ -79,3 +79,9 @@ class PlaidConfirmed(BaseModel):
     skipped: int
     # Linked to an account another feed still writes to: moved over later.
     waiting: int
+
+
+class PlaidRepaired(BaseModel):
+    """``active`` once Plaid reads the login again; ``needs signing in`` if not yet."""
+
+    status: str

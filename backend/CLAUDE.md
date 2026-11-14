@@ -404,11 +404,17 @@ through Plaid (below), their earlier history from the custodian's own files.
   System status and the account's health. The file itself is never kept. A shared account takes
   no uploads. An admin or advisor previewing a client (`as_client`) sees and may use exactly what the
   client does.
-- **Splits and mergers are not read from Plaid or from files yet.** `corporate_actions.record_splits`
-  reads split rows in the retired SnapTrade format only, and mergers came only from SnapTrade's
-  reader. The rules that consume them stay: `corporate_actions.carry_exchange_costs`, lot moves
-  in `PortfolioCalculationService._share_exchanges`, notes starting `MERGER_NOTE` for legs that
-  were not at a market price, and a split's ratio worked out in the shares of its own day.
+- **Splits and mergers are read from the custodian's file** (`vanguard_report.read_rows`). A
+  "Stock split" row (the shares it added) is kept as a `SPLIT` source row whose `payload.units`
+  `corporate_actions.record_splits` turns into a ratio, worked out in the shares held just before
+  on its own day; a split already recorded for that symbol and day is on file. A "Corp Action
+  (Merger)" row is a trade noted `MERGER_NOTE`: shares taken for cash are a sale at the cash per
+  share; a leg of an exchange for other shares is recorded at no price and
+  `corporate_actions.carry_exchange_costs` carries the cost across (lot moves in
+  `PortfolioCalculationService._share_exchanges`). A merger row with no symbol takes the symbol
+  another row of the report gives the same company. A merger leg on file matches its row whatever
+  its price, since carrying the cost changed it. **Plaid's splits and mergers are not read yet**:
+  none has been seen in real data; the account's health flags the difference until one is.
 
 ## Linking with Plaid
 
@@ -451,6 +457,13 @@ its accounts are `brokerage_accounts` rows. Rules:
   pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
   `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
   and skipped until repaired; one failing login never stops the rest.
+- **Repairing a login** (`PlaidLinkService.repair_start` / `repaired`, routes
+  `/portal/links/plaid/{id}/repair` and `/repaired`): Plaid Link opens in update mode for the
+  same login (a link token made with its access key), so no new place on the plan is used and its
+  transaction ids, and so its history, carry on. Afterwards Plaid is asked whether the login reads
+  again; if so it is `active` again and refreshed at once. Only the login's owner can repair it.
+  `/portal/accounts` says which accounts wait on it (`needs_sign_in`, and `login_id` for the
+  owner); the Dashboard asks the owner to sign in again and tells anyone else whose login it is.
 - Tests never reach Plaid: they pass a fake client to `PlaidLinkService` / `PlaidRefreshService`.
 
 ## How far a record can be trusted

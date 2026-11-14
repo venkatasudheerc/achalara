@@ -142,3 +142,51 @@ def test_a_recorded_day_the_history_does_not_reach_means_a_movement_is_missing(d
     assert link.reconciliation["opening_problems"] == [
         "cash differs from the institution's record on 2026-11-05"
     ]
+
+
+def test_a_login_that_needs_signing_in_is_repaired_in_place(db, owner, plaid_keys):
+    """Signing in again keeps the same login (no new place on the plan), makes it
+    active, and brings its accounts up to date at once."""
+    account, login = _link_checking(db, owner)
+    login.status = "broken"
+    db.commit()
+
+    from app.services.portal_service import PortalService
+
+    (shown,) = PortalService(db, owner.id).accounts()
+    assert shown["needs_sign_in"] is True and shown["login_id"] == login.id
+
+    class Asked(NextDay):
+        def link_token(self, client_user_id, redirect_uri="", webhook="", access_token=""):
+            self.update_mode_for = access_token
+            return {"link_token": "link-update", "expiration": "2026-11-17T20:00:00Z"}
+
+        def item(self, access_token):
+            return {"item": {"error": None, "consent_expiration_time": None}}
+
+    fake = Asked()
+    service = PlaidLinkService(db, fake)
+    assert service.repair_start(owner.id, login.id)["link_token"] == "link-update"
+    assert fake.update_mode_for == "access-secret-123"
+
+    assert service.repaired(owner.id, login.id, TUESDAY) == {"status": "active"}
+    db.refresh(login)
+    assert (login.status, login.disabled_at) == ("active", None)
+    assert login.transactions_cursor == "c2"  # refreshed straight away
+    assert db.query(BrokerageConnection).count() == 1  # the same login, no new place
+    (shown,) = PortalService(db, owner.id).accounts()
+    assert shown["needs_sign_in"] is False
+
+
+def test_another_clients_login_cannot_be_repaired(db, owner, plaid_keys):
+    import pytest as _pytest
+    from app.models.client import Client
+    from app.services.plaid_link_service import PlaidLinkError
+
+    _, login = _link_checking(db, owner)
+    stranger = Client(name="Sam Other", email="sam.other@example.com")
+    db.add(stranger)
+    db.commit()
+    with _pytest.raises(PlaidLinkError) as refused:
+        PlaidLinkService(db, FakePlaid()).repair_start(stranger.id, login.id)
+    assert refused.value.status_code == 404

@@ -286,7 +286,7 @@ class AccountImportService:
     def apply(self, account: Account, filename: str, content: bytes) -> Dict:
         ba, kind, plan = self._plan(account, filename, content)
         summary = self._summary(account, kind, plan)
-        if plan.trades or plan.cash:
+        if plan.trades or plan.cash or plan.splits:
             result = self.importer.apply(ba, plan, self.last_holdings(account.id))
             summary["added_trades"] = result["imported"]
             summary["added_cash"] = result["cash_imported"]
@@ -432,6 +432,11 @@ class AccountImportService:
                             "price": float(t.price),
                         }
                         for r, t in plan.trades
+                        if r.traded == day
+                    ] + [
+                        # A split, as the shares it added; its ratio is worked out on import.
+                        {"action": "SPLIT", "symbol": r.symbol, "quantity": float(r.quantity), "price": 0.0}
+                        for r in plan.splits
                         if r.traded == day
                     ],
                     "cash": [

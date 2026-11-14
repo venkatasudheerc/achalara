@@ -26,3 +26,17 @@ export function usePlaidLink() {
     }),
   }
 }
+
+/** Sign in again to a login Plaid has stopped reading. Afterwards every view of
+ * the accounts is fetched again, since the login was brought up to date. */
+export function usePlaidRepair() {
+  const qc = useQueryClient()
+  const asClient = usePreviewClient()
+  return {
+    start: useMutation({ mutationFn: (loginId: string) => plaidApi.repair(loginId, asClient) }),
+    done: useMutation({
+      mutationFn: (loginId: string) => plaidApi.repaired(loginId, asClient),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['portal'] }),
+    }),
+  }
+}

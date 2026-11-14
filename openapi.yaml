@@ -3629,6 +3629,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/{connection_id}/repair:
+    post:
+      tags: [portal]
+      summary: Sign in again to a Plaid login
+      description: A token that opens Plaid Link in update mode for one of the viewer's own logins. No new place on the plan is used, and the login's history carries on.
+      operationId: repairPlaidLogin
+      parameters:
+        - {name: connection_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The token for Plaid Link
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlaidLinkStart'}
+        '404': {description: Not one of the viewer's logins}
+  /api/v1/portal/links/plaid/{connection_id}/repaired:
+    post:
+      tags: [portal]
+      summary: After signing in again
+      description: Asks Plaid whether the login reads again; if so it is active again and its accounts are brought up to date at once.
+      operationId: plaidLoginRepaired
+      parameters:
+        - {name: connection_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The login's state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlaidRepaired'}
+        '404': {description: Not one of the viewer's logins}
   /api/v1/portal/links/plaid/{connection_id}:
     get:
       tags:
@@ -5008,10 +5040,10 @@ components:
       type: object
       required: [action, symbol, quantity, price]
       properties:
-        action: {type: string, enum: [BUY, SELL]}
+        action: {type: string, enum: [BUY, SELL, SPLIT], description: 'SPLIT: a stock split, as the shares it added (quantity); its ratio is worked out on import'}
         symbol: {type: string}
         quantity: {type: number}
-        price: {type: number, description: Per share; per contract (100 shares) for an option}
+        price: {type: number, description: Per share; per contract (100 shares) for an option; 0 for a split}
 
     ImportCash:
       type: object
@@ -5625,6 +5657,14 @@ components:
           type: string
           format: email
           nullable: true
+
+    PlaidRepaired:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, needs signing in]
 
     PortalAccountPrivacy:
       type: object
@@ -7196,6 +7236,14 @@ components:
           type: boolean
           default: false
           description: The owner keeps it from their spouse (a minor's guardians still see it).
+        needs_sign_in:
+          type: boolean
+          default: false
+          description: Its Plaid login needs the owner to sign in again (see the repair route)
+        login_id:
+          type: string
+          nullable: true
+          description: The Plaid login feeding it; set only for the owner, who alone can repair it
         health:
           allOf:
             - $ref: '#/components/schemas/AccountHealth'

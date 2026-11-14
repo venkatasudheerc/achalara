@@ -35,6 +35,7 @@ from app.api.schemas.portal import (
     PortalTradesResponse,
 )
 from app.api.schemas.plaid import (
+    PlaidRepaired,
     PlaidConfirm,
     PlaidConfirmed,
     PlaidFound,
@@ -615,6 +616,28 @@ def portal_plaid_finish(
     """Keep the login Plaid Link made, and say what each of its accounts may be."""
     with _plaid_errors():
         return PlaidLinkService(db).finish(viewer.client_id, body.public_token)
+
+
+@router.post("/links/plaid/{connection_id}/repair", response_model=PlaidLinkStart)
+def portal_plaid_repair(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A token that opens Plaid Link to sign in again to one of the viewer's logins."""
+    with _plaid_errors():
+        return PlaidLinkService(db).repair_start(viewer.client_id, connection_id)
+
+
+@router.post("/links/plaid/{connection_id}/repaired", response_model=PlaidRepaired)
+def portal_plaid_repaired(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """After signing in again: the login's state, and its accounts brought up to date."""
+    with _plaid_errors():
+        return PlaidLinkService(db).repaired(viewer.client_id, connection_id)
 
 
 @router.get("/links/plaid/{connection_id}", response_model=PlaidFound)

@@ -42,6 +42,10 @@ class PortalAccount(BaseModel):
     institution: Optional[str] = None
     # The owner keeps it from their spouse (a minor's guardians still see it).
     is_private: bool = False
+    # Its Plaid login needs the owner to sign in again (repair it with
+    # /portal/links/plaid/{login_id}/repair); login_id is set only for the owner.
+    needs_sign_in: bool = False
+    login_id: Optional[str] = None
     health: Optional[AccountHealth] = None
     # The account now: holdings at live prices, options and cash as the custodian
     # last reported them; what the Holdings view's account tile shows.

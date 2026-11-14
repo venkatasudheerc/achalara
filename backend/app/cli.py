@@ -389,13 +389,15 @@ def import_vanguard_report(
         print(
             f"  set aside: {dict(plan.skipped) or 'none'}"
         )
-        print(f"  to add: {len(plan.trades)} trades, {len(plan.cash)} cash rows")
+        print(f"  to add: {len(plan.trades)} trades, {len(plan.cash)} cash rows, {len(plan.splits)} splits")
         for day, count in plan.new_days.items():
             items = [
                 f"{t.action.value.lower()} {_qty(t.quantity)} {t.symbol}"
                 for r, t in plan.trades
                 if r.traded == day
-            ] + [f"{c.type.lower()} {c.amount}" for r, c in plan.cash if r.traded == day]
+            ] + [f"{c.type.lower()} {c.amount}" for r, c in plan.cash if r.traded == day] + [
+                f"split {r.symbol} +{_qty(r.quantity)}" for r in plan.splits if r.traded == day
+            ]
             print(f"    {day}: {count}  ({', '.join(items)})")
         renamed = [
             (r, o)

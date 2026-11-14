@@ -77,6 +77,10 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   (only when more than one owner is in view), Kind (`account.kind`) or My groups
   (`/portal/groups`, edited in `GroupsDialog`, in an advisor's preview too: it is exactly what
   the client sees).
+  An account whose Plaid login needs signing in again (`account.needs_sign_in`) carries the same
+  "!", and the Dashboard opens with "<Institution> has stopped sharing … until you sign in again"
+  and **Sign in again** for the owner (`login_id`; Plaid Link in update mode, `usePlaidRepair`,
+  the script loaded by `lib/plaid.ts`), or "until <owner> signs in again" for anyone else.
   An account whose record is incomplete (`account.health`) carries a clay "!" beside its figure,
   and the Dashboard opens with which accounts to repair and from when (an owner's own account:
   download from that date and use Update from a file; a shared one: its owner repairs it).

@@ -302,10 +302,11 @@ class PortalService:
         ids = [account.id for account, _ in self.visible]
         reported = {account_id: self._last_reported(account_id) for account_id in ids}
         live, priced_at = self.live_values()
+        # The feed writing to each account now (a link set aside is not one).
         links = {
             link.account_id: link
             for link in self.db.query(BrokerageAccount).filter(
-                BrokerageAccount.account_id.in_(ids)
+                BrokerageAccount.account_id.in_(ids), BrokerageAccount.status == "mapped"
             )
         }
 
@@ -319,6 +320,13 @@ class PortalService:
                 "owed": kind_of(account) in OWED,
                 "institution": account.institution,
                 "is_private": bool(account.is_private),
+                "needs_sign_in": account.id in links
+                and links[account.id].status == "mapped"
+                and links[account.id].connection.status == "broken",
+                # Only the login's owner can sign in to it again.
+                "login_id": links[account.id].connection_id
+                if account.id in links and not shared
+                else None,
                 # How far its record can be trusted; screens and nudges read it.
                 "health": account_health(self.db, account),
                 "value": live.get(account.id),

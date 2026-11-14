@@ -115,6 +115,58 @@ class PlaidLinkService:
         }
 
     # ------------------------------------------------------------------
+    # Repair: signing in again to a login Plaid has stopped reading
+    # ------------------------------------------------------------------
+
+    def repair_start(self, client_id: str, connection_id: str) -> Dict:
+        """A token that opens Plaid Link in update mode for one of the client's
+        logins: they sign in again to the same login, so no new place on the
+        plan is used and its history carries on."""
+        if not configured():
+            raise PlaidLinkError(503, "Linking with Plaid is not set up on this server.")
+        connection = self._connection(client_id, connection_id)
+        try:
+            token = self.client.link_token(
+                client_id,
+                redirect_uri=settings.plaid_redirect_uri,
+                access_token=self._access_token(connection),
+            )
+        except PlaidError as error:
+            raise PlaidLinkError(502, error.message)
+        return {
+            "link_token": token["link_token"],
+            "expiration": token.get("expiration"),
+            "logins_left": self.logins_left(),
+        }
+
+    def repaired(self, client_id: str, connection_id: str, today: Optional[date] = None) -> Dict:
+        """After the client signed in again: ask Plaid whether the login reads
+        once more, and if so mark it active and bring its accounts up to date."""
+        from app.services.plaid_refresh_service import NEEDS_SIGN_IN, PlaidRefreshService
+
+        connection = self._connection(client_id, connection_id)
+        now = datetime.now(timezone.utc)
+        try:
+            item = self.client.item(self._access_token(connection)).get("item") or {}
+        except PlaidError as error:
+            raise PlaidLinkError(502, error.message)
+        problem = (item.get("error") or {}).get("error_code")
+        connection.status_checked_at = now
+        if problem in NEEDS_SIGN_IN:
+            self.db.commit()
+            return {"status": "needs signing in"}
+        connection.status = "active"
+        connection.disabled_at = None
+        if item.get("consent_expiration_time"):
+            connection.consent_expires_at = item["consent_expiration_time"]
+        self.db.commit()
+        try:
+            PlaidRefreshService(self.db, self.client).refresh(connection, today)
+        except Exception:  # noqa: BLE001 - the morning refresh tries again
+            self.db.rollback()
+        return {"status": "active"}
+
+    # ------------------------------------------------------------------
     # 2. Finish
     # ------------------------------------------------------------------
 

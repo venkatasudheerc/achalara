@@ -390,6 +390,9 @@ export interface PortalAccount extends VisibleAccount {
   kind: AccountKind
   /** A card or loan: its value is what is owed, negative */
   owed: boolean; institution: string | null
+  /** Its Plaid login needs the owner to sign in again; `login_id` is set only for the owner */
+  needs_sign_in?: boolean
+  login_id?: string | null
   /** How far its record can be trusted; figures on an incomplete account are not */
   health?: AccountHealth | null
   /** The account now: holdings at live prices, options and cash as last reported;
@@ -828,7 +831,8 @@ export interface RsIndices { indices: RsIndex[]; notes: string[] }
 // ── Upload and import ─────────────────────────────────────────────────────
 // A custodian's file read against one account: what it would add, then what it did.
 
-export interface ImportTrade { action: TradeAction; symbol: string; quantity: number; price: number }
+/** `SPLIT` is a stock split, as the shares it added (`quantity`); its ratio is worked out on import */
+export interface ImportTrade { action: TradeAction | 'SPLIT'; symbol: string; quantity: number; price: number }
 /** `amount` is positive for money received */
 export interface ImportCash { type: string; symbol: string | null; amount: number }
 export interface ImportDay { date: string; trades: ImportTrade[]; cash: ImportCash[] }
@@ -886,3 +890,6 @@ export interface PlaidFoundAccount {
 export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
 export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
 export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }
+
+/** After signing in again: `active` once Plaid reads the login again */
+export interface PlaidRepaired { status: 'active' | 'needs signing in' }
