@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.connectors.models import NormalizedCashActivity
+from app.connectors.models import REPORT_ID_PREFIX, NormalizedCashActivity
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.trade import Trade
 
@@ -42,16 +42,29 @@ class CashActivityService:
         the caller owns the transaction.
         """
         scope = dedup_sleeve_ids or [sleeve_id]
-        existing = {
-            row[0]
-            for row in self.db.query(CashActivity.external_id).filter(
-                CashActivity.sleeve_id.in_(scope)
-            )
-        }
+        existing = set()
+        # Rows a custodian's report added share no id with the feed: the same
+        # amount on the same day is the same movement.
+        from_report = set()
+        for external_id, day, amount in self.db.query(
+            CashActivity.external_id, CashActivity.activity_date, CashActivity.amount
+        ).filter(CashActivity.sleeve_id.in_(scope)):
+            existing.add(external_id)
+            if external_id.startswith(REPORT_ID_PREFIX):
+                from_report.add((day, Decimal(str(amount))))
         imported = 0
         earliest: Optional[date] = None
         for activity in activities:
             if activity.external_id in existing:
+                continue
+            report_key = (
+                activity.occurred_at.date(),
+                Decimal(str(activity.amount)).quantize(Decimal("0.01")),
+            )
+            if not activity.external_id.startswith(REPORT_ID_PREFIX) and (
+                report_key in from_report
+            ):
+                from_report.discard(report_key)
                 continue
             existing.add(activity.external_id)
             activity_date = activity.occurred_at.date()
