@@ -6300,6 +6300,16 @@ components:
         value:
           type: number
           nullable: true
+          description: The account now, as the Holdings view's account tile shows it - holdings at live prices, options and cash as the custodian last reported them
+        priced_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the live prices in value were fetched
+        recorded_value:
+          type: number
+          nullable: true
+          description: The custodian's total on its last reported day (as_of)
         cash:
           type: number
           nullable: true

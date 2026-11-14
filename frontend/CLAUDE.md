@@ -60,6 +60,10 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 - The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
   (only when more than one owner is in view), Kind (`account.kind`) or My groups
   (`/portal/groups`, edited in `GroupsDialog`; an advisor's preview cannot edit them).
+  Each account's figure, and every total built from them (the rail, the Dashboard's headline and
+  kind tiles, the Accounts view), is `account.value`: the account now, exactly as the Holdings
+  view's tile adds it up, so the two never disagree. The Dashboard says both clocks: the live
+  prices' time (`priced_at`) and the day the custodian last reported holdings and cash (`as_of`).
 - The selection and the open view live in the address, `?sel=all|owner:<id>|kind:<kind>|group:<id>|account:<id>&view=…`
   (`selection.ts`), and become `account_ids` on every portal request.
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;

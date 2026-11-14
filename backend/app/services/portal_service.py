@@ -290,29 +290,16 @@ class PortalService:
         }
 
     def accounts(self) -> List[Dict]:
-        """The accounts in view: each one's kind, the custodian's last recorded
-        value and cash, where those come from, and the strategies it is run as."""
+        """The accounts in view: each one's kind, its value now, the custodian's
+        last recorded value and cash, where those come from, and the strategies
+        it is run as.
+
+        ``value`` is worked out exactly as the Holdings view's account tiles
+        are (``live_values``), so the two always agree.
+        """
         ids = [account.id for account, _ in self.visible]
-        latest_day = (
-            self.db.query(
-                DailyValuation.account_id,
-                func.max(DailyValuation.as_of_date).label("day"),
-            )
-            .filter(
-                DailyValuation.account_id.in_(ids), DailyValuation.sleeve_id.is_(None)
-            )
-            .group_by(DailyValuation.account_id)
-            .subquery()
-        )
-        latest = {
-            row.account_id: row
-            for row in self.db.query(DailyValuation).join(
-                latest_day,
-                (DailyValuation.account_id == latest_day.c.account_id)
-                & (DailyValuation.as_of_date == latest_day.c.day)
-                & DailyValuation.sleeve_id.is_(None),
-            )
-        }
+        reported = {account_id: self._last_reported(account_id) for account_id in ids}
+        live, priced_at = self.live_values()
         links = {
             link.account_id: link
             for link in self.db.query(BrokerageAccount).filter(
@@ -327,14 +314,16 @@ class PortalService:
             {
                 **self._account_fields(account, shared),
                 "kind": account_kind(account.name),
-                "value": money(latest[account.id].total_value)
-                if account.id in latest
+                "value": live.get(account.id),
+                "priced_at": priced_at,
+                "recorded_value": money(reported[account.id].total_value)
+                if reported[account.id]
                 else None,
-                "cash": money(latest[account.id].cash_value)
-                if account.id in latest
+                "cash": money(reported[account.id].cash_value)
+                if reported[account.id]
                 else None,
-                "as_of": latest[account.id].as_of_date
-                if account.id in latest
+                "as_of": reported[account.id].as_of_date
+                if reported[account.id]
                 else None,
                 "source": (links[account.id].connection.institution or None)
                 if account.id in links
@@ -391,23 +380,74 @@ class PortalService:
             )
         return self._matched_sleeves[sleeve_id]
 
-    def _recorded_holdings(self, account_id: str) -> Optional[List[DailyHolding]]:
-        """What the custodian last reported the account as holding, if ever."""
-        latest = (
+    def live_values(self) -> Tuple[Dict[str, float], Optional[datetime]]:
+        """Each account in view at the market's current prices, and when those
+        prices were fetched: its holdings at live prices (the custodian's price
+        where there is no quote), its options and cash as the custodian last
+        reported them. The Holdings view's account tiles add up the same way.
+        An account with nothing recorded or held is left out."""
+        held = self.positions(live=True)
+        values: Dict[str, float] = {}
+        for row in held["positions"]:
+            if row["market_value"] is not None:
+                values[row["account_id"]] = values.get(row["account_id"], 0.0) + row["market_value"]
+        for balance in held["account_balances"]:
+            account_id = balance["account_id"]
+            values[account_id] = (
+                values.get(account_id, 0.0)
+                + (balance["options_value"] or 0.0)
+                + (balance["cash_value"] or 0.0)
+            )
+        return values, held["live_prices_at"]
+
+    def _last_reported(self, account_id: str) -> Optional[DailyValuation]:
+        """The account's last day as the custodian reported it, or, where it has
+        never reported one, its last rebuilt day."""
+        rows = self.db.query(DailyValuation).filter(
+            DailyValuation.account_id == account_id, DailyValuation.sleeve_id.is_(None)
+        )
+        return (
+            rows.filter(DailyValuation.basis == "observed")
+            .order_by(DailyValuation.as_of_date.desc())
+            .first()
+            or rows.order_by(DailyValuation.as_of_date.desc()).first()
+        )
+
+    def _recorded(self, account_id: str) -> Optional[Tuple[date, List[DailyHolding]]]:
+        """The custodian's last report of what the account holds, and its day, if
+        it has ever sent one. A report that listed no holdings (an account of
+        options and cash) is an empty list on that day, not the list before it."""
+        listed_day = (
             self.db.query(func.max(DailyHolding.as_of_date))
             .filter(DailyHolding.account_id == account_id)
             .scalar()
         )
-        if latest is None:
+        reported_day = (
+            self.db.query(func.max(DailyValuation.as_of_date))
+            .filter(
+                DailyValuation.account_id == account_id,
+                DailyValuation.sleeve_id.is_(None),
+                DailyValuation.basis == "observed",
+            )
+            .scalar()
+        )
+        if listed_day is None:
             return None
-        return (
+        if reported_day is not None and reported_day > listed_day:
+            return reported_day, []
+        return listed_day, (
             self.db.query(DailyHolding)
             .filter(
                 DailyHolding.account_id == account_id,
-                DailyHolding.as_of_date == latest,
+                DailyHolding.as_of_date == listed_day,
             )
             .all()
         )
+
+    def _recorded_holdings(self, account_id: str) -> Optional[List[DailyHolding]]:
+        """What the custodian last reported the account as holding, if ever."""
+        recorded = self._recorded(account_id)
+        return recorded[1] if recorded else None
 
     def _stored_prices(
         self, sleeve_ids: Sequence[str]
@@ -557,10 +597,14 @@ class PortalService:
         # What each account's options cost, whatever the filters hide: with the
         # custodian's value for them it gives their unrealised gain.
         option_costs: Dict[str, Optional[float]] = {}
+        # Accounts holding shares (or funds) as well as any options.
+        with_shares: set = set()
         for account_refs in self._by_account(refs):
             for position in self._account_positions(account_refs):
                 symbol = position["symbol"]
                 group = type_group(kinds.get((position["sleeve_id"], symbol)), symbol)
+                if group != "option":
+                    with_shares.add(position["account_id"])
                 if group == "option" and position["market_value"] is None:
                     account_id, paid = position["account_id"], position["cost_basis"]
                     known = option_costs.get(account_id, 0.0)
@@ -601,12 +645,15 @@ class PortalService:
             "total_unrealized_gain": gain,
             "total_unrealized_gain_pct": gain / abs(cost) if cost else None,
             "options": options,
-            "account_balances": self._account_balances(refs, option_costs),
+            "account_balances": self._account_balances(refs, option_costs, with_shares),
             "positions": rows,
         }
 
     def _account_balances(
-        self, refs: Sequence[SleeveRef], option_costs: Dict[str, Optional[float]]
+        self,
+        refs: Sequence[SleeveRef],
+        option_costs: Dict[str, Optional[float]],
+        with_shares: Optional[set] = None,
     ) -> List[Dict]:
         """What each account in view holds beyond its priced holdings: cash,
         and the custodian's value for its options together.
@@ -619,22 +666,25 @@ class PortalService:
         balances = []
         for account_refs in self._by_account(refs):
             account = account_refs[0].account
-            latest = (
-                self.db.query(DailyValuation)
-                .filter(
-                    DailyValuation.account_id == account.id,
-                    DailyValuation.sleeve_id.is_(None),
-                )
-                .order_by(DailyValuation.as_of_date.desc())
-                .first()
-            )
+            latest = self._last_reported(account.id)
             if latest is None:
                 continue
-            holdings = self._recorded_holdings(account.id)
+            recorded = self._recorded(account.id)
+            holdings = recorded[1] if recorded else None
             options_value = None
-            if holdings and holdings[0].as_of_date == latest.as_of_date:
+            # The custodian lists its holdings but not its options: what its
+            # securities total holds beyond them is the options. An account
+            # holding only options and cash lists no holdings at all.
+            options_only = (
+                not holdings
+                and account.id in option_costs
+                and account.id not in (with_shares or set())
+            )
+            if latest.basis == "observed" and (
+                options_only or (recorded and recorded[0] == latest.as_of_date)
+            ):
                 listed = sum(
-                    (Decimal(str(h.market_value)) for h in holdings), Decimal(0)
+                    (Decimal(str(h.market_value)) for h in holdings or []), Decimal(0)
                 )
                 rest = Decimal(str(latest.securities_value)) - listed
                 # A few cents either way is rounding, not an option.
@@ -709,10 +759,10 @@ class PortalService:
             return None
         value = Decimal(0)
         for account_id in {r["account_id"] for r in unpriced}:
-            holdings = self._recorded_holdings(account_id)
-            if not holdings:
+            recorded = self._recorded(account_id)
+            if recorded is None:
                 return None
-            day = holdings[0].as_of_date
+            day, holdings = recorded
             account_row = (
                 self.db.query(DailyValuation)
                 .filter(
