@@ -149,6 +149,10 @@ export function AccountRail({
                         {a.number_last4 ? `··${a.number_last4} · ` : ''}{groupBy === 'kind' && showPerson ? a.owner_name.split(' ')[0] : k.label}
                       </span>
                     </span>
+                    {a.health?.state === 'incomplete' && (
+                      <span role="img" aria-label="Record incomplete" title="A transaction is missing from this account's record"
+                        className="w-[18px] h-[18px] rounded-full bg-loss text-on-dark text-[12px] font-bold flex items-center justify-center shrink-0">!</span>
+                    )}
                     <span className="text-[15px] font-semibold tabular-nums">{a.value == null ? '—' : formatCurrency(a.value)}</span>
                   </button>
                 )

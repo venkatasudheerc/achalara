@@ -464,7 +464,30 @@ its accounts are `brokerage_accounts` rows. Rules:
   10); `start` refuses at the limit and the dialog warns when two or fewer are left.
 - SnapTrade's daily capture (`DailyCaptureService.capture_all`) is limited to SnapTrade logins.
   A feed that fetched its own figures records its day through `DailyCaptureService.record`.
-- Tests never reach Plaid: they pass a fake client to `PlaidLinkService`.
+- **The daily refresh** (`services/plaid_refresh_service.py`, job `plaid_refresh`, 6:30 AM US
+  Eastern Tuesday to Saturday) records the **day before** for every mapped account: an
+  early-morning balance is where the previous day ended, so a weekend's movements land in
+  Monday's record and no recorded day is rewritten. Bank and card rows come through
+  `/transactions/sync` from the login's `transactions_cursor`, saved only once all it handed
+  back is on file; a changed row is changed in place and a removed one (or one gone back to
+  pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
+  `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
+  and skipped until repaired; one failing login never stops the rest.
+- Tests never reach Plaid: they pass a fake client to `PlaidLinkService` / `PlaidRefreshService`.
+
+## How far a record can be trusted
+
+`services/account_health.py` gives every account one state, on `/portal/accounts` as `health`:
+**complete**, **provisional** (a difference in the last `SETTLE_DAYS` that may clear as
+transactions post) or **incomplete** (a transaction is missing), with plain reasons and
+`download_from`. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
+written by `OpeningPositionService.refresh`), the holdings check, and `cash_check`, which compares
+each day the institution recorded cash with what the history works back to. The record is worked
+back from today, so the latest day always agrees and an earlier day that differs means a movement
+after it is missing; every day before it is out by that amount, so **an opening is never worked
+back through a cash difference**. The rail marks an incomplete account, the Dashboard says which
+to repair and from when, and System status lists it (alert wording names no account). Nothing
+here changes a figure; **no nudge may be built on an account that is not complete.**
 
 ## Market data: the `md` schema
 

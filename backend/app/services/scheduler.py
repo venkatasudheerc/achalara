@@ -18,6 +18,7 @@ from app.services.daily_sync import run_all_enabled_syncs
 from app.services.connection_service import run_all_brokerage_syncs, run_link_check
 from app.services.daily_capture_service import DailyCaptureService, run_daily_capture
 from app.services.index_history_service import IndexHistoryService
+from app.services.plaid_refresh_service import run_plaid_refresh
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,18 @@ def _capture_job_wrapper() -> None:
         run_daily_capture(db)
     except Exception as exc:
         logger.error(f"Unhandled error in daily capture job: {exc}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("plaid_refresh")
+def _plaid_refresh_wrapper() -> None:
+    """Bring every Plaid login up to date and record the day before."""
+    db = SessionLocal()
+    try:
+        run_plaid_refresh(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in Plaid refresh job: {type(exc).__name__}")
     finally:
         db.close()
 
@@ -185,6 +198,15 @@ def start_scheduler() -> None:
         id="daily_capture",
         replace_existing=True,
     )
+    # Plaid: early each weekday morning a balance is where the previous day
+    # ended, so Tuesday to Saturday record Monday to Friday. A weekend's
+    # movements arrive in Monday's record; a recorded day is never rewritten.
+    _scheduler.add_job(
+        _plaid_refresh_wrapper,
+        CronTrigger(day_of_week="tue-sat", hour=6, minute=30, timezone=MARKET_TIMEZONE),
+        id="plaid_refresh",
+        replace_existing=True,
+    )
     _scheduler.add_job(
         _index_history_wrapper,
         index_history_trigger(),
@@ -202,7 +224,8 @@ def start_scheduler() -> None:
     _scheduler.start()
     logger.info(
         "APScheduler started — sheets sync 16:00 UTC, brokerage sync 08:00 US Eastern, "
-        "daily capture 23:30 UTC on weekdays, index history 22:00 and 06:00 US Eastern"
+        "daily capture 23:30 UTC on weekdays, Plaid refresh 06:30 US Eastern Tue-Sat, "
+        "index history 22:00 and 06:00 US Eastern"
     )
 
 

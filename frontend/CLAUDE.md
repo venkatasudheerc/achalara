@@ -65,6 +65,9 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   (only when more than one owner is in view), Kind (`account.kind`) or My groups
   (`/portal/groups`, edited in `GroupsDialog`, in an advisor's preview too: it is exactly what
   the client sees).
+  An account whose record is incomplete (`account.health`) carries a clay "!" beside its figure,
+  and the Dashboard opens with which accounts to repair and from when (an owner's own account:
+  download from that date and use Update from a file; a shared one: its owner repairs it).
   Each account's figure, and every total built from them (the rail, the Dashboard's headline and
   kind tiles, the Accounts view), is `account.value`: the account now, exactly as the Holdings
   view's tile adds it up, so the two never disagree. The Dashboard says both clocks: the live

@@ -17,6 +17,15 @@ class PortalSleeve(BaseModel):
     strategy_name: str
 
 
+class AccountHealth(BaseModel):
+    # complete | provisional (recent transactions still posting) | incomplete
+    # (a transaction is missing: figures built on it are not to be trusted)
+    state: str
+    reasons: List[str] = []
+    # Where a download from the institution should start to repair it.
+    download_from: Optional[date] = None
+
+
 class PortalAccount(BaseModel):
     id: str
     client_id: str  # the owner; not the viewer when ``shared``
@@ -29,6 +38,7 @@ class PortalAccount(BaseModel):
     kind: str
     owed: bool = False  # a card or loan: its value is what is owed, negative
     institution: Optional[str] = None
+    health: Optional[AccountHealth] = None
     # The account now: holdings at live prices, options and cash as the custodian
     # last reported them; what the Holdings view's account tile shows.
     value: Optional[float] = None

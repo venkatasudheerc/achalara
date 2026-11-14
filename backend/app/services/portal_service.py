@@ -26,6 +26,7 @@ from app.services.account_kind import OWED, kind_of
 from app.services.auth_service import AuthService, display_name, last_four
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, option_event
 from app.services.opening_position import NOT_OPENING
+from app.services.account_health import account_health
 from app.services.live_quotes import live_quotes
 from app.services.performance_stats_service import Day, PerformanceStatsService
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -317,6 +318,8 @@ class PortalService:
                 "kind": kind_of(account),
                 "owed": kind_of(account) in OWED,
                 "institution": account.institution,
+                # How far its record can be trusted; screens and nudges read it.
+                "health": account_health(self.db, account),
                 "value": live.get(account.id),
                 "priced_at": priced_at,
                 "recorded_value": money(reported[account.id].total_value)

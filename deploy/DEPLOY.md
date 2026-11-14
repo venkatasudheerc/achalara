@@ -232,7 +232,9 @@ starts empty at each restart.
 
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
-The app's own daily jobs keep their UTC times.
+The app's own daily jobs keep their UTC times, except the Plaid refresh, which runs at 6:30 AM
+Eastern Tuesday to Saturday and records the day before. A server down at that time misses that
+day's record for Plaid accounts; the next run brings their transactions up to date.
 
 **Market data (the `md` worker)**
 

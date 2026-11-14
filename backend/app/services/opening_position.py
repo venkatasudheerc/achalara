@@ -16,9 +16,12 @@ deletes and works them out again before every rebuild, so history added later
 starting ``OPENING_ID_PREFIX``; nothing else may create or change them, the
 activity lists leave them out, and an import never matches a row against one.
 
-Nothing is guessed. A security that works back to fewer than no shares, or cash
-below nothing in an account that is not owed money, means a transaction is
-missing: it is reported and the account opens empty, as before.
+Nothing is guessed. A security that works back to fewer than no shares, cash
+below nothing in an account that is not owed money, or a day the institution
+recorded cash that the history does not agree with (``account_health.cash_check``),
+means a transaction is missing: it is reported and the account opens empty, as
+before. A missing movement shifts every day before it, so an opening worked back
+through one would be wrong by exactly that amount.
 """
 from __future__ import annotations
 
@@ -39,6 +42,7 @@ from app.models.cash_activity import CashActivity
 from app.models.perf import DailyHolding
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
+from app.services.account_health import INCOMPLETE, cash_check
 from app.services.account_kind import OWED, kind_of
 from app.services.cash_ledger import CashLedger
 from app.services.corporate_actions import (
@@ -200,7 +204,21 @@ class OpeningPositionService:
 
     def refresh(self, account_id: str) -> Opening:
         """Delete the account's opening trades and work them out again. Returns
-        the opening, with ``day`` set when the record should start there."""
+        the opening, with ``day`` set when the record should start there. Why it
+        could not be worked out is kept on the account's links
+        (``reconciliation["opening_problems"]``) for its health check."""
+        opening = self._work_out(account_id)
+        for link in self.db.query(BrokerageAccount).filter(
+            BrokerageAccount.account_id == account_id
+        ):
+            report = dict(link.reconciliation or {})
+            if report.get("opening_problems", []) != opening.problems:
+                report["opening_problems"] = list(opening.problems)
+                link.reconciliation = report
+        self.db.commit()
+        return opening
+
+    def _work_out(self, account_id: str) -> Opening:
         from app.services.performance_build_service import last_market_day
 
         account = self.db.get(Account, account_id)
@@ -248,6 +266,13 @@ class OpeningPositionService:
             opening.cash = ledger.balance_on(first - timedelta(days=1)) if ledger else ZERO
             if opening.cash < 0 and not owed:
                 opening.problems.append(f"cash works back to {opening.cash:.2f}")
+            # Worked back from today, a movement missing later shifts every
+            # earlier day: the opening is only as good as the history after it.
+            cash = cash_check(self.db, account)
+            if cash and cash["state"] == INCOMPLETE:
+                opening.problems.append(
+                    f"cash differs from the institution's record on {cash['last_differed'].isoformat()}"
+                )
         if opening.problems:
             logger.warning(
                 "Account %s cannot be worked back to its start (%s); it opens empty",

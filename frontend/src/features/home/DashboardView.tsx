@@ -6,7 +6,7 @@ import { useChartColours } from '@/context/ThemeContext'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
-import { KINDS, type Selection } from './selection'
+import { KINDS, accountName, type Selection } from './selection'
 
 type Chart = 'balances' | 'activity' | 'returns'
 
@@ -51,6 +51,8 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   const latest = accounts.map((a) => a.as_of).filter(Boolean).sort().pop()
   const priced = accounts.map((a) => a.priced_at).filter(Boolean).sort().shift()
 
+  const incomplete = accounts.filter((a) => a.health?.state === 'incomplete')
+
   const summary = data?.summary
   const change = summary ? summary.closing_value - summary.opening_value : null
   const chartKind: Chart = allCash && chart === 'returns' ? 'balances' : chart
@@ -77,6 +79,8 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           </p>
         )}
       </section>
+
+      {incomplete.length > 0 && <Incomplete accounts={incomplete} one={one} />}
 
       <section aria-labelledby="past-year" className="border border-line rounded-[20px] p-[18px] md:p-[22px] flex flex-col gap-[18px]">
         <div className="flex flex-wrap justify-between items-center gap-[12px]">
@@ -169,5 +173,36 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
         </section>
       )}
     </div>
+  )
+}
+
+/** Which accounts' records are missing a transaction, and how to repair them. */
+function Incomplete({ accounts, one }: { accounts: PortalAccount[]; one?: PortalAccount }) {
+  const from = (a: PortalAccount) => a.health?.download_from
+  return (
+    <section aria-label="Records to repair" className="border border-loss/40 rounded-[20px] p-[18px] flex flex-col gap-[8px]">
+      <p className="text-[16px] font-semibold">
+        {one ? 'This account\'s record is missing a transaction.'
+          : `${accounts.length === 1 ? 'One account\'s record is' : `${accounts.length} accounts' records are`} missing a transaction.`}
+        {' '}Figures that reach back past the gap are not reliable until it is filled.
+      </p>
+      {one ? (
+        <p className="text-[14px] text-stone leading-relaxed">
+          {one.health?.reasons.join(' ')}
+          {one.shared ? <> {one.owner_name.split(' ')[0]} can repair it.</>
+            : <> Download {from(one) ? <>its activity from {formatDate(from(one)!)} to today</> : 'all of its activity'}, then use Update from a file.</>}
+        </p>
+      ) : (
+        <ul className="text-[14px] text-stone leading-relaxed">
+          {accounts.map((a) => (
+            <li key={a.id}>
+              {accountName(a)}{a.number_last4 ? ` ··${a.number_last4}` : ''}:{' '}
+              {a.shared ? `${a.owner_name.split(' ')[0]} can repair it`
+                : from(a) ? `download its activity from ${formatDate(from(a)!)} to today` : 'download all of its activity'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

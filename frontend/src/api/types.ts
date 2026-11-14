@@ -362,11 +362,20 @@ export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy
 export type AccountKind =
   | 'taxable' | 'retirement' | 'kids' | 'cash' | 'checking' | 'savings'
   | 'credit_card' | 'mortgage' | 'car_loan' | 'loan'
+/** complete; provisional: recent transactions still posting; incomplete: one is missing */
+export interface AccountHealth {
+  state: 'complete' | 'provisional' | 'incomplete'
+  reasons: string[]
+  /** Where a download from the institution should start to repair it */
+  download_from?: string | null
+}
 export interface PortalAccount extends VisibleAccount {
   owner_name: string
   kind: AccountKind
   /** A card or loan: its value is what is owed, negative */
   owed: boolean; institution: string | null
+  /** How far its record can be trusted; figures on an incomplete account are not */
+  health?: AccountHealth | null
   /** The account now: holdings at live prices, options and cash as last reported;
    * what the Holdings view's account tile shows. `priced_at` is when prices were fetched. */
   value: number | null; priced_at: string | null

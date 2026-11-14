@@ -7137,6 +7137,24 @@ components:
       type: object
       required:
       - account_ids
+    AccountHealth:
+      type: object
+      description: How far an account's record can be trusted. Figures built on an incomplete account are not to be trusted, and no nudge is built on one.
+      required: [state, reasons]
+      properties:
+        state:
+          type: string
+          enum: [complete, provisional, incomplete]
+          description: "complete; provisional: recent transactions still posting; incomplete: a transaction is missing"
+        reasons:
+          type: array
+          items:
+            type: string
+        download_from:
+          type: string
+          format: date
+          nullable: true
+          description: Where a download from the institution should start to repair it
     PortalAccount:
       properties:
         id:
@@ -7161,6 +7179,10 @@ components:
           description: A card or loan, whose value is what is owed (negative)
         institution:
           type: string
+          nullable: true
+        health:
+          allOf:
+            - $ref: '#/components/schemas/AccountHealth'
           nullable: true
         value:
           type: number

@@ -26,6 +26,7 @@ from app.services.connection_service import MIN_SYNC_INTERVAL
 from app.services.invitation_service import InvitationService
 from app.md import read as md_read
 from app.md.schedule import MD_JOBS
+from app.services.account_health import account_health
 from app.services.performance_build_service import last_market_day
 
 JOBS = (
@@ -33,6 +34,7 @@ JOBS = (
     ("brokerage_link_check", "Brokerage link check"),
     ("daily_brokerage_sync", "Brokerage sync"),
     ("daily_capture", "Daily capture"),
+    ("plaid_refresh", "Plaid refresh"),
     ("index_history", "Index history"),
     ("capture_catch_up", "Catch-up capture at start"),
 )
@@ -282,6 +284,15 @@ class StatusService:
                     f"Transactions for {name} stop at {through.isoformat()}.",
                     alert="Transactions are more than a few days behind for an account.",
                 )
+            if ba.status == "mapped" and account is not None:
+                health = account_health(self.db, account, now.date())
+                if health["state"] == "incomplete":
+                    start = health["download_from"]
+                    attention.append(
+                        f"The record of {name} is incomplete: {' '.join(health['reasons'])}"
+                        + (f" Download its activity from {start.isoformat()}." if start else ""),
+                        alert="An account's record is incomplete: a transaction is missing.",
+                    )
             accounts.append(
                 {
                     "id": ba.id,
