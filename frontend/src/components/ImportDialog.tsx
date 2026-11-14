@@ -54,6 +54,12 @@ function Preview({ p }: { p: ImportPreview }) {
         The file covers {p.first_date ? `${formatDate(p.first_date)} to ${formatDate(p.last_date)}` : 'no dates'}.
         {onFile && ` Already here: ${onFile}.`}
       </p>
+      {p.first_date && p.history_starts && p.first_date < p.history_starts && (p.to_add_trades + p.to_add_cash) > 0 && (
+        <p className="text-[14px] leading-relaxed border border-line rounded-[14px] p-[16px]">
+          This reaches back before the account's history here, which starts on {formatDate(p.history_starts)}.
+          Adding it extends the record back to {formatDate(p.first_date)}, so figures since the start will change.
+        </p>
+      )}
       {p.days.length > 0 && (
         <div className="max-h-[260px] overflow-y-auto border border-line rounded-[14px] p-[16px]"><DayList days={p.days} /></div>
       )}

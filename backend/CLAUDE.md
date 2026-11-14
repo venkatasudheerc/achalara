@@ -109,6 +109,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/connection_service.py`    | Brokerage link/discover/map/reconcile + `sync_brokerage_account` (the one sync path)    |
 | `app/models/perf.py`                    | The `perf` schema: daily valuation, holdings, prices, corporate actions                  |
 | `app/services/performance_build_service.py` | Rebuilds reconstructed daily rows from trades, prices and cash; `dietz_factor`       |
+| `app/services/opening_position.py`      | What an account held before its history: worked back, stored as opening trades           |
 | `app/services/daily_capture_service.py` | Captures the brokerage's holdings, cash and total as observed daily rows                 |
 | `app/services/performance_stats_service.py` | Periods, account activity, drawdowns, risk — all read from daily rows                |
 | `app/services/price_history_service.py` | Daily closes from Webull for held securities and benchmarks                             |
@@ -284,6 +285,25 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   rebuilt only up to its last observed day: the next morning's record says what the days after
   were, and a rebuilt day would value written options from their last trade, far from market.
   An account with no daily report is rebuilt to the last market day.
+- **An account opens at what it held before its history** (`services/opening_position.py`).
+  A feed's history reaches back only so far (Plaid two years, SnapTrade as far as it gives), so
+  `rebuild_account` first calls `OpeningPositionService.refresh`: each security's shares before
+  the first transaction are worked back from the institution's latest recorded holdings (a day
+  the transactions are complete through, `transactions_synced_through`; tried with and without
+  that day's own trades, as a day's holdings can be taken before its trades show), and the cash
+  from the ledger. They are stored as **opening trades**, a buy per security on the market day
+  before the first transaction, priced at the institution's cost where nothing since changed it,
+  else that day's market price, with notes starting `OPENING_NOTE` and ids `OPENING_ID_PREFIX`.
+  That day is the record's first, with nothing moved in and no return, so what was already
+  there is the opening value, never a gain (`PerformanceStatsService._opening` reads a first
+  day with no money moved as the opening). Opening trades are **derived, never fact**: refresh
+  deletes and works them out again every time, so history added later (a sync, a file) moves or
+  removes them, and it re-runs the reconciliation from the stored holdings when they change.
+  Never create or edit one elsewhere. The activity lists, the import's matching and the sync's
+  duplicate check leave them out (`NOT_OPENING`); positions, cost basis, the holdings check and
+  the ledger count them. **Nothing is guessed:** a security working back below zero shares, or
+  cash below zero in an account not owed money, means a transaction is missing; the account
+  opens empty, as before, and the reason is logged.
 - **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
   value or returns. It applies two things on reading and never changes a stored trade: splits,
   and the assignment rule below.
@@ -333,8 +353,8 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   does not. Keep both paths returning the same response shape.
 - Account and client views include cash where a `CashLedger` exists; sleeve and strategy views
   are securities-only.
-- **A cash account earns only its income.** For an account whose kind is `cash`
-  (`account_kind.py`), `rebuild_account` counts every change in the day's balance, less its
+- **A cash account earns only its income.** For an account whose kind is cash-like
+  (`CASH_LIKE`: cash, checking, savings and the owed kinds, `account_kind.py`), `rebuild_account` counts every change in the day's balance, less its
   interest, dividends, fees and tax withheld (`_cash_account_income`), as money in or out. The
   transfers on file are not used for it: for a bank-style account they can be missing or dated a
   day or two from the balance they moved, and the gap would read as a gain or a loss.
@@ -438,6 +458,8 @@ its accounts are `brokerage_accounts` rows. Rules:
   activity; bank and card rows are money in or out, with interest and bank fees their own
   types. A card's or loan's balance is stored negative (`account_kind.OWED`), so totals are net
   worth.
+- **Every link asks for two years of transactions** (`TRANSACTION_DAYS`, Plaid's most). Plaid
+  gives 90 days otherwise, and it can only be asked for when a login is linked.
 - **The plan's limit:** every Plaid login ever linked counts (`PLAID_MAX_LOGINS`, the trial's
   10); `start` refuses at the limit and the dialog warns when two or fewer are left.
 - SnapTrade's daily capture (`DailyCaptureService.capture_all`) is limited to SnapTrade logins.

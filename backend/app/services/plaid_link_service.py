@@ -529,9 +529,8 @@ class PlaidLinkService:
         link.cash_balance_at = datetime.now(timezone.utc)
         self.db.commit()
         result = self.connections.ingest_batch(link, batch) if (batch.trades or batch.cash or batch.raw) else {}
-        last = max((r.occurred_on for r in batch.raw if r.occurred_on), default=None)
-        if last:
-            link.transactions_synced_through = last
+        # Plaid was asked for every transaction through today.
+        link.transactions_synced_through = today
         link.last_synced_at = datetime.now(timezone.utc)
         self.db.commit()
         DailyCaptureService(self.db, self.connections).record(

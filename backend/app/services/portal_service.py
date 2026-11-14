@@ -25,6 +25,7 @@ from app.services import benchmarks
 from app.services.account_kind import OWED, kind_of
 from app.services.auth_service import AuthService, display_name, last_four
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, option_event
+from app.services.opening_position import NOT_OPENING
 from app.services.live_quotes import live_quotes
 from app.services.performance_stats_service import Day, PerformanceStatsService
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -823,7 +824,7 @@ class PortalService:
         if not by_sleeve:
             return empty
 
-        filters = [Trade.sleeve_id.in_(list(by_sleeve))]
+        filters = [Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING]
         if start:
             filters.append(Trade.trade_date >= start)
         if end:
@@ -960,7 +961,7 @@ class PortalService:
 
         trades: List[Trade] = []
         if by_sleeve and show in ("all", "trades"):
-            filters = [Trade.sleeve_id.in_(list(by_sleeve))]
+            filters = [Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING]
             if start:
                 filters.append(Trade.trade_date >= start)
             if end:
@@ -1733,7 +1734,7 @@ class PortalService:
             return []
         trades = (
             self.db.query(Trade)
-            .filter(Trade.sleeve_id.in_(list(by_sleeve)))
+            .filter(Trade.sleeve_id.in_(list(by_sleeve)), NOT_OPENING)
             .order_by(Trade.trade_date.desc(), Trade.id)
             .limit(limit)
         )

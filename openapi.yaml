@@ -5153,6 +5153,7 @@ components:
         rows: {type: integer}
         first_date: {type: string, format: date, nullable: true}
         last_date: {type: string, format: date, nullable: true}
+        history_starts: {type: string, format: date, nullable: true, description: "The first day of the account's history on file before this file; a file reaching earlier changes the figures since inception."}
         on_file_trades: {type: integer}
         on_file_cash: {type: integer}
         on_file_a_day_later: {type: integer, description: Recognised although dated a trading day later (option expiries and assignments)}

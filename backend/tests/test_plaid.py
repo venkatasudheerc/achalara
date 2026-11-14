@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal as D
 
 import pytest
+from sqlalchemy import func
 from cryptography.fernet import Fernet
 
 from app.config import settings
@@ -297,7 +298,184 @@ def test_the_plans_logins_are_counted_and_the_last_refused(db, owner, plaid_keys
     assert full.value.status_code == 409
 
 
-def test_without_keys_linking_is_not_offered(client, owner):
+def test_without_keys_linking_is_not_offered(client, owner, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "plaid_secret", "")
     response = client.get("/api/v1/portal/links/plaid", params={"as_client": owner.id})
     assert response.status_code == 200 and response.json()["available"] is False
     assert client.post("/api/v1/portal/links/plaid/start", params={"as_client": owner.id}).status_code == 503
+
+
+def test_link_token_asks_for_two_years_of_transactions():
+    """Plaid gives 90 days unless more is asked for when a login is linked."""
+    from app.connectors.plaid_connector import PlaidClient
+
+    sent = {}
+    client = PlaidClient(env="sandbox")
+    client._post = lambda path, body: sent.update(path=path, body=body) or {}
+    client.link_token("client-1")
+    assert sent["body"]["transactions"] == {"days_requested": 730}
+    client.link_token("client-1", access_token="access-sandbox-x")
+    assert "transactions" not in sent["body"]
+
+
+def test_money_already_in_a_bank_account_is_its_opening_value_not_a_gain(db, owner, plaid_keys):
+    """Plaid's history begins with money already there: the record opens at that
+    balance the market day before the first transaction, with nothing moved."""
+    service = PlaidLinkService(db, FakePlaid())
+    found = service.finish(owner.id, "public-token")
+    links = {a["mask"]: a["link_id"] for a in found["accounts"]}
+    service.confirm(owner.id, found["connection_id"], [
+        {"link_id": links["8069"], "action": "skip"},
+        {"link_id": links["1111"], "action": "new"},
+        {"link_id": links["2222"], "action": "skip"},
+    ])
+    checking = db.query(Account).filter(Account.client_id == owner.id, Account.last_four == "1111").one()
+    rows = {
+        r.as_of_date: r
+        for r in db.query(DailyValuation).filter(
+            DailyValuation.account_id == checking.id, DailyValuation.sleeve_id.is_(None)
+        )
+    }
+    first = min(rows)
+    # 2,500 today, less the 2,000 paid in on the 3rd, plus the 0.42 fee on the 4th.
+    assert (first, rows[first].total_value) == (date(2026, 11, 2), D("500.42"))
+    assert rows[first].flow_in == 0 and rows[first].flow_out == 0
+    assert rows[date(2026, 11, 3)].flow_in == D("2000")
+
+
+HELD_BEFORE = [
+    # 150 now, 100 of them bought on 30 Oct: 50 were already there.
+    {"account_id": "p-brk", "security_id": "s-aaa", "quantity": 150,
+     "institution_price": 11.0, "institution_value": 1650.0, "cost_basis": 1400.0},
+    # Never traded in the history: held all along.
+    {"account_id": "p-brk", "security_id": "s-bbb", "quantity": 20,
+     "institution_price": 50.0, "institution_value": 1000.0, "cost_basis": 800.0},
+    {"account_id": "p-brk", "security_id": "s-cash", "quantity": 500,
+     "institution_price": 1.0, "institution_value": 500.0},
+]
+
+
+def _link_brokerage(db, owner):
+    service = PlaidLinkService(db, FakePlaid(holdings=HELD_BEFORE))
+    found = service.finish(owner.id, "public-token")
+    links = {a["mask"]: a["link_id"] for a in found["accounts"]}
+    service.confirm(owner.id, found["connection_id"], [
+        {"link_id": links["8069"], "action": "new", "kind": "taxable"},
+        {"link_id": links["1111"], "action": "skip"},
+        {"link_id": links["2222"], "action": "skip"},
+    ])
+    return db.query(Account).filter(Account.client_id == owner.id, Account.last_four == "8069").one()
+
+
+def _account_rows(db, account):
+    return {
+        r.as_of_date: r
+        for r in db.query(DailyValuation).filter(
+            DailyValuation.account_id == account.id, DailyValuation.sleeve_id.is_(None)
+        )
+    }
+
+
+def _opening_trades(db, account):
+    from app.services.opening_position import OPENING_NOTE
+
+    return {
+        t.symbol: t
+        for t in db.query(Trade).join(Sleeve).filter(
+            Sleeve.account_id == account.id, Trade.notes.like(f"{OPENING_NOTE}%")
+        )
+    }
+
+
+def test_an_investment_account_opens_with_what_it_held_before_its_history(db, owner, plaid_keys):
+    """History reaches back only so far: the account opens the day before its
+    first transaction holding what the institution's holdings work back to."""
+    brokerage = _link_brokerage(db, owner)
+    rows = _account_rows(db, brokerage)
+    first = min(rows)
+    assert first == date(2026, 10, 29)
+    opening = rows[first]
+    # 50 AAA at the 10.00 it next traded at, 20 BBB at 50.00, and the 1,500 cash
+    # that paid for the 30 Oct purchase.
+    assert opening.securities_value == D("1500.00")
+    assert opening.cash_value == D("1500.00")
+    assert opening.flow_in == 0 and opening.flow_out == 0
+    # The institution's cost is kept for BBB, which nothing since has changed.
+    assert opening.cost_value == D("500.00") + D("800.00")
+
+    held = _opening_trades(db, brokerage)
+    assert {s: (t.trade_date, t.quantity) for s, t in held.items()} == {
+        "AAA": (date(2026, 10, 29), D(50)), "BBB": (date(2026, 10, 29), D(20)),
+    }
+    # An opening position is not a transaction: the activity list leaves it out.
+    from app.services.portal_service import PortalService
+    listed = PortalService(db, owner.id).activity(show="trades")
+    assert {row["symbol"] for row in listed["rows"]} == {"AAA"}
+
+
+def test_history_added_later_moves_the_opening_back_and_shrinks_it(db, owner, plaid_keys):
+    """A file brings the real purchase of BBB on 1 Oct: BBB is no longer held
+    before the history, and the record now opens the day before that."""
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.performance_build_service import PerformanceBuildService
+
+    brokerage = _link_brokerage(db, owner)
+    link = db.query(BrokerageAccount).filter(BrokerageAccount.account_id == brokerage.id).one()
+    db.add(Trade(sleeve_id=link.default_sleeve_id, trade_date=date(2026, 10, 1), symbol="BBB",
+                 action="BUY", quantity=D(20), price=D(40), commission=D(0),
+                 external_id="vanguard:x1"))
+    db.add(BrokerageActivity(brokerage_account_id=link.id, source_activity_id="vanguard:x1",
+                             activity_date=date(2026, 10, 1), type="BUY", symbol="BBB",
+                             outcome="trade", payload={}, cash_amount=D("-800")))
+    db.commit()
+
+    PerformanceBuildService(db).rebuild_account(brokerage.id)
+
+    assert {s: t.quantity for s, t in _opening_trades(db, brokerage).items()} == {"AAA": D(50)}
+    rows = _account_rows(db, brokerage)
+    first = min(rows)
+    assert first == date(2026, 9, 30)
+    # The 800 that paid for BBB was cash before it.
+    assert rows[first].cash_value == D("2300.00")
+    assert rows[first].flow_in == 0
+
+
+def test_a_position_that_works_back_below_nothing_is_reported_not_guessed():
+    from app.services.opening_position import work_back_shares
+
+    class _Trade:
+        def __init__(self, symbol, action, quantity, day):
+            self.symbol, self.action, self.quantity, self.trade_date = symbol, action, D(quantity), day
+            self.price, self.at_market, self.id, self.sleeve_id = D(10), True, symbol + action, "s1"
+
+    anchor = date(2026, 11, 12)
+    # 30 bought in the history, 10 held now: a sale is missing.
+    opening = work_back_shares(
+        [_Trade("AAA", "BUY", 30, date(2026, 10, 1))], {"AAA": (D(10), D(12), "s1")}, anchor
+    )
+    assert opening.problems == ["AAA works back to -20 shares"] and not opening.shares
+
+
+def test_a_bank_account_that_works_back_below_nothing_opens_empty(db, owner, plaid_keys):
+    """1,000 now after 2,000 paid in: it held -1,000 before, so a withdrawal is
+    missing. Nothing is assumed; a card owing money works back below nothing
+    as it should."""
+    accounts = [
+        {"account_id": "p-chk", "name": "Everyday Checking", "mask": "1111",
+         "type": "depository", "subtype": "checking", "balances": {"current": 1000.0}},
+    ]
+    service = PlaidLinkService(db, FakePlaid(accounts=accounts))
+    found = service.finish(owner.id, "public-token")
+    service.confirm(owner.id, found["connection_id"], [
+        {"link_id": found["accounts"][0]["link_id"], "action": "new"},
+    ])
+    checking = db.query(Account).filter(Account.client_id == owner.id).one()
+    first = (
+        db.query(func.min(DailyValuation.as_of_date))
+        .filter(DailyValuation.account_id == checking.id, DailyValuation.sleeve_id.is_(None))
+        .scalar()
+    )
+    assert first == date(2026, 11, 3)
+    assert not db.query(Trade).join(Sleeve).filter(Sleeve.account_id == checking.id).count()

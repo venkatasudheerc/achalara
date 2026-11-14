@@ -27,6 +27,7 @@ _HOSTS = {
 # Liabilities are asked for wherever the institution offers them.
 PRODUCTS = ("transactions",)
 IF_SUPPORTED = ("investments", "liabilities")
+TRANSACTION_DAYS = 730  # Plaid's most
 _TIMEOUT = httpx.Timeout(30.0)
 
 
@@ -94,6 +95,9 @@ class PlaidClient:
         else:
             body["products"] = list(PRODUCTS)
             body["required_if_supported_products"] = list(IF_SUPPORTED)
+            # Plaid gives 90 days of transactions unless more is asked for, and
+            # only when a login is linked; it can never be asked for later.
+            body["transactions"] = {"days_requested": TRANSACTION_DAYS}
         if redirect_uri:
             body["redirect_uri"] = redirect_uri
         if webhook:

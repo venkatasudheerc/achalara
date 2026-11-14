@@ -46,6 +46,7 @@ from app.models.cash_activity import MARGIN_INTEREST, CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE
+from app.services.opening_position import NOT_OPENING
 from app.utils.symbols import app_symbol
 
 SOURCE = "vanguard"
@@ -472,8 +473,9 @@ class VanguardReportImport:
         trades, cash, plan.skipped, plan.needs_a_look = read_rows(rows)
 
         sleeve_ids = self.account_sleeves(ba)
+        # An opening position is not a transaction: a row is never matched to one.
         on_file = (
-            self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids)).all()
+            self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).all()
             if sleeve_ids
             else []
         )

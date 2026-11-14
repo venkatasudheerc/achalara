@@ -817,6 +817,8 @@ export interface ImportPreview {
   account_id: string
   file_kind: 'vanguard_activity' | 'template'
   rows: number; first_date: string | null; last_date: string | null
+  /** The first day of the account's history here before this file */
+  history_starts?: string | null
   on_file_trades: number; on_file_cash: number
   /** Recognised although dated a trading day later (option expiries and assignments) */
   on_file_a_day_later: number

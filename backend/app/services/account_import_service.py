@@ -28,10 +28,12 @@ from sqlalchemy.orm import Session
 from app.connectors.models import NormalizedPosition, is_option_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount
+from app.models.cash_activity import CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.corporate_actions import adjusted_trades
+from app.services.opening_position import NOT_OPENING
 from app.services.connection_service import ConnectionService
 from app.services.vanguard_report import (
     Plan,
@@ -260,6 +262,23 @@ class AccountImportService:
             raise AccountImportError(422, "The file has no rows to read.")
         return ba, kind, self.importer.plan(ba, rows)
 
+    def _history_starts(self, account: Account) -> Optional[date]:
+        """The first day of the account's transactions on file (an opening
+        position is not one). A file reaching before it changes the figures
+        since inception, which the preview says."""
+        sleeve_ids = [
+            row[0] for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account.id)
+        ] or [""]
+        firsts = [
+            self.db.query(func.min(Trade.trade_date))
+            .filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING)
+            .scalar(),
+            self.db.query(func.min(CashActivity.activity_date))
+            .filter(CashActivity.sleeve_id.in_(sleeve_ids))
+            .scalar(),
+        ]
+        return min((d for d in firsts if d is not None), default=None)
+
     def preview(self, account: Account, filename: str, content: bytes) -> Dict:
         _, kind, plan = self._plan(account, filename, content)
         return self._summary(account, kind, plan)
@@ -397,8 +416,7 @@ class AccountImportService:
             "download_from": download_from,
         }
 
-    @staticmethod
-    def _summary(account: Account, kind: str, plan: Plan) -> Dict:
+    def _summary(self, account: Account, kind: str, plan: Plan) -> Dict:
         moved = [m for r, m in plan.loose_matches if m["date"] != r.traded.isoformat()]
         renamed = len(plan.loose_matches) - len(moved)
         days = []
@@ -429,6 +447,7 @@ class AccountImportService:
             "rows": plan.rows,
             "first_date": plan.first,
             "last_date": plan.last,
+            "history_starts": self._history_starts(account),
             "on_file_trades": plan.held_trades,
             "on_file_cash": plan.held_cash,
             "on_file_a_day_later": len(moved),

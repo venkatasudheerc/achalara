@@ -62,6 +62,8 @@ class ImportPreview(BaseModel):
     rows: int
     first_date: Optional[date] = None
     last_date: Optional[date] = None
+    # The first day of the account's history on file before this file.
+    history_starts: Optional[date] = None
     on_file_trades: int
     on_file_cash: int
     # Recognised although the feed dated them a trading day later (option

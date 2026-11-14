@@ -39,6 +39,11 @@ from app.services.account_kind import CASH, CHECKING, OWED, SAVINGS, kind_of
 from app.services.cash_activity_service import CashActivityService
 from app.services.cash_ledger import CashLedger
 from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
+from app.services.opening_position import (
+    OpeningPositionService,
+    is_opening,
+    opening_scale,
+)
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -179,6 +184,9 @@ class PerformanceBuildService:
             row[0]
             for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id)
         ]
+        # What the account held before its history on file begins, stored as
+        # opening trades; worked out afresh first, since history may have moved.
+        opening = OpeningPositionService(self.db).refresh(account_id)
         ledger = CashLedger.for_accounts(self.db, [account_id])
         account = self.db.get(Account, account_id)
         # A cash account earns only its interest: every other change in its
@@ -194,6 +202,7 @@ class PerformanceBuildService:
         trades = adjusted_trades(self.db, stored)
         # Legs of a merger are priced to carry cost across, not at the market.
         off_market = {t.id for t in stored if (t.notes or "").startswith(MERGER_NOTE)}
+        opening_ids = {t.id for t in stored if is_opening(t)}
 
         observed = self._observed_rows(account_id, sleeve_ids)
         self._delete_reconstructed(account_id, sleeve_ids)
@@ -212,7 +221,12 @@ class PerformanceBuildService:
         observed_days = [day for (owner, day) in observed if owner == account_id]
         if observed_days and self._reported_daily(account_id):
             end = min(end, max(observed_days))
-        days = self.prices.market_days(min(starts), end)
+        first = min(starts)
+        # The record opens on the opening day, at what was already held, with
+        # nothing moved in: that is its opening value, never a gain.
+        if opening.day is not None:
+            first = min(first, opening.day)
+        days = self.prices.market_days(first, end)
         if not days:
             self.db.commit()
             return 0
@@ -258,6 +272,18 @@ class PerformanceBuildService:
                 holding = holdings.setdefault(
                     (trade.sleeve_id, trade.symbol), _Holding()
                 )
+                if trade.id in opening_ids:
+                    # Already held: no money moved. Valued from its own scale,
+                    # tied to a real price it traded at, or was held at, since.
+                    holding.quantity += trade.quantity
+                    holding.trade("BUY", trade.quantity, trade.price, ZERO)
+                    held = opening.shares.get(trade.symbol)
+                    points = series[trade.symbol]._points if trade.symbol in series else []
+                    holding.scale = (
+                        opening_scale(held, points, dividends, day) if held else None
+                    )
+                    holding.last_price = held.ref_price if held else trade.price
+                    continue
                 gross = trade.quantity * trade.price
                 if trade.action == "BUY":
                     holding.quantity += trade.quantity
@@ -352,7 +378,7 @@ class PerformanceBuildService:
                     flow_in,
                     flow_out,
                     unpriced[sleeve_id],
-                    previous_total[sleeve_id],
+                    None if day == opening.day else previous_total[sleeve_id],
                     provisional,
                     now,
                 )
@@ -406,7 +432,7 @@ class PerformanceBuildService:
                 account_in,
                 account_out,
                 sum(unpriced.values(), ZERO),
-                previous_account_total,
+                None if day == opening.day else previous_account_total,
                 provisional,
                 now,
             )
@@ -431,19 +457,22 @@ class PerformanceBuildService:
         flow_in: Decimal,
         flow_out: Decimal,
         unpriced: Decimal,
-        previous_total: Decimal,
+        previous_total: Optional[Decimal],
         provisional: bool,
         now: datetime,
     ) -> Decimal:
         """Record one entity's day and return its closing total.
 
         On a captured day the captured value stands, and only the flows and
-        the return they imply are refreshed.
+        the return they imply are refreshed. ``previous_total`` is None on the
+        opening day: what is there was already held, so the day has no return.
         """
         flow_in = flow_in.quantize(CENT)
         flow_out = flow_out.quantize(CENT)
         if observed_row is not None:
             total = Decimal(str(observed_row.total_value))
+            if previous_total is None:
+                previous_total = total
             # What was open had a cost whatever the brokerage valued it at.
             observed_row.cost_value = cost.quantize(CENT)
             observed_row.flow_in = flow_in
@@ -458,6 +487,8 @@ class PerformanceBuildService:
         securities = securities.quantize(CENT)
         cash = cash.quantize(CENT) if cash is not None else None
         total = securities + (cash or ZERO)
+        if previous_total is None:
+            previous_total = total
         new_rows.append(
             {
                 "sleeve_id": owner.get("sleeve_id"),

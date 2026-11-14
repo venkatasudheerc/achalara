@@ -248,6 +248,12 @@ It is nullable: trades created directly through the API, and any predating the
 column, have none. Dedup therefore accepts **either** identity — the
 `external_id`, or the legacy `(date, symbol, qty, price)` tuple.
 
+**Opening trades** are the one kind of row not from a source: what an account held before its
+history on file, a buy per security on the market day before its first transaction, `notes`
+starting `Opening position: ` and `external_id` starting `opening:`
+(`services/opening_position.py`). They are derived and rewritten before every rebuild; nothing
+else writes them, and the activity lists, imports and dedup leave them out.
+
 ### `positions`
 | Column | Type | Notes |
 |---|---|---|
@@ -531,7 +537,9 @@ source limited to one per account per day. Re-fetched rows replace the stored co
 
 There is no cash table. `CashLedger` (`services/cash_ledger.py`) derives the balance on any
 date as `brokerage_accounts.cash_balance` minus every `brokerage_activities.cash_amount` dated
-after it — today's reported balance walked backwards — so no opening balance is needed.
+after it — today's reported balance walked backwards. The balance before the first activity is
+the account's opening cash: the record opens the market day before at it (and at any opening
+trades), with nothing moved in, so money already there is never read as a gain.
 
 Views of **whole accounts** (account and client level) include it where it is known: value is
 securities plus cash, a trade or dividend only moves value between the two, and the only money
