@@ -326,8 +326,15 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   value or returns. It applies three things on reading and never changes a stored trade: splits,
   ticker changes, and the assignment rule below.
 - **A ticker change is a corporate action** (`RENAME` in `perf.corporate_action`, with
-  `new_symbol`; entered with `add-ticker-change`, which rebuilds the accounts that traded either
-  ticker). A trade under the old symbol before the
+  `new_symbol`), never a rename of stored rows. It reaches the table three ways
+  (`services/ticker_changes.py`), and recording one rebuilds every account that traded or held
+  either ticker: **copied from market data** each morning (job `ticker_changes`, 6:15 AM ET, from
+  `md.security_symbol_hist` through `md.read.ticker_changes`; only changes market data saw happen
+  while it followed the security); **proposed from an account's own record** and confirmed by an
+  admin on System status (`GET`/`POST /admin/ticker-changes`): a symbol the opening cannot work
+  back, no longer held, whose last trade comes before the first appearance of exactly one held
+  symbol with the same company name in the custodian's rows; none is guessed; or **by hand**
+  (`add-ticker-change`). A trade under the old symbol before the
   change is read under the new one (`corporate_actions.current_symbol`, followed in date order, so
   a company that changed back never loops), and so are recorded holdings in the opening and the
   holdings check. Option contracts keep their own names. Without it an account's shares bought as

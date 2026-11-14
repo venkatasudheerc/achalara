@@ -79,49 +79,24 @@ def set_price(symbol: str, on: str, close: str) -> int:
 
 def add_ticker_change(old: str, new: str, on: str) -> int:
     """Record that ``old`` trades as ``new`` from ``on``, then rebuild the
-    accounts that traded either, so their openings and records follow."""
-    from sqlalchemy import or_
-
-    from app.models.perf import CorporateAction
-    from app.models.sleeve import Sleeve
-    from app.models.trade import Trade
-    from app.services.performance_build_service import PerformanceBuildService
+    accounts that traded or held either, so their openings and records follow."""
+    from app.services.ticker_changes import record
 
     try:
         day = date.fromisoformat(on)
     except ValueError:
         print("Give the date as YYYY-MM-DD.", file=sys.stderr)
         return 1
-    old, new = old.strip().upper(), new.strip().upper()
-    if not old or not new or old == new:
-        print("Give two different tickers.", file=sys.stderr)
-        return 1
     db = SessionLocal()
     try:
-        row = (
-            db.query(CorporateAction)
-            .filter(CorporateAction.symbol == old, CorporateAction.action_type == "RENAME",
-                    CorporateAction.effective_date == day)
-            .first()
-        )
-        if row is None:
-            row = CorporateAction(symbol=old, effective_date=day, action_type="RENAME",
-                                  ratio=Decimal(1), source="manual")
-            db.add(row)
-        row.new_symbol = new
-        db.commit()
-        accounts = sorted({
-            account_id
-            for (account_id,) in db.query(Sleeve.account_id)
-            .join(Trade, Trade.sleeve_id == Sleeve.id)
-            .filter(or_(Trade.symbol == old, Trade.symbol == new))
-        })
-        for account_id in accounts:
-            PerformanceBuildService(db).rebuild_account(account_id)
-        print(f"{old} is read as {new} from {day}; {len(accounts)} account(s) rebuilt.")
-        return 0
+        rebuilt = record(db, old, new, day, "manual")
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
     finally:
         db.close()
+    print(f"{old.upper()} is read as {new.upper()} from {day}; {rebuilt} account(s) rebuilt.")
+    return 0
 
 
 def plaid_refresh(client: Optional[str]) -> int:

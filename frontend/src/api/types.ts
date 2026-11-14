@@ -889,6 +889,9 @@ export interface PlaidFoundAccount {
 }
 export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
 export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
+/** A likely ticker change seen in the accounts' own records, waiting for a person */
+export interface TickerChangeProposal { old: string; new: string; on: string; company: string; accounts: number }
+
 export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }
 
 /** After signing in again: `active` once Plaid reads the login again */

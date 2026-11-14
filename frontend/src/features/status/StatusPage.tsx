@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useSendTestAlert, useSystemStatus } from '@/hooks/useAdmin'
+import { useConfirmTickerChange, useSendTestAlert, useSystemStatus, useTickerChanges } from '@/hooks/useAdmin'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatDate, formatNumber } from '@/lib/formatters'
@@ -64,6 +64,34 @@ function Alerts({ on }: { on: boolean }) {
         <span className="text-xs text-stone">You are told about problems only on this page. To get them on your phone, set up the bot on the server.</span>
       )}
     </div>
+  )
+}
+
+/** Likely ticker changes: one company under two tickers in an account's record. */
+function TickerChanges() {
+  const { data } = useTickerChanges()
+  const confirm = useConfirmTickerChange()
+  if (!data?.length) return null
+  return (
+    <Section title="Ticker changes to confirm"
+      sub="One company traded under one ticker and is held under another. Until confirmed, the accounts holding it cannot be worked back to their start. Stored trades are not changed.">
+      <ul className="divide-y divide-stone/15">
+        {data.map((p) => (
+          <li key={`${p.old}-${p.new}`} className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">
+              <span className="font-mono">{p.old}</span> became <span className="font-mono">{p.new}</span>
+              {' '}({p.company}), first seen {formatDate(p.on)} · {p.accounts} account{p.accounts === 1 ? '' : 's'}
+            </p>
+            <button type="button" disabled={confirm.isPending}
+              onClick={() => confirm.mutate({ old: p.old, new: p.new, on: p.on })}
+              className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors disabled:opacity-60">
+              Read {p.old} as {p.new}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {confirm.isError && <p role="alert" className="px-6 pb-4 text-xs text-loss">{confirm.error.message}</p>}
+    </Section>
   )
 }
 
@@ -238,6 +266,7 @@ export function StatusPage() {
           note={status.backup.known ? `${bytes(status.backup.size_bytes)} · disk ${(diskUsed * 100).toFixed(0)}% used` : `Disk ${(diskUsed * 100).toFixed(0)}% used`} />
       </div>
 
+      <TickerChanges />
       <Links status={status} now={now} />
       <Jobs status={status} now={now} />
       <Accounts status={status} now={now} />

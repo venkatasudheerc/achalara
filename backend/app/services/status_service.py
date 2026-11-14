@@ -30,6 +30,7 @@ from app.services.performance_build_service import last_market_day
 
 JOBS = (
     ("plaid_refresh", "Plaid refresh"),
+    ("ticker_changes", "Ticker changes"),
     ("price_history", "Price history"),
     ("daily_sheets_sync", "Sheet sync"),
     ("index_history", "Index history"),
@@ -88,6 +89,16 @@ class StatusService:
             )
         if settings.python_env == "production" and not settings.scheduler_enabled:
             attention.append("The daily jobs are switched off on this server.")
+        from app.services.ticker_changes import proposals
+
+        likely = proposals(self.db)
+        if likely:
+            named = ", ".join(f"{p['old']} to {p['new']}" for p in likely)
+            attention.append(
+                f"{len(likely)} likely ticker change{'' if len(likely) == 1 else 's'} to confirm ({named}): "
+                "until then the accounts holding them cannot be worked back.",
+                alert="A likely ticker change is waiting to be confirmed on System status.",
+            )
         from app.connectors.plaid_connector import configured as plaid_configured
 
         if settings.python_env == "production" and not plaid_configured():

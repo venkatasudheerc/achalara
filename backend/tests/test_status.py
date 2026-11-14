@@ -70,8 +70,9 @@ def test_status_reports_accounts_capture_and_data(db, client):
     body = client.get("/api/v1/admin/status").json()
 
     assert body["database"]["ok"] is True
-    assert [j["id"] for j in body["jobs"]][:4] == [
+    assert [j["id"] for j in body["jobs"]][:5] == [
         "plaid_refresh",
+        "ticker_changes",
         "price_history",
         "daily_sheets_sync",
         "index_history",

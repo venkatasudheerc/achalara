@@ -1599,6 +1599,70 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/admin/ticker-changes:
+    get:
+      tags:
+      - admin
+      summary: Ticker Change Proposals
+      description: Likely ticker changes seen in the accounts' own records (a symbol that cannot be worked back, no longer held, and one held symbol of the same company first seen after its last trade), waiting for an admin to confirm.
+      operationId: ticker_change_proposals_api_v1_admin_ticker_changes_get
+      responses:
+        '200':
+          description: The proposals, oldest ticker first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [old, new, 'on', company, accounts]
+                  properties:
+                    old: {type: string}
+                    new: {type: string}
+                    'on': {type: string, format: date, description: The new ticker's first appearance}
+                    company: {type: string}
+                    accounts: {type: integer}
+        '403':
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+      - admin
+      summary: Confirm Ticker Change
+      description: Record that a ticker became another from a date (a RENAME corporate action; trades under the old ticker before it are read under the new one, never changed) and rebuild the accounts that traded or held either.
+      operationId: confirm_ticker_change_api_v1_admin_ticker_changes_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old, new, 'on']
+              properties:
+                old: {type: string}
+                new: {type: string}
+                'on': {type: string, format: date}
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  old: {type: string}
+                  new: {type: string}
+                  'on': {type: string, format: date}
+                  accounts_rebuilt: {type: integer}
+        '422':
+          description: The same ticker twice, or a malformed date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/admin/status/test-alert:
     post:
       tags:

@@ -25,6 +25,23 @@ export function useMarketDataStatus() {
   })
 }
 
+/** Likely ticker changes from the accounts' own records, for an admin to confirm. */
+export function useTickerChanges() {
+  return useQuery({ queryKey: ['admin', 'ticker-changes'] as const, queryFn: () => adminApi.tickerChanges() })
+}
+
+/** Confirm one: old trades are read under the new ticker and the accounts rebuilt. */
+export function useConfirmTickerChange() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: adminApi.confirmTickerChange,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin'] })
+      qc.invalidateQueries({ queryKey: ['portal'] })
+    },
+  })
+}
+
 export function useSendTestAlert() {
   return useMutation({ mutationFn: () => adminApi.testAlert() })
 }

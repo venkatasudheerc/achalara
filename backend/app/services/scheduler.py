@@ -17,6 +17,7 @@ from app.services import alerts, run_log
 from app.services.daily_sync import run_all_enabled_syncs
 from app.services.index_history_service import IndexHistoryService
 from app.services.plaid_refresh_service import run_plaid_refresh
+from app.services.ticker_changes import run_ticker_changes
 from app.services.price_history_service import PriceHistoryService
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,18 @@ def _plaid_refresh_wrapper() -> None:
         run_plaid_refresh(db)
     except Exception as exc:
         logger.error(f"Unhandled error in Plaid refresh job: {type(exc).__name__}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("ticker_changes")
+def _ticker_changes_wrapper() -> None:
+    """Record the ticker changes market data saw, and rebuild what they touch."""
+    db = SessionLocal()
+    try:
+        run_ticker_changes(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in ticker changes job: {type(exc).__name__}")
     finally:
         db.close()
 
@@ -143,6 +156,13 @@ def start_scheduler() -> None:
         id="plaid_refresh",
         replace_existing=True,
     )
+    # After market data's identifiers job (5 AM) and before the Plaid refresh.
+    _scheduler.add_job(
+        _ticker_changes_wrapper,
+        CronTrigger(hour=6, minute=15, timezone=MARKET_TIMEZONE),
+        id="ticker_changes",
+        replace_existing=True,
+    )
     _scheduler.add_job(
         _index_history_wrapper,
         index_history_trigger(),
@@ -152,7 +172,8 @@ def start_scheduler() -> None:
     _scheduler.start()
     logger.info(
         "APScheduler started — sheets sync 16:00 UTC, "
-        "price history 23:30 UTC on weekdays, Plaid refresh 06:30 US Eastern Tue-Sat, "
+        "price history 23:30 UTC on weekdays, ticker changes 06:15 and Plaid refresh 06:30 "
+        "US Eastern (Plaid Tue-Sat), "
         "index history 22:00 and 06:00 US Eastern"
     )
 
