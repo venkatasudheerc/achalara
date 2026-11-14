@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useLogout, useMe } from '@/hooks/useAuth'
 import { usePortalAccounts, usePreviewClient } from '@/hooks/usePortal'
 import { useOneAppLook, useTheme, type ThemeChoice } from '@/context/ThemeContext'
+import { isStaff, staffTitle } from '@/lib/roles'
 
 /** The places in the menu bar. The wordmark is the way home. */
 const PLACES = [
@@ -11,7 +12,7 @@ const PLACES = [
   { to: '/home/research', label: 'Research' },
 ]
 
-/** Keeps an advisor's `?as=` on every link, so the preview carries on. */
+/** Keeps a staff preview's `?as=` on every link, so the preview carries on. */
 function useWithPreview() {
   const preview = usePreviewClient()
   return (to: string) => (preview ? `${to}${to.includes('?') ? '&' : '?'}as=${preview}` : to)
@@ -55,21 +56,33 @@ export function AppearanceChoice({ label = 'Appearance' }: { label?: string }) {
 }
 
 /** The person menu's rows; on a phone the same list is the More page. */
-function PersonMenu({ name, household, onSignOut }: { name: string; household: string; onSignOut: () => void }) {
+function PersonMenu({ name, subtitle, onSignOut }: { name: string; subtitle: string; onSignOut: () => void }) {
   const { data: me } = useMe()
   const preview = usePreviewClient()
+  const withPreview = useWithPreview()
+  const { data: portal } = usePortalAccounts()
   const row = 'min-h-[44px] px-[12px] flex items-center rounded-[12px] text-[15px] text-summit-ink no-underline hover:bg-line'
+  // A minor sees only their own accounts and adds nobody, so has no Family page.
+  const showFamily = portal ? !portal.viewer.is_minor : false
   return (
     <>
       <div className="px-[12px] pt-[6px] pb-[10px] border-b border-line">
         <div className="font-display text-[17px]">{name}</div>
-        <div className="text-[13px] text-stone">{household}</div>
+        <div className="text-[13px] text-stone">{subtitle}</div>
       </div>
       <div className="px-[12px] py-[10px]"><AppearanceChoice /></div>
-      {me?.role === 'advisor' && (
+      {showFamily && (
+        <Link to={withPreview('/home/family')} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
+          <span>Family</span>
+          <span className="text-[13px] text-stone">Your spouse and children, and who sees what</span>
+        </Link>
+      )}
+      {isStaff(me?.role) && (
         <Link to={preview ? `/app/clients/${preview}` : '/app'} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
           <span>Manage</span>
-          <span className="text-[13px] text-stone">Clients, strategies, imports, system status</span>
+          <span className="text-[13px] text-stone">
+            {me?.role === 'admin' ? 'Clients, strategies, imports, system status' : 'Your clients and their accounts'}
+          </span>
         </Link>
       )}
       <button type="button" onClick={onSignOut} className={`${row} w-full text-left`}>Sign out</button>
@@ -92,7 +105,7 @@ export function HomeShell() {
   const logout = useLogout()
   const signOut = () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })
   const name = portal?.viewer.name ?? me?.name ?? ''
-  const household = preview ? 'Viewed by your advisor' : me?.role === 'advisor' ? 'Advisor' : 'Your accounts'
+  const subtitle = preview ? `${staffTitle(me?.role)} preview` : isStaff(me?.role) ? staffTitle(me?.role) : 'Your accounts'
 
   const [open, setOpen] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
@@ -117,7 +130,7 @@ export function HomeShell() {
       {preview && (
         <div className="bg-pine text-on-dark text-[14px]">
           <div className="px-[20px] md:px-[24px] py-[8px] flex flex-wrap items-center justify-between gap-3">
-            <span>Advisor preview: this is what <strong>{name}</strong> sees.</span>
+            <span>{staffTitle(me?.role)} preview: this is what <strong>{name}</strong> sees.</span>
             <Link to={`/app/clients/${preview}`} className="underline underline-offset-2 font-medium text-on-dark">Back to the client</Link>
           </div>
         </div>
@@ -145,7 +158,7 @@ export function HomeShell() {
             </button>
             {open && (
               <div id="person-menu" className="absolute right-0 top-[54px] w-[320px] p-[12px] flex flex-col gap-[4px] bg-paper border border-stone/30 rounded-[18px] shadow-[0_16px_40px_rgba(0,0,0,0.18)] z-30">
-                <PersonMenu name={name} household={household} onSignOut={signOut} />
+                <PersonMenu name={name} subtitle={subtitle} onSignOut={signOut} />
               </div>
             )}
           </div>
@@ -187,7 +200,7 @@ export function MorePage() {
   return (
     <main className="px-[20px] py-[24px] flex flex-col gap-[16px] max-w-[520px] w-full mx-auto">
       <div className="border border-line rounded-[18px] p-[12px] flex flex-col gap-[4px]">
-        <PersonMenu name={name} household={preview ? 'Viewed by your advisor' : 'Your accounts'}
+        <PersonMenu name={name} subtitle={preview ? `${staffTitle(me?.role)} preview` : 'Your accounts'}
           onSignOut={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })} />
       </div>
     </main>

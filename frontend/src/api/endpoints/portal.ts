@@ -2,7 +2,7 @@ import { apiClient } from '../client'
 import type {
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
-  AccountGroup,
+  AccountGroup, LinkResponse, Relative, RelativeCreate,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -75,13 +75,38 @@ export const portalApi = {
     apiClient
       .get<{ groups: AccountGroup[] }>(`${base}/groups`, { params: clean({ as_client: asClient }) })
       .then((r) => r.data.groups),
-  createGroup: (name: string, accountIds: string[] = []) =>
-    apiClient.post<AccountGroup>(`${base}/groups`, { name, account_ids: accountIds }).then((r) => r.data),
-  updateGroup: (id: string, body: { name?: string; position?: number }) =>
-    apiClient.patch<AccountGroup>(`${base}/groups/${id}`, body).then((r) => r.data),
-  setGroupAccounts: (id: string, accountIds: string[]) =>
-    apiClient.put<AccountGroup>(`${base}/groups/${id}/accounts`, { account_ids: accountIds }).then((r) => r.data),
-  deleteGroup: (id: string) => apiClient.delete(`${base}/groups/${id}`).then(() => undefined),
+  createGroup: (name: string, accountIds: string[] = [], asClient?: string) =>
+    apiClient.post<AccountGroup>(`${base}/groups`, { name, account_ids: accountIds },
+      { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  updateGroup: (id: string, body: { name?: string; position?: number }, asClient?: string) =>
+    apiClient.patch<AccountGroup>(`${base}/groups/${id}`, body,
+      { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  setGroupAccounts: (id: string, accountIds: string[], asClient?: string) =>
+    apiClient.put<AccountGroup>(`${base}/groups/${id}/accounts`, { account_ids: accountIds },
+      { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  deleteGroup: (id: string, asClient?: string) =>
+    apiClient.delete(`${base}/groups/${id}`, { params: clean({ as_client: asClient }) }).then(() => undefined),
+
+  /** Keeps one of the viewer's own accounts from their spouse, or stops keeping it. */
+  setAccountPrivate: (accountId: string, isPrivate: boolean, asClient?: string) =>
+    apiClient
+      .patch<{ is_private: boolean }>(`${base}/accounts/${accountId}`, { is_private: isPrivate },
+        { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
+
+  /** The viewer's spouse first, then their minors. */
+  relatives: (asClient?: string) =>
+    apiClient.get<Relative[]>(`${base}/relatives`, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  addRelative: (body: RelativeCreate, asClient?: string) =>
+    apiClient
+      .post<Relative>(`${base}/relatives`, body, { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
+  /** A one-time sign-in link for the viewer's spouse or minor; `email` is their own when left out. */
+  inviteRelative: (relativeId: string, email?: string, asClient?: string) =>
+    apiClient
+      .post<LinkResponse>(`${base}/relatives/${relativeId}/invite`, { email: email || null },
+        { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
 
   /** A link that downloads what the filters match as CSV (the session cookie rides along). */
   csvUrl: (list: 'positions' | 'trades' | 'activity' | 'realized', params: object) =>

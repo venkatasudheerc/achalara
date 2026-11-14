@@ -3,16 +3,18 @@ import { useLogout, useMe } from '@/hooks/useAuth'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useScope } from '@/context/ScopeContext'
+import { staffTitle } from '@/lib/roles'
 
-const navItems = [
+/** The menu. `admin` marks the platform's own pages, which an advisor neither sees nor may open. */
+const allNavItems = [
   { to: '/app/performance', label: 'Performance' },
   { to: '/app/markets', label: 'Market patterns' },
   { to: '/app/clients', label: 'Clients' },
-  { to: '/app/requests', label: 'Requests' },
+  { to: '/app/requests', label: 'Requests', admin: true },
   { to: '/app/strategies', label: 'Strategies' },
-  { to: '/app/imports', label: 'Imports' },
-  { to: '/app/status', label: 'System status' },
-  { to: '/app/market-data', label: 'Market data' },
+  { to: '/app/imports', label: 'Imports', admin: true },
+  { to: '/app/status', label: 'System status', admin: true },
+  { to: '/app/market-data', label: 'Market data', admin: true },
 ]
 
 const fastFollowers = [
@@ -27,6 +29,8 @@ export function AppShell() {
   const navigate = useNavigate()
   const { data: me } = useMe()
   const logout = useLogout()
+  const isAdmin = me?.role === 'admin'
+  const navItems = allNavItems.filter((item) => isAdmin || !item.admin)
   const signOut = () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })
 
   return (
@@ -70,15 +74,20 @@ export function AppShell() {
         </nav>
 
         <div className="px-4 py-4 border-t border-on-dark/15">
-          <NavLink
-            to="/app/settings"
-            className="block px-3 py-2 rounded-btn text-sm text-stone/60 hover:text-on-dark transition-colors"
-          >
-            Settings
-          </NavLink>
+          {isAdmin && (
+            <NavLink
+              to="/app/settings"
+              className="block px-3 py-2 rounded-btn text-sm text-stone/60 hover:text-on-dark transition-colors"
+            >
+              Settings
+            </NavLink>
+          )}
           <div className="px-3 pt-3 mt-2 border-t border-on-dark/15">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-on-dark/80 truncate">{me?.name}</p>
+              <p className="text-xs text-on-dark/80 truncate">
+                {me?.name}
+                {me && <span className="text-stone"> · {staffTitle(me.role)}</span>}
+              </p>
               <ThemeToggle className="-mr-2 shrink-0" />
             </div>
             <button onClick={signOut} className="text-xs text-stone hover:text-on-dark underline underline-offset-2 mt-1">

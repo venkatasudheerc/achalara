@@ -1,6 +1,6 @@
 """Command-line tasks that have no place behind an HTTP route.
 
-    python -m app.cli create-advisor --email you@example.com --name "Your Name"
+    python -m app.cli create-admin --email you@example.com --name "Your Name"
     python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
@@ -28,8 +28,8 @@ from app.services.index_history_service import (
 from app.services.price_history_service import set_manual_price
 
 
-def create_advisor(email: str, name: str) -> int:
-    """Create an advisor login. The password is asked for, never passed as an argument."""
+def create_admin(email: str, name: str) -> int:
+    """Create an admin login. The password is asked for, never passed as an argument."""
     print(
         f"Choose a password: at least {MIN_PASSWORD_LENGTH} characters, with a "
         "letter and a number, and not containing your email's name."
@@ -47,13 +47,13 @@ def create_advisor(email: str, name: str) -> int:
     db = SessionLocal()
     try:
         # Read before the session closes; a committed row cannot be read after.
-        created = AuthService(db).create_advisor(email, name, password).email
+        created = AuthService(db).create_admin(email, name, password).email
     except AuthError as error:
         print(error.detail, file=sys.stderr)
         return 1
     finally:
         db.close()
-    print(f"Advisor created: {created}")
+    print(f"Admin created: {created}")
     return 0
 
 
@@ -445,9 +445,9 @@ def import_vanguard_report(
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
-    advisor = commands.add_parser("create-advisor", help="create an advisor login")
-    advisor.add_argument("--email", required=True)
-    advisor.add_argument("--name", required=True)
+    admin = commands.add_parser("create-admin", help="create an admin login")
+    admin.add_argument("--email", required=True)
+    admin.add_argument("--name", required=True)
     price = commands.add_parser(
         "set-price", help="enter a year-end price for an index option"
     )
@@ -565,8 +565,8 @@ def main(argv=None) -> int:
         return md_set_sector(args.symbol, args.sector, args.industry)
     if args.command == "md-index-membership":
         return md_index_membership()
-    if args.command == "create-advisor":
-        return create_advisor(args.email, args.name)
+    if args.command == "create-admin":
+        return create_admin(args.email, args.name)
     if args.command == "set-price":
         return set_price(args.symbol, args.date, args.close)
     if args.command == "load-index-file":

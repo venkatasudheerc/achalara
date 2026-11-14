@@ -7,6 +7,7 @@ import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/for
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { KINDS, accountName, type Selection } from './selection'
+import { PrivateToggle } from './PrivateToggle'
 
 type Chart = 'balances' | 'activity' | 'returns'
 
@@ -169,6 +170,9 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
             <div><dt className="text-[13px] text-stone">Kind</dt><dd>{KINDS.find((k) => k.kind === one.kind)?.label}</dd></div>
             <div><dt className="text-[13px] text-stone">Cash in it</dt><dd className="tabular-nums">{one.cash == null ? '—' : formatCurrency(one.cash)}</dd></div>
             <div><dt className="text-[13px] text-stone">Figures from</dt><dd>{one.source ?? 'Entered by hand'}{one.synced_at ? `, last synced ${formatDate(one.synced_at)}` : ''}</dd></div>
+            {!one.shared && (
+              <div className="sm:col-span-2 border-t border-line pt-[10px]"><PrivateToggle account={one} /></div>
+            )}
           </dl>
         </section>
       )}

@@ -2,7 +2,9 @@
 
 export type TradeAction = 'BUY' | 'SELL'
 
-export type UserRole = 'advisor' | 'client'
+/** admin: the platform's super user. advisor: the clients assigned to them. client: their own accounts
+ * and what the guardrails let them see (a spouse's, a minor's). */
+export type UserRole = 'admin' | 'advisor' | 'client'
 export interface LoginRequest { email: string; password: string }
 /** An account a client user may view; never carries a full account number */
 export interface VisibleAccount {
@@ -14,7 +16,7 @@ export interface VisibleAccount {
 export interface MeResponse {
   id: string; email: string; name: string; role: UserRole
   client_id: string | null
-  /** Empty for an advisor, who sees every account */
+  /** Empty for an admin or advisor, who reach accounts through their clients */
   accounts: VisibleAccount[]
 }
 export interface UserResponse {
@@ -42,9 +44,20 @@ export interface AccountAccessResponse {
   client_id: string; account_id: string; account_name: string
   owner_client_id: string; owner_name: string
 }
-export interface ClientCreate { name: string; email: string }
-/** Only what is changing; `email` is the contact email, not the sign-in one */
-export interface ClientUpdate { name?: string; email?: string }
+/** `email` may be left out (a minor may have none); `advisor_id` counts only from an admin.
+ * An advisor's new client is theirs. */
+export interface ClientCreate { name: string; email?: string | null; advisor_id?: string | null }
+/** Only what is changing; `email` is the contact email, not the sign-in one.
+ * `advisor_id` is an admin's alone to send; null leaves the client with no advisor. */
+export interface ClientUpdate { name?: string; email?: string; advisor_id?: string | null }
+/** A client's spouse, or a minor in their (or their spouse's) care */
+export type Relation = 'spouse' | 'minor'
+export interface Relative {
+  id: string; name: string; email: string | null; relation: Relation
+  /** Whether they have a login (invited or signed in) */
+  has_login: boolean
+}
+export interface RelativeCreate { name: string; relation: Relation; email?: string | null }
 export type InvitationStatus = 'new' | 'contacted' | 'dismissed'
 /** What the public page's form sends; `website` is the hidden field a person leaves empty */
 export interface InvitationRequestCreate {
@@ -57,7 +70,12 @@ export interface InvitationRequest {
   status: InvitationStatus; created_at: string; handled_at: string | null
 }
 export interface ClientResponse {
-  id: string; name: string; email: string
+  id: string; name: string; email: string | null
+  /** The advisor login managing this client, if any */
+  advisor_id: string | null
+  spouse_id: string | null
+  /** Set for a minor: the adult client responsible for them */
+  guardian_id: string | null
   created_at: string; updated_at: string
 }
 
@@ -255,8 +273,6 @@ export interface BenchmarkResponse {
 export type ConnectionStatus = 'active' | 'broken' | 'deleted'
 export type BrokerageAccountStatus = 'unmapped' | 'mapped' | 'ignored'
 
-export interface LinkResponse { redirect_url: string; expires_in_seconds: number }
-
 export interface ReconciliationDrift {
   symbol: string; brokerage_quantity: number; derived_quantity: number
   difference: number; awaiting_transactions: boolean
@@ -384,12 +400,15 @@ export interface PortalAccount extends VisibleAccount {
   /** The institution the figures come from, and its last transactions sync */
   source: string | null; synced_at: string | null
   sleeves: PortalSleeve[]
+  /** The owner keeps it from their spouse; a minor's guardians still see it */
+  is_private: boolean
 }
 /** One of the client's own named groups of accounts */
 export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
 export interface PortalAccountsResponse {
-  /** `preview` is true when an advisor is looking at this client's portal */
-  viewer: { client_id: string; name: string; preview: boolean }
+  /** `preview` is true when an admin or advisor is looking at this client's portal.
+   * A minor (`is_minor`) sees only their own accounts and cannot add family. */
+  viewer: { client_id: string; name: string; preview: boolean; is_minor: boolean }
   accounts: PortalAccount[]
 }
 

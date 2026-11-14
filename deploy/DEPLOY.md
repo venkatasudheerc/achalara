@@ -96,7 +96,7 @@ Either start empty, or bring an existing database across.
 **Start empty:** create the first advisor login.
 
 ```sh
-docker compose exec backend python -m app.cli create-advisor --email you@example.com --name "Your Name"
+docker compose exec backend python -m app.cli create-admin --email you@example.com --name "Your Name"
 ```
 
 **Bring a database across:** on the machine that has it,

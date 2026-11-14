@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStrategies, useCreateStrategy } from '@/hooks/useStrategies'
 import { useScope } from '@/context/ScopeContext'
+import { useIsAdmin } from '@/hooks/useAuth'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
@@ -11,6 +12,8 @@ export function StrategiesPage() {
   const { setStrategy } = useScope()
   const { data: strategies, isLoading, isError, refetch } = useStrategies()
   const createStrategy = useCreateStrategy()
+  // Strategies are firm-wide: only the admin defines them or reads one across every client.
+  const isAdmin = useIsAdmin()
 
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
@@ -37,14 +40,17 @@ export function StrategiesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display text-2xl text-summit-ink">Strategies</h1>
-          <p className="text-stone text-sm mt-1">Firm-wide strategy definitions applied across client accounts.</p>
+          <p className="text-stone text-sm mt-1">
+            Firm-wide strategy definitions applied across client accounts.
+            {!isAdmin && ' The admin adds new ones.'}
+          </p>
         </div>
-        <button
+        {isAdmin && <button
           onClick={() => setShowForm(!showForm)}
           className="px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
         >
           + New strategy
-        </button>
+        </button>}
       </div>
 
       {showForm && (
@@ -78,8 +84,10 @@ export function StrategiesPage() {
       {!strategies?.length ? (
         <EmptyState
           title="No strategies yet"
-          message="Create your first firm-wide strategy definition. Strategies are applied to accounts to create sleeves."
-          action={{ label: 'Create strategy', onClick: () => setShowForm(true) }}
+          message={isAdmin
+            ? 'Create your first firm-wide strategy definition. Strategies are applied to accounts to create sleeves.'
+            : 'The admin has not defined any strategies yet.'}
+          action={isAdmin ? { label: 'Create strategy', onClick: () => setShowForm(true) } : undefined}
         />
       ) : (
         <div className="divide-y divide-stone/10 border border-stone/20 rounded-card overflow-hidden">
@@ -89,12 +97,12 @@ export function StrategiesPage() {
                 <p className="font-medium text-summit-ink">{s.name}</p>
                 {s.description && <p className="text-xs text-stone mt-0.5">{s.description}</p>}
               </div>
-              <button
+              {isAdmin && <button
                 onClick={() => { setStrategy(s.id, s.name); navigate('/app/performance') }}
                 className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
               >
                 View performance
-              </button>
+              </button>}
             </div>
           ))}
         </div>

@@ -42,7 +42,7 @@ function ComingSoon({ title, lead, items, meanwhile }: Props) {
 export function PlanPage() {
   return (
     <ComingSoon title="Plan"
-      lead="A place to set goals for the household and see whether you're on track, with the arithmetic shown, never a sales pitch."
+      lead="A place to set goals for your family and see whether you're on track, with the arithmetic shown, never a sales pitch."
       items={[
         ['Goals', 'A house deposit, college, retirement: how much, by when, and how far along each one is.'],
         ['What-ifs', "Today against a change you're weighing: paying the mortgage faster, saving more, retiring later."],

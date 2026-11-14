@@ -318,6 +318,7 @@ class PortalService:
                 "kind": kind_of(account),
                 "owed": kind_of(account) in OWED,
                 "institution": account.institution,
+                "is_private": bool(account.is_private),
                 # How far its record can be trusted; screens and nudges read it.
                 "health": account_health(self.db, account),
                 "value": live.get(account.id),

@@ -23,11 +23,12 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
         {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}, together <strong className="tabular-nums">{formatCurrency(total)}</strong>.
       </p>
       <div className="border border-line rounded-[18px] overflow-x-auto">
-        <table className="w-full min-w-[760px]">
+        <table className="w-full min-w-[860px]">
           <thead><tr>
             <th scope="col" className={th}>Account</th><th scope="col" className={th}>Owner</th><th scope="col" className={th}>Kind</th>
             <th scope="col" className={thNum}>Value</th><th scope="col" className={thNum}>Cash</th>
             <th scope="col" className={thNum}>This year</th><th scope="col" className={th}>Figures from</th>
+            <th scope="col" className={th}>Spouse sees it</th>
           </tr></thead>
           <tbody>
             {accounts.map((a) => {
@@ -49,12 +50,20 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
                   <td className={`${td} text-[14px] text-stone`}>
                     {a.source ?? '—'}{a.as_of ? `, ${formatDate(a.as_of)}` : ''}
                   </td>
+                  <td className={`${td} text-[14px] ${a.is_private ? 'text-summit-ink' : 'text-stone'}`}>
+                    {a.shared ? '—' : a.is_private ? 'No, private' : 'Yes'}
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+      {accounts.some((a) => !a.shared) && (
+        <p className="text-[13px] text-stone">
+          To keep one of your own accounts private from your spouse, choose it, or open Family from the menu under your name. A minor’s guardians always see a minor’s accounts.
+        </p>
+      )}
     </section>
   )
 }

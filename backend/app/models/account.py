@@ -1,5 +1,5 @@
 """Account model - represents a sub-portfolio within a client"""
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Boolean, Column, String, ForeignKey
 from sqlalchemy.orm import relationship
 import uuid
 from app.models.base import BaseModel
@@ -29,6 +29,9 @@ class Account(BaseModel):
     # own number for it (not a feed's), as the owner sees them on statements.
     institution = Column(String(255))
     last_four = Column(String(4))
+    # The owner keeps it to themselves: not even a spouse sees it (a minor's
+    # guardians still do).
+    is_private = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # Relationships
     client = relationship("Client", back_populates="accounts")

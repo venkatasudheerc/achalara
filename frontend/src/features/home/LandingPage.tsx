@@ -92,7 +92,7 @@ export function LandingPage() {
         const a = chosen[0]
         return a?.shared ? `${first(a.owner_name)}’s ${accountName(a)} is worth` : `Your ${a ? accountName(a) : 'account'} is worth`
       }
-      default: return showPerson ? 'Your household is worth' : 'Everything you have is worth'
+      default: return showPerson ? 'Everyone’s accounts together are worth' : 'Everything you have is worth'
     }
   })()
   const total = chosen.reduce((t, a) => t + (a.value ?? 0), 0)

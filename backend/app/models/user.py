@@ -15,8 +15,14 @@ from sqlalchemy.orm import relationship
 
 from app.models.base import BaseModel
 
+# The platform's super user: everything, everyone.
+ROLE_ADMIN = "admin"
+# Manages the clients assigned to them (``clients.advisor_id``), and only those.
+# Only an admin creates an advisor.
 ROLE_ADVISOR = "advisor"
+# A person with their own accounts: an adult (who may have a spouse) or a minor.
 ROLE_CLIENT = "client"
+ROLES = (ROLE_ADMIN, ROLE_ADVISOR, ROLE_CLIENT)
 
 PURPOSE_INVITE = "invite"
 PURPOSE_RESET = "reset"
@@ -27,7 +33,8 @@ def _uuid() -> str:
 
 
 class User(BaseModel):
-    """A login. An advisor sees everything; a client user belongs to one Client.
+    """A login. An admin sees everything; an advisor sees the clients assigned to
+    them; a client user belongs to one Client.
 
     ``password_hash`` is NULL until the person sets a password from their
     invite, and such a user cannot sign in.
@@ -35,8 +42,8 @@ class User(BaseModel):
 
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('advisor', 'client')", name="user_role"),
-        # A client login always names its client; an advisor never does.
+        CheckConstraint("role IN ('admin', 'advisor', 'client')", name="user_role"),
+        # A client login always names its client; an admin or advisor never does.
         CheckConstraint(
             "(role = 'client') = (client_id IS NOT NULL)",
             name="user_client_matches_role",
@@ -57,7 +64,7 @@ class User(BaseModel):
     locked_until = Column(DateTime(timezone=True))
     last_login_at = Column(DateTime(timezone=True))
 
-    client = relationship("Client")
+    client = relationship("Client", foreign_keys=[client_id])
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"
@@ -135,5 +142,5 @@ class AccountAccess(BaseModel):
         index=True,
     )
 
-    client = relationship("Client")
+    client = relationship("Client", foreign_keys=[client_id])
     account = relationship("Account")

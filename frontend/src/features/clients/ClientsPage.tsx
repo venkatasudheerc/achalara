@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCreateClient, useClientsList } from '@/hooks/useClients'
 import { useScope } from '@/context/ScopeContext'
+import { useIsAdmin, useUsers } from '@/hooks/useAuth'
 import type { ClientResponse } from '@/api/types'
 
 type Mode = 'list' | 'create'
@@ -14,22 +15,33 @@ export function ClientsPage() {
 
   const { data: apiClients, isLoading } = useClientsList()
   const clients: ClientResponse[] = apiClients ?? []
+  // The admin assigns clients to advisors; an advisor's list is only their own.
+  const isAdmin = useIsAdmin()
+  const { data: users } = useUsers(isAdmin)
+  const advisors = (users ?? []).filter((u) => u.role === 'advisor')
+  const advisorName = (id: string | null) => (id ? advisors.find((a) => a.id === id)?.name ?? 'An advisor' : null)
 
   const [mode, setMode] = useState<Mode>('list')
   const [name, setName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
+  const [advisorId, setAdvisorId] = useState('')
   const [error, setError] = useState('')
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     try {
-      await createClient.mutateAsync({ name, email: createEmail })
+      await createClient.mutateAsync({
+        name: name.trim(),
+        email: createEmail.trim().toLowerCase() || null,
+        ...(isAdmin ? { advisor_id: advisorId || null } : {}),
+      })
       setName('')
       setCreateEmail('')
+      setAdvisorId('')
       setMode('list')
     } catch (err) {
-      setError(String(err))
+      setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -45,7 +57,7 @@ export function ClientsPage() {
         <div>
           <h1 className="font-display text-2xl text-summit-ink">Clients</h1>
           <p className="text-stone text-sm mt-1">
-            Every client of the firm. Open one to manage its accounts and its login.
+            {isAdmin ? 'Every client of the firm.' : 'The clients assigned to you.'} Open one to manage its accounts, its login and its family.
           </p>
         </div>
         <div className="flex gap-2">
@@ -70,9 +82,10 @@ export function ClientsPage() {
         >
           <h2 className="font-medium text-summit-ink mb-1">Create a new client</h2>
           <p className="text-xs text-stone mb-4">
-            The email is what the client will sign in with once you invite them.
+            The email is what the client will sign in with once you invite them. Leave it empty for a minor
+            without one; you can invite them later with any address.
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             <div>
               <label className="text-xs text-stone block mb-1">Client name</label>
               <input
@@ -85,9 +98,8 @@ export function ClientsPage() {
               />
             </div>
             <div>
-              <label className="text-xs text-stone block mb-1">Email</label>
+              <label className="text-xs text-stone block mb-1">Email (optional)</label>
               <input
-                required
                 type="email"
                 value={createEmail}
                 onChange={(e) => setCreateEmail(e.target.value)}
@@ -95,6 +107,16 @@ export function ClientsPage() {
                 className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm focus:outline-none focus:border-pine"
               />
             </div>
+            {isAdmin && (
+              <div>
+                <label htmlFor="new-client-advisor" className="text-xs text-stone block mb-1">Advisor</label>
+                <select id="new-client-advisor" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}
+                  className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm bg-surface focus:outline-none focus:border-pine">
+                  <option value="">None (yours)</option>
+                  {advisors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           {error && <p className="text-loss text-xs mt-3">{error}</p>}
           <div className="flex items-center gap-3 mt-4">
@@ -140,7 +162,10 @@ export function ClientsPage() {
             >
               <div>
                 <p className="font-medium text-summit-ink">{c.name}</p>
-                <p className="text-xs text-stone font-mono">{c.email}</p>
+                <p className="text-xs text-stone">
+                  <span className="font-mono">{c.email ?? 'No email'}</span>
+                  {isAdmin && <span> · {advisorName(c.advisor_id) ? `Advisor: ${advisorName(c.advisor_id)}` : 'No advisor'}</span>}
+                </p>
               </div>
               <div className="flex gap-2">
                 <button

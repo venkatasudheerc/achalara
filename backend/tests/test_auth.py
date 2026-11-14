@@ -21,7 +21,7 @@ CLIENT_PASSWORD = "a long passphrase 2026"
 
 @pytest.fixture
 def advisor(db):
-    return AuthService(db).create_advisor(
+    return AuthService(db).create_admin(
         ADVISOR_EMAIL, "Ada Advisor", ADVISOR_PASSWORD
     )
 
@@ -90,7 +90,7 @@ def test_sign_in_sets_an_http_only_cookie_and_me_names_the_user(anon_client, adv
     response = sign_in(anon_client)
 
     assert response.status_code == 200
-    assert response.json()["role"] == "advisor"
+    assert response.json()["role"] == "admin"
     assert "httponly" in response.headers["set-cookie"].lower()
     assert anon_client.get("/api/v1/auth/me").json()["email"] == ADVISOR_EMAIL
     assert anon_client.get("/api/v1/clients/").status_code == 200
@@ -263,7 +263,7 @@ def test_a_client_can_be_invited_under_a_different_sign_in_email(
     )
     assert signed_in.status_code == 200
     # The advisor's login under the shared address is untouched.
-    assert as_advisor.get("/api/v1/auth/me").json()["role"] == "advisor"
+    assert as_advisor.get("/api/v1/auth/me").json()["role"] == "admin"
 
 
 def test_an_unaccepted_invite_can_be_reissued_to_a_corrected_address(

@@ -20,6 +20,10 @@ export const authApi = {
   invite: (clientId: string, email?: string) =>
     apiClient.post<LinkResponse>(`${base}/invites`, { client_id: clientId, email }).then((r) => r.data),
 
+  /** Admin only: an advisor's login, and the one-time link for them to set a password. */
+  inviteAdvisor: (name: string, email: string) =>
+    apiClient.post<LinkResponse>(`${base}/advisors`, { name, email }).then((r) => r.data),
+
   /** Changes a client's sign-in email and returns a link (reset, or a fresh invite) to send them. */
   changeEmail: (userId: string, email: string) =>
     apiClient.patch<LinkResponse>(`${base}/users/${userId}/email`, { email }).then((r) => r.data),

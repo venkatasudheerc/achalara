@@ -25,6 +25,11 @@ class InviteRequest(BaseModel):
     email: Optional[EmailStr] = None
 
 
+class AdvisorInviteRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+
 class ChangeEmailRequest(BaseModel):
     email: EmailStr
 

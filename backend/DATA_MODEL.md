@@ -128,10 +128,16 @@ erDiagram
 |---|---|---|
 | id | String(36) PK | uuid |
 | name | String(255) | not null |
-| email | String(255) | not null, **unique** |
-| brokerage_link_started_at | DateTime(tz) | nullable — set when a brokerage link is started from this client's page, cleared when the new link is first seen; files the link under the right client |
+| email | String(255) | nullable (a minor may have none), **unique** |
+| advisor_id | String(36) FK→users.id | nullable, ON DELETE SET NULL — the advisor who manages this client; none when only the admin does |
+| spouse_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — kept in pairs: each spouse names the other |
+| guardian_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — set for a minor: the adult client responsible for them |
+| brokerage_link_started_at | DateTime(tz) | nullable — left from the retired SnapTrade linking; unused |
 
-Relationships: `accounts` (1→N, cascade delete).
+Relationships: `accounts` (1→N, cascade delete). Who sees which accounts follows from
+`spouse_id` and `guardian_id` (`AuthService.accounts_for_client`): see `backend/CLAUDE.md`
+§ "Sign-in and Access Rules". `accounts.is_private` (Boolean, default false) keeps an owner's
+account from their spouse; a minor's guardians always see the minor's accounts.
 
 ### `invitation_requests`
 What a visitor leaves on the public page's form. Written by anyone, so it holds only the form's
@@ -613,13 +619,15 @@ placeholders that are not tickers skipped).
 Six tables, none of them part of the portfolio hierarchy.
 
 ### `users`
-One row per login: `email` (unique, stored lower-case), `name`, `role` (`advisor` | `client`),
-`client_id` (unique, CASCADE; set for a client login and NULL for an advisor, enforced by a
-CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
+One row per login: `email` (unique, stored lower-case), `name`, `role` (`admin` | `advisor` |
+`client`: the admin is the platform's super user, an advisor manages the clients assigned to
+them, a client sees their own accounts and what the guardrails allow), `client_id` (unique,
+CASCADE; set for a client login and NULL for an admin or advisor, enforced by a CHECK), `password_hash` (scrypt; NULL until the person accepts their invite, and such a user
 cannot sign in), `is_active`, `failed_attempts`, `locked_until`, `last_login_at`. One login per
-client. The sign-in `email` is the advisor's to set, at the invite and afterwards
+client. The sign-in `email` is the admin's or advisor's to set, at the invite and afterwards
 (`AuthService.change_email`), and may differ from the client's contact email in `clients.email`:
-it has to when that address already belongs to another login. The first advisor is created with `python -m app.cli create-advisor`.
+it has to when that address already belongs to another login. The first admin is created with `python -m app.cli create-admin`; only an admin invites an
+advisor (`POST /api/v1/auth/advisors`).
 
 ### `user_sessions`
 A signed-in browser: `user_id` (CASCADE), `token_hash`, `expires_at`. The browser holds a random

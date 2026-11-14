@@ -4700,6 +4700,179 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/auth/advisors:
+    post:
+      tags: [auth]
+      summary: Invite an advisor (admin only)
+      description: An advisor's login and a one-time link to set its password. Only an admin creates advisors.
+      operationId: inviteAdvisor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdvisorInviteRequest'}
+      responses:
+        '201':
+          description: The link to pass on
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LinkResponse'}
+        '403': {description: Not an admin}
+        '409': {description: Another login already uses the email}
+  /api/v1/clients/{client_id}/spouse:
+    put:
+      tags: [clients]
+      summary: Set or end a client's spouse
+      description: The two then see each other's accounts, except private ones. Neither may be a minor or married to someone else.
+      operationId: setSpouse
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SpouseRequest'}
+      responses:
+        '200':
+          description: The client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '404': {description: Client not found}
+        '409': {description: Already has a spouse}
+        '422': {description: Not allowed for these clients}
+  /api/v1/clients/{client_id}/guardian:
+    put:
+      tags: [clients]
+      summary: Mark a client a minor, or not
+      description: The guardian and the guardian's spouse then see the minor's accounts; the minor sees only their own.
+      operationId: setGuardian
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GuardianRequest'}
+      responses:
+        '200':
+          description: The client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '404': {description: Client not found}
+        '422': {description: Not allowed for these clients}
+  /api/v1/clients/{client_id}/relatives:
+    get:
+      tags: [clients]
+      summary: A client's spouse and minors
+      operationId: listRelatives
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Spouse first, then minors
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Relative'}
+    post:
+      tags: [clients]
+      summary: Add a client's spouse or a minor as a new client
+      operationId: addRelative
+      parameters:
+        - {name: client_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeCreate'}
+      responses:
+        '201':
+          description: The new client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientResponse'}
+        '409': {description: A client with that email already exists}
+        '422': {description: Not allowed for this client}
+  /api/v1/portal/accounts/{account_id}:
+    patch:
+      tags: [portal]
+      summary: Keep one of the viewer's own accounts private
+      description: Their spouse no longer sees it; a minor's guardians always do. Only the owner may change it.
+      operationId: setPortalAccountPrivate
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+      responses:
+        '200':
+          description: The account's setting
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+        '404': {description: Not one of the viewer's own accounts}
+  /api/v1/portal/relatives/{relative_id}/invite:
+    post:
+      tags: [portal]
+      summary: A sign-in link for one's own spouse or minor
+      operationId: invitePortalRelative
+      parameters:
+        - {name: relative_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeInvite'}
+      responses:
+        '201':
+          description: The link to pass on
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LinkResponse'}
+        '404': {description: Not the viewer's spouse or minor}
+        '409': {description: Already has a login, or the email is in use}
+  /api/v1/portal/relatives:
+    get:
+      tags: [portal]
+      summary: The viewer's spouse and minors
+      operationId: listPortalRelatives
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: Spouse first, then minors
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Relative'}
+    post:
+      tags: [portal]
+      summary: Add one's own spouse or a minor
+      description: A new client with the viewer's advisor. A minor cannot add anyone. Their login comes from an invite.
+      operationId: addPortalRelative
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RelativeCreate'}
+      responses:
+        '201':
+          description: The new relative
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Relative'}
+        '409': {description: A client with that email already exists}
+        '422': {description: Not allowed}
 components:
   securitySchemes:
     sessionCookie:
@@ -5241,7 +5414,8 @@ components:
           type: string
         role:
           type: string
-          enum: [advisor, client]
+          enum: [admin, advisor, client]
+          description: "admin: the platform's super user; advisor: manages the clients assigned to them; client: their own accounts and what the guardrails let them see"
         client_id:
           type: string
           nullable: true
@@ -5263,7 +5437,8 @@ components:
           type: string
         role:
           type: string
-          enum: [advisor, client]
+          enum: [admin, advisor, client]
+          description: "admin: the platform's super user; advisor: manages the clients assigned to them; client: their own accounts and what the guardrails let them see"
         client_id:
           type: string
           nullable: true
@@ -5353,7 +5528,8 @@ components:
 
     ClientCreate:
       type: object
-      required: [name, email]
+      required: [name]
+      description: An advisor's new client is theirs; an admin may assign one to an advisor. A minor may have no email.
       properties:
         name:
           type: string
@@ -5361,7 +5537,11 @@ components:
         email:
           type: string
           format: email
+          nullable: true
           example: contact@acme.com
+        advisor_id:
+          type: string
+          nullable: true
 
     ClientUpdate:
       type: object
@@ -5374,6 +5554,85 @@ components:
           type: string
           format: email
           description: The client record's contact email, not the sign-in email.
+        advisor_id:
+          type: string
+          nullable: true
+          description: Admin only. Sent as null, the client has no advisor.
+
+    SpouseRequest:
+      type: object
+      description: Make this client and another each other's spouse; null ends it.
+      properties:
+        spouse_id:
+          type: string
+          nullable: true
+
+    GuardianRequest:
+      type: object
+      description: Mark this client a minor in another client's care; null, not a minor.
+      properties:
+        guardian_id:
+          type: string
+          nullable: true
+
+    RelativeCreate:
+      type: object
+      required: [name, relation]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        relation:
+          type: string
+          enum: [spouse, minor]
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    Relative:
+      type: object
+      required: [id, name, relation, has_login]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        relation:
+          type: string
+          enum: [spouse, minor]
+        has_login:
+          type: boolean
+
+    AdvisorInviteRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    RelativeInvite:
+      type: object
+      description: The address a spouse or minor will sign in with; their own by default.
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    PortalAccountPrivacy:
+      type: object
+      required: [is_private]
+      description: An owner's own account kept from their spouse (never from a minor's guardians).
+      properties:
+        is_private:
+          type: boolean
 
     ClientResponse:
       type: object
@@ -5385,6 +5644,17 @@ components:
           type: string
         email:
           type: string
+          nullable: true
+        advisor_id:
+          type: string
+          nullable: true
+        spouse_id:
+          type: string
+          nullable: true
+        guardian_id:
+          type: string
+          nullable: true
+          description: Set for a minor, the adult client responsible for them.
         created_at:
           type: string
           format: date-time
@@ -6922,6 +7192,10 @@ components:
         institution:
           type: string
           nullable: true
+        is_private:
+          type: boolean
+          default: false
+          description: The owner keeps it from their spouse (a minor's guardians still see it).
         health:
           allOf:
             - $ref: '#/components/schemas/AccountHealth'
@@ -9766,6 +10040,10 @@ components:
           type: string
         preview:
           type: boolean
+        is_minor:
+          type: boolean
+          default: false
+          description: A minor sees only their own accounts and cannot add family members.
       type: object
       required:
       - client_id

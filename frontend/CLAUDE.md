@@ -51,14 +51,26 @@ invitation" link is the way in for someone new. `/login`, `/request-invitation`,
 `/request-invitation/confirm/:token`, `/invite/:token` and `/reset/:token` are open, all in the
 sign-in look (`AuthFrame`). The old marketing page (`features/HomePage`, dark in both themes) is
 kept at `/about`, which nothing links to; its "Request an invitation" opens `/request-invitation`. Everything else sits under
-`<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the advisor workspace at `/app/*`,
-**the new app at `/home/*`** (where a client lands after signing in). The old client portal is
+`<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the workspace at `/app/*`,
+**the new app at `/home/*`** (where a client lands after signing in).
+
+**Three roles** (`me.role`): `admin`, the platform's super user (what was once the "advisor"
+sign-in); `advisor`, who manages only the clients assigned to them (`clients.advisor_id`); and
+`client`. `src/lib/roles.ts` has `isStaff` (admin or advisor) and `staffTitle`. `RequireAuth`
+takes an audience: `staff` opens `/app/*` to both, and nested under it `admin` guards the
+platform's own pages (`/app/status`, `/app/market-data`, `/app/requests`, `/app/imports`,
+`/app/settings`); `AppShell` leaves those out of an advisor's menu. Strategy creation and a
+strategy's performance show only for an admin (`useIsAdmin`), since the API refuses them to an
+advisor. An advisor adds trades, moves symbols and manages logins for their own clients (the API
+answers their `/auth/users` with those logins only). Staff land in `/app`, clients in
+`/home`. The word "Advisor" on screen means the limited role only. The old client portal is
 retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
-in `src/routes.tsx`), keeping an advisor's `?as=`.
+in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
 `docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
-Plan, Tax, Research), the person menu (Appearance, Manage for an advisor, Sign out), and on a
+Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor, Manage
+for staff, Sign out), and on a
 phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **account rail** plus
 **view tabs**:
 - The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
@@ -79,7 +91,17 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and
   hides their page titles. Views that cannot apply (Holdings for a cash account) are hidden.
 - Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
-- An advisor opens it as a client with "Preview the new app" (`/home?as=<clientId>`).
+- An admin or advisor opens it as a client with "Preview the client's view" (`/home?as=<clientId>`);
+  the banner says "Admin preview" or "Advisor preview".
+- **Family** (`/home/family`, `FamilyPage`): the viewer's spouse and minors from
+  `/portal/relatives`, whether each can sign in, "Invite" for one who cannot (a one-time link,
+  `OneTimeLink`), "Add your spouse" / "Add a minor" (name, email optional), and the viewer's own
+  accounts with "Keep private from my spouse". The guardrails are stated on the page: spouses see
+  each other's accounts except private ones; a minor's guardians, and their spouse, see the minor's;
+  a minor sees only their own (`viewer.is_minor` hides Family); anything else only by a share.
+- **Private accounts** (`PrivateToggle`, `PATCH /portal/accounts/{id}`): only on an account the
+  viewer owns (`shared === false`), in the one-account Dashboard's "About this account" and on
+  Family; the Accounts view says which of the viewer's accounts their spouse sees.
 - Screenshots for review: `ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`
   saves each route at 390 and 1440 wide, light and dark (`playwright-core` with the installed Chrome).
 
@@ -162,7 +184,13 @@ The headline card, returns chart, monthly grid and period table are all at marke
 
 Each feature directory contains its page component(s). Implemented:
 - `performance/PerformancePage` — hero MWR/TWR cards, portfolio value chart, TWR vs MWR returns-series chart, monthly heatmap, level breakdown; 1M/3M/6M/1Y/3Y/MAX quick-filter presets
-- `clients/ClientsPage`, `clients/ClientDetailPage` (the header's "Edit name or email" corrects the client record; the contact email there is separate from the sign-in email under Client login)
+- `clients/ClientsPage` (an admin sees every client with its advisor and may choose one when
+  creating; an advisor sees and creates only their own; the email is optional, as a minor may have
+  none), `clients/ClientDetailPage` (the header's "Edit name or email" corrects the client record;
+  the contact email there is separate from the sign-in email under Client login; an admin assigns
+  the Advisor there) and `clients/FamilySection` on it: the spouse (choose a client, or add one
+  new; Remove), the minors (choose or add; "No longer a minor"), "Is a minor of" (a guardian, or
+  Clear), and Invite for a relative with no login. The API's refusals (409, 422) show inline
 - `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
@@ -207,11 +235,14 @@ Each feature directory contains its page component(s). Implemented:
 - "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
   new app when the rail's selection is one account the client owns (not a shared one). An advisor's
   preview shows it too, since the preview is exactly what the client sees
-- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email the advisor sets or changes, and the one-time invite / reset link to pass on, with "Email it" when the link's `can_email` is true)
+- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email staff set or change, and the one-time invite / reset link to pass on; an advisor sees their own clients' logins). Every one-time link is shown by `auth/OneTimeLink` (Copy, and "Email it" when the link's `can_email` is true)
+- `SettingsPage` (`/app/settings`, admin only): **Advisors** (each with sign-in state and how many
+  clients, and "Invite an advisor": name and email, `POST /auth/advisors`, then the link), the
+  clients, and a note on sign-in
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
 - `home/*` — the new app (see Routing). `portal/*` — the pages its Holdings, Transactions, Performance and Cost basis tabs show: `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls, the account/strategy filter and `HomeSelection` are in `portal/ui.tsx`.
 
-Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`, `SettingsPage`.
+Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`.
 
 ### Performance chart date filtering
 

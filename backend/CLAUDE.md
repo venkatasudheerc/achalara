@@ -37,8 +37,8 @@ backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # sing
 export GOOGLE_SHEETS_TEST_SHEET_ID=<sheet id>
 backend/venv/bin/pytest backend/tests/test_google_sheets.py -m live -v
 
-# First advisor login (run from backend/, asks for a password)
-python -m app.cli create-advisor --email you@example.com --name "Your Name"
+# First admin login (run from backend/, asks for a password)
+python -m app.cli create-admin --email you@example.com --name "Your Name"
 
 # Year-end price of an index option (per share, as quoted), for its year-end mark
 python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
@@ -133,7 +133,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/models/user.py`                    | Logins, sessions, one-time links, shared-account grants                                 |
 | `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
-| `app/cli.py`                            | `python -m app.cli create-advisor` — the first advisor login                            |
+| `app/cli.py`                            | `python -m app.cli create-admin` — the first admin login                            |
 | `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
 | `app/services/account_kind.py`          | An account's kind (taxable, retirement, kids, cash), read from the brokerage's account name |
 | `app/services/account_group_service.py` | A client's own named groups of accounts ("My groups")                                    |
@@ -181,10 +181,27 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   A new router must be mounted the same way; only sign-in, the link routes and the
   invitation form are open. Do not add per-handler role checks for data
   routes — extend `require_access`, so the rule stays in one place.
-- An advisor may call anything. A client user may only `GET`, and only: `/clients/{their id}`
-  roll-ups, an account they own or were granted (`account_access`) and everything beneath it, and
-  benchmarks. The rule reads `client_id` / `account_id` from the path, so **a route that exposes
-  client data must carry those path parameters** or it is advisor-only.
+- **Three roles** (`models/user.py`). An **admin** is the platform's super user and may call
+  anything. An **advisor** manages the clients assigned to them (`clients.advisor_id`): anything
+  under such a client, the client list and the list of logins (each answered with their own
+  clients only), creating a client (it becomes theirs), adding or moving trades in their clients'
+  sleeves (`/trades/*` checks the sleeve), the strategies' definitions and the shared reference
+  data; never `/admin/*` or strategy performance. Only an admin creates an advisor
+  (`POST /auth/advisors`) or assigns one to a client. A **client** may only `GET`, and only:
+  `/clients/{their id}` roll-ups, an account the guardrails let them see and everything beneath
+  it, and the shared reference data. The rule reads `client_id` / `account_id` from the path, so
+  **a route that exposes client data must carry those path parameters** or it is staff-only.
+  `AuthService.manages` is the one test of whether an admin or advisor may act for a client.
+- **Who sees which accounts is decided by guardrails**, in one place
+  (`AuthService.accounts_for_client`), from `clients.spouse_id` and `guardian_id`: (1) everyone
+  sees what they own; (2) spouses see each other's accounts except those the owner marks private
+  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only); (3) a minor's guardian and
+  the guardian's spouse see every account of the minor, which a minor cannot hide; (4) a minor sees
+  only their own; (5) anything else only when shared (`account_access`). A spouse pair is kept on
+  both sides; a minor has no spouse and cannot add anyone. An admin or advisor sets these
+  (`PUT /clients/{id}/spouse`, `/guardian`, `POST /clients/{id}/relatives`); a client adds and
+  invites their own spouse or minor (`/portal/relatives`). There is no "household" in the model or
+  on screen.
 - Never return a full account number to a client user; use `auth_service.display_name` and
   `last_four`.
 - **A link may be emailed** (`services/mailer.py`, Resend, when `RESEND_API_KEY` and `MAIL_FROM`
@@ -209,8 +226,8 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - Passwords are scrypt hashes; session and link tokens are stored only as SHA-256 digests. Never
   log or return a stored hash.
 - **The portal (`/api/v1/portal`) is the exception to the path rule.** Its routes carry no
-  client id; `deps.portal_viewer` answers for the signed-in client, or for the client an advisor
-  names in `as_client` (ignored from a client user). `PortalService` starts from
+  client id; `deps.portal_viewer` answers for the signed-in client, or for the client an admin
+  (any client) or advisor (their own) names in `as_client` (ignored from a client user). `PortalService` starts from
   `AuthService.accounts_for_client`, so nothing outside the viewer's accounts can be reached, and
   an `account_id` that is not in view is a 404.
 - **Any portal view can be narrowed to a set of accounts** (`account_ids`, repeated): the route
@@ -227,7 +244,7 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an
-  advisor previewing (`as_client`) sees and may change them exactly as the client can: a
+  admin or advisor previewing (`as_client`) sees and may change them exactly as the client can: a
   preview is what the client sees.
 - Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
   come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
@@ -385,7 +402,7 @@ through Plaid (below), their earlier history from the custodian's own files.
   differed, and where a report should start (`download_from`). Options and "~" names are not
   compared. It is asked before an upload (`GET …/imports/check`), shown after one, and read by
   System status and the account's health. The file itself is never kept. A shared account takes
-  no uploads. An advisor previewing a client (`as_client`) sees and may use exactly what the
+  no uploads. An admin or advisor previewing a client (`as_client`) sees and may use exactly what the
   client does.
 - **Splits and mergers are not read from Plaid or from files yet.** `corporate_actions.record_splits`
   reads split rows in the retired SnapTrade format only, and mergers came only from SnapTrade's

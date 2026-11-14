@@ -14,7 +14,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy.orm import Session
 
 from app.api.deps import PortalViewer, portal_viewer
+from app.api.schemas.auth import LinkResponse
+from app.api.schemas.client import Relative, RelativeCreate, RelativeInvite
+from app.models.client import Client
+from app.services.auth_service import AuthError, AuthService
 from app.api.schemas.portal import (
+    PortalAccountPrivacy,
     AccountGroupCreate,
     AccountGroupMembers,
     AccountGroupResponse,
@@ -110,9 +115,71 @@ def portal_accounts(
             "client_id": viewer.client_id,
             "name": viewer.name,
             "preview": viewer.preview,
+            "is_minor": bool(getattr(db.get(Client, viewer.client_id), "guardian_id", None)),
         },
         "accounts": _service(viewer, db).accounts(),
     }
+
+
+@router.patch("/accounts/{account_id}", response_model=PortalAccountPrivacy)
+def set_account_private(
+    account_id: str,
+    body: PortalAccountPrivacy,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Keep one of the viewer's own accounts private: their spouse no longer
+    sees it (a minor's guardians always do). Only the owner may change it."""
+    account = db.get(Account, account_id)
+    if account is None or account.client_id != viewer.client_id:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account.is_private = body.is_private
+    db.commit()
+    return PortalAccountPrivacy(is_private=account.is_private)
+
+
+@router.get("/relatives", response_model=List[Relative])
+def portal_relatives(viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """The viewer's spouse and minors."""
+    from app.api.routes.clients import _relatives
+
+    return _relatives(db, viewer.client_id)
+
+
+@router.post("/relatives/{relative_id}/invite", response_model=LinkResponse, status_code=201)
+def portal_invite_relative(
+    relative_id: str,
+    body: RelativeInvite,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A sign-in link for one's own spouse or minor, to pass on or email."""
+    service = AuthService(db)
+    if relative_id not in {c.id for c, _ in service.relatives(viewer.client_id)}:
+        raise HTTPException(status_code=404, detail="Not your spouse or minor")
+    try:
+        token, record = service.invite_client(relative_id, body.email)
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    from app.api.routes.auth import _link
+
+    return _link(token, record)
+
+
+@router.post("/relatives", response_model=Relative, status_code=201)
+def portal_add_relative(
+    body: RelativeCreate,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Add one's own spouse or a minor as a new client (with one's advisor).
+    Their login comes from an invite, as any client's does."""
+    try:
+        relative = AuthService(db).add_relative(viewer.client_id, body.name, body.relation, body.email)
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    return Relative(id=relative.id, name=relative.name, email=relative.email,
+                    relation=body.relation, has_login=False)
 
 
 def _groups(viewer: PortalViewer, db: Session) -> AccountGroupService:

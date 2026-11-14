@@ -5,9 +5,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_advisor
+from app.api.deps import get_current_user, require_admin, require_staff
 from app.api.schemas.auth import (
     AccountAccessRequest,
+    AdvisorInviteRequest,
     AccountAccessResponse,
     ChangeEmailRequest,
     ChangePasswordRequest,
@@ -137,7 +138,13 @@ def change_password(
 
 
 @router.get("/users", response_model=List[UserResponse])
-def list_users(_: User = Depends(require_advisor), db: Session = Depends(get_db)):
+def list_users(user: User = Depends(require_staff), db: Session = Depends(get_db)):
+    """Every login for an admin; for an advisor, their own clients' logins."""
+    service = AuthService(db)
+    users = service.users()
+    if user.role != "admin":
+        managed = {c.id for c in service.managed_clients(user)}
+        users = [u for u in users if u.client_id in managed]
     return [
         UserResponse(
             id=u.id,
@@ -149,29 +156,58 @@ def list_users(_: User = Depends(require_advisor), db: Session = Depends(get_db)
             has_password=bool(u.password_hash),
             last_login_at=u.last_login_at,
         )
-        for u in AuthService(db).users()
+        for u in users
     ]
 
 
 @router.post("/invites", response_model=LinkResponse, status_code=201)
 def invite_client(
     body: InviteRequest,
-    _: User = Depends(require_advisor),
+    user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
     """Create a client's login and a one-time link for them to set a password."""
+    _manages_or_404(db, user, body.client_id)
     with _http_errors():
         token, record = AuthService(db).invite_client(body.client_id, body.email)
     return _link(token, record)
 
 
+@router.post("/advisors", response_model=LinkResponse, status_code=201)
+def invite_advisor(
+    body: AdvisorInviteRequest,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """An advisor's login and a one-time link to set its password. Only an admin
+    creates advisors."""
+    with _http_errors():
+        token, record = AuthService(db).invite_advisor(body.email, body.name)
+    return _link(token, record)
+
+
+def _manages_or_404(db: Session, user: User, client_id: str) -> None:
+    if not AuthService(db).manages(user, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+
+
+def _manages_login_or_404(db: Session, user: User, user_id: str) -> None:
+    """An admin may reach any login; an advisor only their own clients' logins."""
+    if user.role == "admin":
+        return
+    target = db.get(User, user_id)
+    if target is None or not target.client_id or not AuthService(db).manages(user, target.client_id):
+        raise HTTPException(status_code=404, detail="User not found")
+
+
 @router.post("/users/{user_id}/password-reset", response_model=LinkResponse)
 def password_reset_link(
     user_id: str,
-    _: User = Depends(require_advisor),
+    user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
     """A one-time link for a user to choose a new password."""
+    _manages_login_or_404(db, user, user_id)
     with _http_errors():
         token, record = AuthService(db).reset_link(user_id)
     return _link(token, record)
@@ -181,7 +217,7 @@ def password_reset_link(
 def change_sign_in_email(
     user_id: str,
     body: ChangeEmailRequest,
-    _: User = Depends(require_advisor),
+    user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
     """Change the email a client signs in with, and get a link to send them.
@@ -189,6 +225,7 @@ def change_sign_in_email(
     The old address stops working and the client is signed out. Their password
     is kept; the link is a reset (or a fresh invite if they never set one).
     """
+    _manages_login_or_404(db, user, user_id)
     with _http_errors():
         token, record = AuthService(db).change_email(user_id, body.email)
     return _link(token, record)
@@ -197,7 +234,7 @@ def change_sign_in_email(
 @router.post("/link-emails", response_model=EmailLinkResponse)
 def email_link(
     body: EmailLinkRequest,
-    _: User = Depends(require_advisor),
+    _: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
     """Email a one-time link to the client it was made for.

@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 class PortalViewerResponse(BaseModel):
     client_id: str
     name: str
-    preview: bool  # an advisor looking at this client's portal
+    preview: bool  # an admin or advisor looking at this client's portal
+    # A minor sees only their own accounts and cannot add family members.
+    is_minor: bool = False
 
 
 class PortalSleeve(BaseModel):
@@ -38,6 +40,8 @@ class PortalAccount(BaseModel):
     kind: str
     owed: bool = False  # a card or loan: its value is what is owed, negative
     institution: Optional[str] = None
+    # The owner keeps it from their spouse (a minor's guardians still see it).
+    is_private: bool = False
     health: Optional[AccountHealth] = None
     # The account now: holdings at live prices, options and cash as the custodian
     # last reported them; what the Holdings view's account tile shows.
@@ -50,6 +54,12 @@ class PortalAccount(BaseModel):
     source: Optional[str] = None  # the institution the figures come from
     synced_at: Optional[datetime] = None  # its last transactions sync
     sleeves: List[PortalSleeve] = []
+
+
+class PortalAccountPrivacy(BaseModel):
+    """An owner's own account kept from their spouse (never from a minor's guardians)."""
+
+    is_private: bool
 
 
 class PortalAccountsResponse(BaseModel):

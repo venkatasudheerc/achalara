@@ -14,7 +14,7 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env               # DATABASE_URL is already set for the Docker Postgres
 ./infra.sh up -d                   # containers, both migration histories, API on :8000
-python -m app.cli create-advisor --email you@example.com --name "Your Name"   # asks for a password
+python -m app.cli create-admin --email you@example.com --name "Your Name"   # asks for a password
 
 cd ../frontend
 cp .env.example .env               # VITE_API_BASE_URL=http://localhost:8000

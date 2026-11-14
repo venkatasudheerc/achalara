@@ -95,7 +95,7 @@ def client(db):
         yield db
 
     advisor = User(
-        id="test-advisor", email="advisor@example.com", name="Advisor", role="advisor"
+        id="test-admin", email="admin@example.com", name="Admin", role="admin"
     )
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = lambda: advisor
