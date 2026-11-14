@@ -186,23 +186,24 @@ def _stats(values: Sequence[float]) -> Optional[Dict]:
 
 
 def this_week(db: Session, today: Optional[date] = None) -> Dict:
-    """The latest week that has ended: indices, funds, sectors and the S&P 500's
-    best and worst members."""
+    """This week so far (from the last close before it to the latest close), or,
+    once it has ended, the whole week: indices, funds, sectors and the S&P 500's
+    best and worst members. ``running`` says the week has trading days left."""
     today = today or date.today()
     anchor = _try_series(db, "SPY") or _try_series(db, "SPX")
     if anchor is None:
         raise perf.UnknownSubject("No prices on file yet")
-    ended = _ended(anchor[2], "week", today)
-    if not ended:
-        raise perf.UnknownSubject("No complete week on file yet")
-    key = max(ended)
-    week = ended[key]
+    weeks = {r.key: r for r in period_returns(anchor[2], "week", as_of=today)}
+    if not weeks:
+        raise perf.UnknownSubject("No week on file yet")
+    key = max(weeks)
+    week = weeks[key]
 
     def row(symbol, label_):
         found = _try_series(db, symbol)
         if not found:
             return None
-        r = _ended(found[2], "week", today).get(key)
+        r = {p.key: p for p in period_returns(found[2], "week", as_of=today)}.get(key)
         return (
             {"symbol": symbol, "label": label_, "basis": found[1], "ret": r.ret}
             if r
@@ -221,6 +222,7 @@ def this_week(db: Session, today: Optional[date] = None) -> Dict:
         "period": perf.label(key, "week"),
         "start": week.start,
         "end": week.end,
+        "running": week.partial,
         "indices": indices,
         "funds": funds,
         "sectors": sectors,
@@ -229,7 +231,12 @@ def this_week(db: Session, today: Optional[date] = None) -> Dict:
         "notes": [
             PRICE_NOTE,
             "Sectors are the 11 sector funds (XLK, XLF, …); best and worst are S&P 500 members.",
-        ],
+        ]
+        + (
+            ["The week is not over: these are its returns so far, to the latest close."]
+            if week.partial
+            else []
+        ),
     }
 
 

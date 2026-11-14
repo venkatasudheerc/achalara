@@ -9329,6 +9329,11 @@ components:
           type: string
           format: date
           title: End
+        running:
+          type: boolean
+          title: Running
+          default: false
+          description: The week has trading days left; its returns are so far, to the latest close
         indices:
           items:
             $ref: '#/components/schemas/RsReturnRow'

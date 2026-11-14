@@ -4,7 +4,7 @@ import { formatDate, formatNumber, formatPercent } from '@/lib/formatters'
 import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { tone } from '@/features/portal/ui'
-import type { RsMonthRow, RsReturnRow } from '@/api/types'
+import type { RsMonthRow, RsReturnRow, RsWeek } from '@/api/types'
 import { DivergingRows, HowToRead, Loading, MONTHS, Section, UNIVERSE_LABEL, pct1, unavailable } from './ui'
 
 // The luck estimate (how many perfect records coin flips would give) is shown on the
@@ -51,7 +51,7 @@ export function GlanceCards() {
     <section aria-label="At a glance" className="grid gap-[16px] [grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
       <GlanceCard highlight label="S&P 500 this week" loading={week.isLoading}
         value={formatPercent(spx?.ret)} valueTone={tone(spx?.ret)}
-        sub={week.data && `${formatDate(week.data.start)} to ${formatDate(week.data.end)}`} />
+        sub={week.data && weekDates(week.data)} />
       <GlanceCard label={`${month.data ? monthOf(month.data) : 'This month'} so far`} loading={month.isLoading}
         value={formatPercent(spxMonth?.month_to_date)} valueTone={tone(spxMonth?.month_to_date)}
         sub={spxMonth?.record && <>A typical {month.data && monthOf(month.data)} {spxMonth.record.median >= 0 ? 'gains' : 'loses'}{' '}
@@ -68,12 +68,18 @@ export function GlanceCards() {
 
 // -- the Overview tab ----------------------------------------------------------------
 
-function weekHeadline(rows: RsReturnRow[]): { title: string; sub: string } {
+/** The week's dates; a week still running says it is so far. */
+function weekDates(week: RsWeek): string {
+  return `${formatDate(week.start)} to ${formatDate(week.end)}${week.running ? ', so far' : ''}`
+}
+
+function weekHeadline(rows: RsReturnRow[], running: boolean): { title: string; sub: string } {
   const spx = rows.find((r) => r.symbol === 'SPX')
   const others = rows.filter((r) => r.symbol !== 'SPX')
   const best = others.reduce((a, b) => (b.ret > a.ret ? b : a), others[0])
   const worst = others.reduce((a, b) => (b.ret < a.ret ? b : a), others[0])
-  const title = spx ? `This week the S&P 500 ${spx.ret >= 0 ? 'rose' : 'fell'} ${pct1(Math.abs(spx.ret)).replace('+', '')}` : 'This week'
+  const when = running ? 'This week so far' : 'This week'
+  const title = spx ? `${when} the S&P 500 ${spx.ret >= 0 ? 'rose' : 'fell'} ${pct1(Math.abs(spx.ret)).replace('+', '')}` : when
   const name = (r: RsReturnRow) => r.label.replace(/ fund$/, '')
   const sub = best && worst ? `Of the other markets, ${name(best)} did best (${pct1(best.ret)}) and ${name(worst)} worst (${pct1(worst.ret)}).` : ''
   return { title, sub }
@@ -86,9 +92,9 @@ function ThisWeek({ onLookup }: { onLookup: (symbol: string) => void }) {
   // An index's own fund (SPY, QQQ, IWM) moves with it; listing both says the same thing twice.
   const others = data.funds.filter((f) => !INDEX_FUNDS.has(f.symbol))
   const markets = [...data.indices, ...others]
-  const { title, sub } = weekHeadline(markets)
+  const { title, sub } = weekHeadline(markets, data.running)
   return (
-    <Section title={title} sub={<>{formatDate(data.start)} to {formatDate(data.end)}. {sub}</>}>
+    <Section title={title} sub={<>{weekDates(data)}. {sub}</>}>
       <div className="grid gap-[32px] [grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))]">
         <div className="flex flex-col gap-[12px] min-w-0">
           <h3 className="text-[16px] font-semibold">Stock indices</h3>

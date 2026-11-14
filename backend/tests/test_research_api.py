@@ -176,6 +176,16 @@ def test_this_week_reports_the_week_that_ended(db, market):
     assert week["period"] == "2026-W45" and week["end"] == date(2026, 11, 6)
     assert {r["symbol"] for r in week["indices"]} == {"SPX"}
     assert any("dividends" in n for n in week["notes"])
+    assert week["running"] is False
+
+
+def test_this_week_is_the_week_so_far_while_it_is_running(db, market):
+    """On a weekday the week has not ended; it is shown to the latest close, not
+    the week before."""
+    week = insights.this_week(db, date(2026, 11, 5))  # a Thursday
+    assert week["period"] == "2026-W45" and week["running"] is True
+    assert week["start"] == date(2026, 11, 2)
+    assert any("so far" in n for n in week["notes"])
 
 
 def test_top_performers_compare_with_the_index_fund_and_say_what_luck_gives(db, market):
