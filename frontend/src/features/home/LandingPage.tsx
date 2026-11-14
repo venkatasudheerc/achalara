@@ -15,6 +15,7 @@ import { AccountRail } from './AccountRail'
 import { DashboardView } from './DashboardView'
 import { AccountsView, AnalysisView, IncomeView } from './MoreViews'
 import { GroupsDialog } from './GroupsDialog'
+import { ImportDialog } from '@/components/ImportDialog'
 import { KINDS, VIEWS, accountName, resolveSelection, useGroupBy, useHomeSelection, type View } from './selection'
 
 const narrowScreen = () => window.matchMedia?.('(max-width: 767px)').matches ?? false
@@ -32,6 +33,7 @@ export function LandingPage() {
   const [groupBy, setGroupBy] = useGroupBy()
   const [railOpen, setRailOpen] = useState(() => !narrowScreen())
   const [editing, setEditing] = useState(false)
+  const [importing, setImporting] = useState(false)
   const narrow = narrowScreen()
 
   const accounts = useMemo(() => portal?.accounts ?? [], [portal])
@@ -85,6 +87,9 @@ export function LandingPage() {
     }
   })()
   const total = chosen.reduce((t, a) => t + (a.value ?? 0), 0)
+  // One of the client's own accounts can be brought up to date from a file. An
+  // advisor's preview shows exactly what the client sees, this button included.
+  const own = selection.type === 'account' && chosen[0] && !chosen[0].shared ? chosen[0] : undefined
   const pick = (s: Parameters<typeof select>[0]) => {
     select(s)
     if (narrow) setRailOpen(false)
@@ -128,6 +133,14 @@ export function LandingPage() {
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
             </button>
           )}
+          {own && (
+            <div className="flex justify-end -mb-[8px]">
+              <button type="button" onClick={() => setImporting(true)}
+                className="h-[44px] px-[18px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line">
+                Update from a file
+              </button>
+            </div>
+          )}
           <Tabs label="Views of the chosen accounts" tabs={tabs} value={shown} onChange={setView} />
           <HomeSelection.Provider value={{ accountIds }}>
             {/* A new view (and new accounts) start the old pages' own filters afresh. */}
@@ -136,6 +149,10 @@ export function LandingPage() {
         </main>
       )}
       <GroupsDialog open={editing} onClose={() => setEditing(false)} groups={groups} accounts={accounts} />
+      {own && (
+        <ImportDialog open={importing} onClose={() => setImporting(false)} door={{ kind: 'portal', accountId: own.id, asClient: preview }}
+          accountName={`${accountName(own)}${own.number_last4 ? ` ··${own.number_last4}` : ''}`} />
+      )}
     </div>
   )
 }

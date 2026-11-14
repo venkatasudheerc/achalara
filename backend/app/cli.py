@@ -344,6 +344,150 @@ def md_set_sector(symbol: str, sector: Optional[str], industry: Optional[str]) -
     return 0
 
 
+def _qty(value) -> str:
+    """A quantity as people write it: 100, 2.5, 0.044."""
+    return format(abs(Decimal(value)).normalize(), "f")
+
+
+def _brokerage_account(db, key: str):
+    """A brokerage account by its id, or by the last digits of its number."""
+    from app.models.brokerage_connection import BrokerageAccount
+
+    account = db.get(BrokerageAccount, key)
+    if account is not None:
+        return account
+    digits = "".join(ch for ch in key if ch.isdigit())
+    found = [
+        a
+        for a in db.query(BrokerageAccount).filter(BrokerageAccount.status == "mapped")
+        if digits
+        and (
+            a.number_last4 == digits[-4:]
+            or digits in "".join(ch for ch in (a.name or "") if ch.isdigit())
+        )
+    ]
+    if len(found) == 1:
+        return found[0]
+    print(
+        f"{len(found) or 'No'} mapped accounts match {key!r}; give the brokerage "
+        "account's id instead.",
+        file=sys.stderr,
+    )
+    for a in found:
+        print(f"  {a.id}  {a.name}", file=sys.stderr)
+    return None
+
+
+def import_vanguard_report(
+    account_key: str,
+    path: str,
+    start: Optional[str],
+    end: Optional[str],
+    apply: bool,
+) -> int:
+    """Add the trades and cash rows in Vanguard's activity report that are not on
+    file. Shows what it would add; nothing is written without ``apply``."""
+    import re
+    from pathlib import Path
+
+    from app.services.account_import_service import AccountImportService
+    from app.services.connection_service import ConnectionService
+    from app.utils.symbols import app_symbol
+    from app.services.vanguard_report import (
+        ReportError,
+        VanguardReportImport,
+        read_report,
+    )
+
+    file = Path(path)
+    try:
+        start_day = date.fromisoformat(start) if start else None
+        end_day = date.fromisoformat(end) if end else None
+        rows = read_report(file)
+    except (ValueError, ReportError, OSError) as error:
+        print(error, file=sys.stderr)
+        return 1
+
+    db = SessionLocal()
+    try:
+        ba = _brokerage_account(db, account_key)
+        if ba is None:
+            return 1
+        # Vanguard names the download after the account's number: refuse a
+        # file that names a different account.
+        named = re.findall(r"\d{6,}", file.name)
+        account_digits = "".join(ch for ch in ba.name if ch.isdigit())
+        if named and not any(n in account_digits for n in named):
+            print(
+                f"{file.name} names account {named[0]}, not {ba.name}.", file=sys.stderr
+            )
+            return 1
+
+        importer = VanguardReportImport(db, ConnectionService(db, connector=object()))
+        plan = importer.plan(ba, rows, start_day, end_day)
+        print(f"{ba.name}")
+        print(
+            f"  report: {plan.rows} rows, trade dates {plan.first} to {plan.last}"
+        )
+        print(
+            f"  already on file: {plan.held_trades} trades, {plan.held_cash} cash rows"
+        )
+        print(
+            f"  set aside: {dict(plan.skipped) or 'none'}"
+        )
+        print(f"  to add: {len(plan.trades)} trades, {len(plan.cash)} cash rows")
+        for day, count in plan.new_days.items():
+            items = [
+                f"{t.action.value.lower()} {_qty(t.quantity)} {t.symbol}"
+                for r, t in plan.trades
+                if r.traded == day
+            ] + [f"{c.type.lower()} {c.amount}" for r, c in plan.cash if r.traded == day]
+            print(f"    {day}: {count}  ({', '.join(items)})")
+        renamed = [
+            (r, o)
+            for r, o in plan.loose_matches
+            if app_symbol(o["symbol"]) != app_symbol(r.symbol)
+        ]
+        dated = len(plan.loose_matches) - len(renamed)
+        if dated:
+            print(
+                f"  {dated} on file a trading day later (options' expiries and "
+                "assignments, and the shares they delivered)"
+            )
+        if renamed:
+            print(
+                f"  {len(renamed)} on file under another spelling of the symbol "
+                "(a delisted stock by name, a renamed one by its new ticker), e.g.:"
+            )
+            shown = {}
+            for row, ours in renamed:
+                shown.setdefault((row.symbol, ours["symbol"]), row)
+            for (theirs, ours_symbol), row in list(shown.items())[:12]:
+                print(f"    {theirs or row.name} = {ours_symbol}")
+        if plan.needs_a_look:
+            print("  not read (splits and mergers come from the feed; look only if a holding is off):")
+            for row in plan.needs_a_look:
+                print(
+                    f"    line {row.line}: {row.traded} {row.kind} {row.symbol or row.name} "
+                    f"{_qty(row.quantity) if row.quantity else ''} {row.amount or ''}"
+                )
+        if not apply:
+            print("\nNothing written. Add --apply to add these rows.")
+            return 0
+        if not plan.trades and not plan.cash:
+            print("\nNothing to add.")
+            return 0
+        holdings = AccountImportService(db).last_holdings(ba.account_id)
+        result = importer.apply(ba, plan, holdings)
+        print(
+            f"\nAdded {result['imported']} trades and {result['cash_imported']} cash rows "
+            f"({result['duplicates']} recognised as already on file); history rebuilt."
+        )
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -437,7 +581,22 @@ def main(argv=None) -> int:
         help="a list of 'SYMBOL group  # note' lines: checked with Webull; nothing changes without --apply",
     )
     fund.add_argument("--apply", action="store_true", help="with --file: track the ones Webull knows")
+    report = commands.add_parser(
+        "import-vanguard-report",
+        help="add the trades and cash rows in Vanguard's activity report that are not on file",
+    )
+    report.add_argument(
+        "--account", required=True, help="brokerage account id, or its number's last digits"
+    )
+    report.add_argument("--file", required=True, help="the report, downloaded as Excel")
+    report.add_argument("--from", dest="start", help="first trade date to read, YYYY-MM-DD")
+    report.add_argument("--to", dest="end", help="last trade date to read, YYYY-MM-DD")
+    report.add_argument("--apply", action="store_true", help="write; without it, only show")
     args = parser.parse_args(argv)
+    if args.command == "import-vanguard-report":
+        return import_vanguard_report(
+            args.account, args.file, args.start, args.end, args.apply
+        )
     if args.command == "md-daily-closes":
         return md_daily_closes()
     if args.command == "md-adjusted-history":

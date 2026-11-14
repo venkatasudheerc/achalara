@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import date
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import PortalViewer, portal_viewer
@@ -29,7 +29,14 @@ from app.api.schemas.portal import (
     PortalRealizedResponse,
     PortalTradesResponse,
 )
+from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.db.database import get_db
+from app.models.account import Account
+from app.services.account_import_service import (
+    MAX_FILE_BYTES,
+    AccountImportError,
+    AccountImportService,
+)
 from app.services.account_group_service import AccountGroupService
 from app.services.performance_stats_service import GRAINS
 from app.services.portal_service import PortalError, PortalService
@@ -428,3 +435,68 @@ def portal_performance(
             account_id, strategy_id, start_date, end_date, grain, benchmark
         )
     return {**payload, "grain": grain}
+
+
+# ----------------------------------------------------------------------
+# Upload and import: a client adds a custodian's file to an account they own
+# ----------------------------------------------------------------------
+
+
+def _own_account(viewer: PortalViewer, db: Session, account_id: str) -> Account:
+    """An account the viewer owns; shared accounts are read-only. An advisor
+    previewing a client sees and may use exactly what the client does: the
+    advisor may import into any client's account in any case."""
+    account = (
+        db.query(Account)
+        .filter(Account.id == account_id, Account.client_id == viewer.client_id)
+        .first()
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+
+def _import(viewer, db, account_id: str, file: UploadFile, write: bool):
+    account = _own_account(viewer, db, account_id)
+    content = file.file.read(MAX_FILE_BYTES + 1)
+    service = AccountImportService(db)
+    try:
+        if write:
+            return service.apply(account, file.filename or "", content)
+        return service.preview(account, file.filename or "", content)
+    except AccountImportError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get("/accounts/{account_id}/imports/check", response_model=Optional[ImportCheck])
+def portal_holdings_check(
+    account_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Whether one of the client's own accounts agrees with the custodian's
+    record, and if not, from which date a report should be downloaded."""
+    return AccountImportService(db).holdings_check(_own_account(viewer, db, account_id))
+
+
+@router.post("/accounts/{account_id}/imports/preview", response_model=ImportPreview)
+def portal_import_preview(
+    account_id: str,
+    file: UploadFile = File(..., description="The custodian's activity report or Achalara's template"),
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """What the file would add to one of the client's own accounts. Nothing is written."""
+    return _import(viewer, db, account_id, file, write=False)
+
+
+@router.post("/accounts/{account_id}/imports", response_model=ImportResult)
+def portal_import(
+    account_id: str,
+    file: UploadFile = File(..., description="The same file as the preview"),
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Add what the file holds that is not on file to one of the client's own
+    accounts, rebuild its history and check its holdings."""
+    return _import(viewer, db, account_id, file, write=True)

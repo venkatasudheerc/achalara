@@ -506,6 +506,11 @@ holds the symbol — so a symbol never straddles sleeves and a manual reassignme
 
 Constraints: `UNIQUE(brokerage_account_id, source_activity_id)`.
 
+Rows whose `source_activity_id` starts `vanguard:` were added from the custodian's own activity
+report (`services/vanguard_report.py`), not fetched: `type` is `VANGUARD REPORT <type>` and
+`payload` the report's line. Only rows not already on file are added, so their `cash_amount`
+completes the cash ledger instead of counting twice. Re-deriving from the feed skips them.
+
 Every activity the source returned, **including the rows we skip** (options, splits, rows with
 no symbol). `trades` and `cash_activities` are a simplified reading of these: they drop the
 settlement date, actual cash amount, currency/FX and the source's own type. Keeping the

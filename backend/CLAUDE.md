@@ -50,6 +50,9 @@ python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --clos
 # Post a signed test event to our own webhook address (reachability + signature)
 python -m app.cli send-test-webhook --url https://example.com/api/v1/webhooks/snaptrade
 
+# Add what a custodian's activity report holds that is not on file (shows only; --apply writes)
+python -m app.cli import-vanguard-report --account 5678 --file customActivityReport_12345678.xlsx
+
 # Market indices' daily bars, for research: load a downloaded file, then top up
 python -m app.cli load-index-file --symbol SPX --file SP500_daily.csv --source some-name --replace
 python -m app.cli load-index-history
@@ -116,6 +119,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/cash_ledger.py`           | Cash balance on any date, worked back from the brokerage's reported balance             |
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
 | `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
+| `app/services/vanguard_report.py`       | Reads Vanguard's activity report; plans and adds only the rows not on file               |
+| `app/services/account_import_service.py` | Upload and import: the template, preview, import and the holdings check, for every door |
 | `app/connectors/snaptrade_connector.py` | SnapTrade adapter: trades, cash activities, skipped-row tally                           |
 | `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
 | `app/md/read.py`                        | What the app may ask market data: the one way in from outside the package                |
@@ -364,6 +369,30 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   `fee` as zero. `rederive` brings the fees of trades already on file up to date.
 - Splits are recorded from the brokerage's rows by `corporate_actions.record_splits`, with the
   ratio worked out in the shares of the split's own day.
+- **A custodian's own file fills what a feed missed** (`services/vanguard_report.py`, through
+  `services/account_import_service.py`). The feed has skipped whole days and asking again does
+  not bring them back, so the account's owner (`POST /portal/accounts/{id}/imports`) or the
+  advisor (`POST /clients/{client_id}/accounts/{id}/imports`) uploads Vanguard's activity report
+  (Excel or CSV) or Achalara's template (`frontend/public/achalara-activity-template.csv`). A
+  `…/imports/preview` call shows what would change and writes nothing. A row counts as on file
+  on its economics, never on ids (the two share none): side, quantity, price within a cent a
+  share, on the same day and symbol; else within two weekdays (the feed dates option expiries,
+  assignments and their shares a trading day late); else under another spelling of the symbol;
+  an expiry or assignment matches its own contract only; cash matches on amount within 3 days.
+  Sweeps and same-day transfer pairs between the account's cash and margin sides are not
+  activity. Splits and mergers are not read. Added rows are stored in `brokerage_activities`
+  with their cash, under ids starting `vanguard:` (`REPORT_ID_PREFIX`); `rederive` leaves those
+  out, and ingestion recognises a feed trade or cash row that matches one, so a day is never
+  counted twice. **One holdings check** (`AccountImportService.holdings_check`) compares every
+  day the custodian recorded holdings with what the trades add up to and says which differ, when
+  they last agreed and first differed (`last_agreed`, `first_differed`), and where a report should
+  start (`download_from`: the last day they agreed, or 28 days before the first record when even
+  that differs). Options and the feed's "~" names of securities that no longer trade are not
+  compared. It is asked before an upload (`GET …/imports/check`, both doors), shown after one,
+  and System status reads it for its holdings column (`holdings_differ`,
+  `holdings_differ_since`, `download_from`), so all three always agree.
+  The file itself is never kept. A shared account takes no uploads. An advisor
+  previewing a client (`as_client`) sees and may use exactly what the client does.
 - Rows the connector still cannot represent are skipped **and counted**
   — never dropped silently. Every fetched row, skipped or not, is stored verbatim in
   `brokerage_activities`; use `ConnectionService.rederive` to re-read them before spending

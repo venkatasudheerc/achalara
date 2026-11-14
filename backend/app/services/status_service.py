@@ -294,15 +294,35 @@ class StatusService:
                     "next_sync_allowed_at": last + MIN_SYNC_INTERVAL if last else None,
                     "transactions_synced_through": through,
                     "captured_through": captured.get(ba.account_id),
-                    "holdings_differ": len(reconciliation.get("drifted") or [])
-                    if ba.reconciliation
-                    else None,
+                    **self._holdings(account, reconciliation if ba.reconciliation else None),
                     "skipped_rows": sum(
                         (reconciliation.get("skipped_rows") or {}).values()
                     ),
                 }
             )
         return accounts
+
+    def _holdings(self, account, reconciliation) -> Dict:
+        """How many holdings differ from the custodian's record, since when, and
+        from which date a report should be downloaded to cover it: the same check
+        an upload makes (``AccountImportService.holdings_check``). Before any
+        record, the count from the last reconciliation with the feed."""
+        from app.services.account_import_service import AccountImportService
+
+        check = AccountImportService(self.db).holdings_check(account) if account else None
+        if check is None:
+            return {
+                "holdings_differ": len(reconciliation.get("drifted") or [])
+                if reconciliation is not None
+                else None,
+                "holdings_differ_since": None,
+                "download_from": None,
+            }
+        return {
+            "holdings_differ": len(check["differences"]),
+            "holdings_differ_since": check["first_differed"],
+            "download_from": check["download_from"],
+        }
 
     def _capture(self, today: date, accounts: List[Dict], attention: List[str]) -> Dict:
         """Whether every mapped account has the last finished market day on record."""

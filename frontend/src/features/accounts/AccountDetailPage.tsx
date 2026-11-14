@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/formatters'
 import type { SleeveResponse, AggregatedPosition, CostBasisMethod } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
 import { performanceApi } from '@/api/endpoints/performance'
+import { ImportDialog } from '@/components/ImportDialog'
 
 export function AccountDetailPage() {
   const { clientId, accountId } = useParams<{ clientId: string; accountId: string }>()
@@ -21,6 +22,7 @@ export function AccountDetailPage() {
   const { setAccount, setClient, scope } = useScope()
 
   const { data: account, isLoading, isError, refetch } = useAccount(clientId!, accountId!)
+  const [importing, setImporting] = useState(false)
   const setMethod = useSetCostBasisMethod(clientId!, accountId!)
   const { data: sleeves } = useSleeves(clientId!, accountId!)
   const { data: positions } = useAccountPositions(clientId!, accountId!)
@@ -92,13 +94,20 @@ export function AccountDetailPage() {
         <div className="flex items-center gap-2">
           <a
             href={performanceApi.reportUrl(clientId!, accountId!)}
-            className="px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
+            className="whitespace-nowrap px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
           >
             Download report
           </a>
+          <button
+            type="button"
+            onClick={() => setImporting(true)}
+            className="whitespace-nowrap px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
+          >
+            Update from a file
+          </button>
         <button
           onClick={() => { flushSync(() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name) }); navigate('/app/performance') }}
-          className="px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
+          className="whitespace-nowrap px-4 py-2 bg-gold text-on-gold text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance
         </button>
@@ -187,6 +196,8 @@ export function AccountDetailPage() {
           </>
         ) : <p className="text-stone text-sm">Loading…</p>}
       </section>
+      <ImportDialog open={importing} onClose={() => setImporting(false)}
+        door={{ kind: 'advisor', clientId: clientId!, accountId: accountId! }} accountName={account.name} />
     </div>
   )
 }
