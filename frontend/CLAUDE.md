@@ -169,7 +169,7 @@ Each feature directory contains its page component(s). Implemented:
 - `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
   component at `/app/markets` (advisor menu) and `/home/research` (the new app's Research); the
   old `/research` and `/portal/markets` addresses redirect there. Every size is an explicit pixel value. Four cards sit above
-  the tabs (`research/Overview.tsx`, `GlanceCards`); the tabs are Overview (this week, this month
+  the tabs (`research/Overview.tsx`, `GlanceCards`); the tabs are Overview (this week, so far while it runs and in full once it has ended, this month
   against a typical one, next month's record), Months by year (`MonthsTab`, a 12-month bar chart over
   the year × month grid `MonthGrid`), Calendar days (`CalendarHeatmap`), Top performers, Sectors
   and Stock/ETF look-up (`LookupTab`: matches drop down as you type, a ticker column and a name

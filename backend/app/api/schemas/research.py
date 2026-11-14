@@ -33,6 +33,8 @@ class RsWeekResponse(BaseModel):
     period: str
     start: date
     end: date
+    # The week has trading days left: its returns so far, to the latest close.
+    running: bool = False
     indices: List[RsReturnRow]
     funds: List[RsReturnRow]
     sectors: List[RsReturnRow]

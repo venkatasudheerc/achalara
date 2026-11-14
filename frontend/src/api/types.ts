@@ -713,6 +713,8 @@ export interface RsReturnRow { symbol: string; label: string; basis: string; ret
 export interface RsMover { symbol: string; ret: number }
 export interface RsWeek {
   as_of: string; period: string; start: string; end: string
+  /** The week has trading days left: its returns so far, to the latest close */
+  running: boolean
   indices: RsReturnRow[]; funds: RsReturnRow[]; sectors: RsReturnRow[]
   best: RsMover[]; worst: RsMover[]; notes: string[]
 }
