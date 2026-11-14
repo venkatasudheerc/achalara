@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { usePortalAccounts, usePortalGroups } from '@/hooks/usePortal'
+import { usePortalAccounts, usePortalGroups, usePreviewClient } from '@/hooks/usePortal'
 import { formatCurrency } from '@/lib/formatters'
 import { Tabs } from '@/features/research/ui'
 import { HomeSelection } from '@/features/portal/ui'
@@ -24,6 +24,8 @@ const narrowScreen = () => window.matchMedia?.('(max-width: 767px)').matches ?? 
  * tabs across the page choose the view, and every view answers for that choice.
  */
 export function LandingPage() {
+  // An advisor previewing this client: uploads go through the client's door for them.
+  const preview = usePreviewClient()
   const { data: portal, isLoading, isError, error, refetch } = usePortalAccounts()
   const { data: groups = [] } = usePortalGroups()
   const { selection, view, select, setView } = useHomeSelection()
