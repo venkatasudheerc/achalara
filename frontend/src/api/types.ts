@@ -363,8 +363,11 @@ export type AccountKind = 'taxable' | 'retirement' | 'kids' | 'cash'
 export interface PortalAccount extends VisibleAccount {
   owner_name: string
   kind: AccountKind
-  /** The custodian's last recorded day: total and cash. Null before the first. */
-  value: number | null; cash: number | null; as_of: string | null
+  /** The account now: holdings at live prices, options and cash as last reported;
+   * what the Holdings view's account tile shows. `priced_at` is when prices were fetched. */
+  value: number | null; priced_at: string | null
+  /** The custodian's last reported day (`as_of`): its total, and cash */
+  recorded_value: number | null; cash: number | null; as_of: string | null
   /** The institution the figures come from, and its last transactions sync */
   source: string | null; synced_at: string | null
   sleeves: PortalSleeve[]

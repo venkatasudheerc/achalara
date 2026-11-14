@@ -221,8 +221,11 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   `account_id`. The landing page uses this for a person, a kind or a group of accounts.
 - `GET /portal/accounts` gives each account's owner's name, its **kind** (`account_kind.py`,
   from the brokerage's account name: taxable, retirement, kids, cash; a name that says nothing is
-  taxable), the custodian's last recorded value and cash (`perf.daily_valuation`), and its source
-  and last sync (`brokerage_accounts`). Bank, card, loan and property kinds come with Plaid.
+  taxable), its **value now** (`PortalService.live_values`, worked out exactly as the Holdings
+  view's account tile: holdings at live prices, options and cash as the custodian last reported
+  them, so the rail and the tile always agree), the custodian's last reported total
+  (`recorded_value`) and cash with its day (`as_of`, the last *observed* row), and its source and
+  last sync (`brokerage_accounts`). Bank, card, loan and property kinds come with Plaid.
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an
@@ -230,13 +233,17 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - Portal rows are built **per sleeve**, so each can name its account and strategy. Positions
   come from the custodian's latest recorded holdings (`perf.daily_holding`) where they exist,
   cost included (`avg_cost`; the trade history's average is the fallback when the custodian
-  gives none); options are added from trades, unpriced.
+  gives none); options are added from trades, unpriced. A later observed day with no holdings
+  listed (an account of options and cash) means it holds none (`PortalService._recorded`): never
+  fall back to the list before it. Options are valued together at the custodian's figure: its
+  securities total less the holdings it listed (all of it when it listed none and our records
+  show no shares).
 - **Home (`PortalService.home`) mixes two clocks on purpose.** Total value, the day's change,
   the allocation and the largest holdings are at live prices; this year's return, cash, income
   and deposits come from the daily record and run through `record_through`. `_matched` holds
   each sleeve's matched lots for the request, so positions, realised gains and Home's notes
   do the matching once between them.
-- **The positions and home screens show live prices; nothing else does.** `PortalService.positions(live=True)`
+- **The positions and home screens, and the accounts list's `value`, show live prices; nothing else does.** `PortalService.positions(live=True)`
   reprices each holding from `services/live_quotes.py`: one batched Webull request for every
   symbol in view, kept for a minute. Only the price is live. Quantity and cost stay the
   custodian's, a holding with no quote keeps the custodian's price (`price_source` says which),
@@ -267,7 +274,10 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   refreshes only its flows, return and `is_provisional`.
 - **Reconstructed days are disposable.** `PerformanceBuildService.rebuild_account` replaces
   them wholesale. After anything that changes trades, call
-  `performance_build_service.rebuild_for_sleeves`.
+  `performance_build_service.rebuild_for_sleeves`. An account a feed reports on each day is
+  rebuilt only up to its last observed day: the next morning's record says what the days after
+  were, and a rebuilt day would value written options from their last trade, far from market.
+  An account with no daily report is rebuilt to the last market day.
 - **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
   value or returns. It applies two things on reading and never changes a stored trade: splits,
   and the assignment rule below.
