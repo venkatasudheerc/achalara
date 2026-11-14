@@ -812,5 +812,10 @@ export interface ImportPreview {
 export interface ImportResult extends ImportPreview {
   added_trades: number; added_cash: number
   /** Our holdings against the custodian's last recorded ones; null when none are on file */
-  check: { as_of: string; matched: number; differences: { symbol: string; custodian_quantity: number; our_quantity: number }[] } | null
+  check: {
+    as_of: string; matched: number
+    differences: { symbol: string; custodian_quantity: number; our_quantity: number }[]
+    /** The last recorded day holdings agreed, and the first they differed after it (null while they agree) */
+    last_agreed: string | null; first_differed: string | null
+  } | null
 }

@@ -90,7 +90,14 @@ function Result({ r }: { r: ImportResult }) {
         <div className="flex flex-col gap-[8px]">
           <p className="text-[15px] leading-relaxed">
             <span className="text-loss font-semibold">{plural(r.check.differences.length, 'holding')} still differ</span>{' '}
-            from the institution’s record of {formatDate(r.check.as_of)}. A report covering more dates may fill the gap.
+            from the institution’s record of {formatDate(r.check.as_of)}.
+          </p>
+          <p className="text-[15px] leading-relaxed">
+            {r.check.first_differed && r.check.last_agreed
+              ? <>They last agreed on <strong>{formatDate(r.check.last_agreed)}</strong> and first differed on {formatDate(r.check.first_differed)}. A report from {formatDate(r.check.last_agreed)} to today will cover what is missing.</>
+              : r.check.first_differed
+                ? <>They already differed on the first record there is, {formatDate(r.check.first_differed)}, so what is missing is earlier. Start the report a few weeks before that date, and go further back if they still differ.</>
+                : 'A report covering more dates may fill the gap.'}
           </p>
           <ul className="text-[14px] flex flex-col gap-[4px]">
             {r.check.differences.map((d) => (

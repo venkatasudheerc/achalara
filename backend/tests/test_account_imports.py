@@ -135,3 +135,31 @@ def test_an_account_not_set_up_for_files_says_so(client, db):
         files=_files(TEMPLATE.encode()),
     )
     assert response.status_code == 409
+
+
+def test_the_check_says_when_holdings_last_agreed_and_first_differed(db, account):
+    """So only the dates that are missing need downloading."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+    from app.services.account_import_service import AccountImportService
+    from tests.test_vanguard_report import _on_file
+
+    acct = db.get(Account, account.account_id)
+    _on_file(db, account, date(2026, 9, 1), "AAA", "BUY", 10, 50)
+    # Recorded holdings: 10 AAA on 1 and 2 Oct; on 9 Oct the custodian shows 4,
+    # since a sale of 6 on 5 Oct never reached us.
+    for day, qty in ((date(2026, 10, 1), 10), (date(2026, 10, 2), 10), (date(2026, 10, 9), 4),
+                     (date(2026, 10, 12), 4)):
+        db.add(DailyHolding(account_id=acct.id, as_of_date=day, symbol="AAA",
+                            quantity=D(qty), price=D(50), market_value=D(qty * 50)))
+    db.commit()
+
+    service = AccountImportService(db)
+    assert service._agreement(acct) == (date(2026, 10, 2), date(2026, 10, 9))
+
+    # Once the sale is on file, they agree throughout.
+    _on_file(db, account, date(2026, 10, 5), "AAA", "SELL", 6, 55, ext="sale")
+    db.commit()
+    assert service._agreement(acct) == (date(2026, 10, 12), None)

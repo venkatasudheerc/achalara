@@ -44,6 +44,11 @@ class ImportCheck(BaseModel):
     as_of: date
     matched: int
     differences: List[ImportDifference]
+    # The last recorded day our holdings agreed with the custodian's, and the
+    # first one they differed after it (None while they agree now): a report
+    # from the first date to today covers what is missing.
+    last_agreed: Optional[date] = None
+    first_differed: Optional[date] = None
 
 
 class ImportPreview(BaseModel):

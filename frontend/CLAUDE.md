@@ -142,7 +142,7 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `PeriodTable` | Performance by day / week / month / quarter for the entity in scope, from `…/performance/periods`; shows whether each period was observed or rebuilt |
 | `SleeveFilter` | Dropdown in the performance headline that re-scopes the page to one sleeve or back to all; sets `ScopeContext`, holds no state of its own |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
-| `ImportDialog` | "Update from a file": choose a custodian's file, see what it would add (`…/imports/preview`), then add it and show the holdings check. One dialog for both doors (`ImportDoor`: the portal for a client's own account, the advisor's account route); hook `useAccountImport` in `src/hooks/useImports.ts`. The template it offers is `public/achalara-activity-template.csv` |
+| `ImportDialog` | "Update from a file": choose a custodian's file, see what it would add (`…/imports/preview`), then add it and show the holdings check, with when holdings last agreed and first differed so only the missing dates need downloading. One dialog for both doors (`ImportDoor`: the portal for a client's own account, the advisor's account route); hook `useAccountImport` in `src/hooks/useImports.ts`. The template it offers is `public/achalara-activity-template.csv` |
 
 The headline card, returns chart, monthly grid and period table are all at market value (each day's closing prices). The three period widgets pass `basis: PERIOD_BASIS` from `src/api/endpoints/performance.ts`; the API also supports `realized` (holdings at cost). Change the constant, not individual calls.
 

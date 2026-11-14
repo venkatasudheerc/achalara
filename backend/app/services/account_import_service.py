@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
@@ -27,7 +28,10 @@ from sqlalchemy.orm import Session
 from app.connectors.models import NormalizedPosition, is_option_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount
-from app.models.perf import DailyHolding
+from app.models.perf import DailyHolding, DailyValuation
+from app.models.sleeve import Sleeve
+from app.models.trade import Trade
+from app.services.corporate_actions import adjusted_trades
 from app.services.connection_service import ConnectionService
 from app.services.vanguard_report import (
     Plan,
@@ -57,6 +61,22 @@ TEMPLATE_TYPES = {
     "transfer in": "Transfer (incoming)",
     "transfer out": "Transfer (Outgoing)",
 }
+
+
+# Share counts within this of each other agree (rounding of fractional shares).
+_AGREE = Decimal("0.01")
+
+
+def _compared(symbol: str) -> bool:
+    """Whether a holding is compared with the custodian's record. Options are
+    never listed there, nor is anything the feed names by its company with a
+    leading "~": a security that no longer trades (taken over, delisted)."""
+    return not is_option_symbol(symbol) and not symbol.startswith("~")
+
+
+def _apply(position: Dict[str, Decimal], trade) -> None:
+    signed = trade.quantity if trade.action == "BUY" else -trade.quantity
+    position[trade.symbol] = position.get(trade.symbol, Decimal(0)) + Decimal(str(signed))
 
 
 class AccountImportError(Exception):
@@ -288,9 +308,12 @@ class AccountImportService:
             return None
         self.db.refresh(ba)
         report = ba.reconciliation or {}
+        last_agreed, first_differed = self._agreement(account)
         return {
             "as_of": last,
             "matched": report.get("matched", 0),
+            "last_agreed": last_agreed,
+            "first_differed": first_differed,
             "differences": [
                 {
                     "symbol": row["symbol"],
@@ -298,10 +321,78 @@ class AccountImportService:
                     "our_quantity": row["derived_quantity"],
                 }
                 for row in report.get("drifted", [])
-                # The custodian's recorded holdings never list options.
-                if not is_option_symbol(row["symbol"])
+                if _compared(row["symbol"])
             ],
         }
+
+    def _agreement(self, account: Account) -> Tuple[Optional[date], Optional[date]]:
+        """When our holdings last agreed with the custodian's record, and the first
+        recorded day they differed after that (None while they agree now).
+
+        Every day the custodian listed holdings is compared with what our trades
+        add up to, symbol by symbol (options aside: the record never lists them).
+        A record may or may not include that day's own trades, so it agrees if it
+        matches either. A reported day that listed nothing means nothing was held.
+        """
+        sleeve_ids = [
+            row[0] for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account.id)
+        ]
+        recorded: Dict[date, Dict[str, Decimal]] = defaultdict(dict)
+        for day, symbol, quantity in self.db.query(
+            DailyHolding.as_of_date, DailyHolding.symbol, DailyHolding.quantity
+        ).filter(DailyHolding.account_id == account.id):
+            if _compared(symbol):
+                held = recorded[day]
+                held[symbol] = held.get(symbol, Decimal(0)) + Decimal(str(quantity))
+        if not recorded:
+            return None, None
+        first_listed = min(recorded)
+        for (day,) in self.db.query(DailyValuation.as_of_date).filter(
+            DailyValuation.account_id == account.id,
+            DailyValuation.sleeve_id.is_(None),
+            DailyValuation.basis == "observed",
+            DailyValuation.as_of_date > first_listed,
+        ):
+            recorded.setdefault(day, {})
+
+        trades = sorted(
+            (
+                t
+                for t in adjusted_trades(
+                    self.db,
+                    self.db.query(Trade).filter(Trade.sleeve_id.in_(sleeve_ids)).all()
+                    if sleeve_ids
+                    else [],
+                )
+                if _compared(t.symbol)
+            ),
+            key=lambda t: t.trade_date,
+        )
+
+        def same(ours: Dict[str, Decimal], theirs: Dict[str, Decimal]) -> bool:
+            return all(
+                abs(ours.get(s, Decimal(0)) - theirs.get(s, Decimal(0))) <= _AGREE
+                for s in set(ours) | set(theirs)
+            )
+
+        position: Dict[str, Decimal] = {}
+        at = 0
+        last_agreed = first_differed = None
+        for day in sorted(recorded):
+            while at < len(trades) and trades[at].trade_date < day:
+                _apply(position, trades[at])
+                at += 1
+            before = dict(position)
+            through = dict(position)
+            later = at
+            while later < len(trades) and trades[later].trade_date == day:
+                _apply(through, trades[later])
+                later += 1
+            if same(before, recorded[day]) or same(through, recorded[day]):
+                last_agreed, first_differed = day, None
+            elif first_differed is None:
+                first_differed = day
+        return last_agreed, first_differed
 
     @staticmethod
     def _summary(account: Account, kind: str, plan: Plan) -> Dict:

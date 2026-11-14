@@ -4888,6 +4888,8 @@ components:
         as_of: {type: string, format: date}
         matched: {type: integer}
         differences: {type: array, items: {$ref: "#/components/schemas/ImportDifference"}}
+        last_agreed: {type: string, format: date, nullable: true, description: The last recorded day our holdings agreed with the custodian's}
+        first_differed: {type: string, format: date, nullable: true, description: The first recorded day they differed after it; null while they agree now. A report from last_agreed to today covers what is missing}
 
     ImportPreview:
       type: object
