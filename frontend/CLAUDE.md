@@ -294,13 +294,16 @@ CSS variables in `src/index.css` (`:root` for light, `:root.dark` for dark). Bra
 
 ### Light and dark
 
-**The new app and the sign-in pages honour the viewer's choice; the older screens stay dark.**
-`ThemeContext` keeps a choice of Light, Dark or Auto (the device's setting, followed live) under
-`achalara-theme`. A page of the new app calls `useOneAppLook()` (`HomeShell`, `AuthFrame`), which
-puts `one-app` on `<html>` and applies the choice; everywhere else `THEME_CHOICE_OFFERED` (false)
-keeps the advisor workspace dark as before. The script in `index.html` does the
-same before first paint, by path (`/home`, `/portal`, `/login`, `/invite`, `/reset`, `/request-invitation`).
-The choice is made under the person menu's Appearance (and on the sign-in page).
+**The client app, the staff workspace and the sign-in pages wear the new look and honour the
+viewer's choice; only the old marketing page (`/about`) stays dark green.** `ThemeContext` keeps a
+choice of Light, Dark or Auto (the device's setting, followed live) under `achalara-theme`. A frame
+calls `useOneAppLook()` (`HomeShell`, `AppShell`, `AuthFrame`), which puts `one-app` on `<html>`
+and applies the choice; elsewhere `THEME_CHOICE_OFFERED` (false) keeps the old dark look. The
+script in `index.html` does the same before first paint, by path (`/app`, `/home`, `/portal`,
+`/login`, `/invite`, `/reset`, `/request-invitation`). The choice is made under the person menu's
+Appearance in the client app, on the sign-in page, and with the sun/moon switch at the foot of
+the staff sidebar (`ThemeToggle`, shown wherever the new look is on). The staff sidebar stays dark
+(`chrome`) in both.
 
 **The new look re-points the same tokens.** Under `:root.one-app` (and `.one-app.dark`) in
 `src/index.css` the tokens below take direction C's palette (white or near-black page, violet
