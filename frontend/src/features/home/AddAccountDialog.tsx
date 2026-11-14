@@ -49,8 +49,6 @@ function initialPick(a: PlaidFoundAccount): Pick {
 function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick: Pick; onPick: (p: Pick) => void }) {
   const done = account.status === 'mapped' || account.status === 'matched'
   const value = pick.action === 'link' ? `link:${pick.accountId}` : pick.action
-  const replacing = pick.action === 'link'
-    ? account.candidates.find((c) => c.account_id === pick.accountId)?.replaces : null
   const field = 'h-[44px] px-[12px] rounded-[12px] border border-stone/40 bg-surface text-[14px]'
   return (
     <li className="border border-line rounded-[16px] p-[16px] flex flex-col gap-[12px]">
@@ -87,12 +85,6 @@ function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick:
             {KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
           </select>
         </div>
-        {replacing && (
-          <p className="text-[13px] text-loss leading-relaxed">
-            This account is updated by {replacing} today. Linking it here starts it afresh from Plaid: the history from {replacing} is
-            removed, and earlier history can be added from your institution’s files with Update from a file.
-          </p>
-        )}
       </>)}
     </li>
   )

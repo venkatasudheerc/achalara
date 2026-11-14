@@ -4951,12 +4951,6 @@ components:
         same_balance:
           type: boolean
           title: Same Balance
-        replaces:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Replaces
-          description: Another feed still writing to the account; linking replaces its history with Plaid's.
       type: object
       required:
       - account_id

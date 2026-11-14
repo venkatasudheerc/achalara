@@ -43,9 +43,6 @@ python -m app.cli create-advisor --email you@example.com --name "Your Name"
 # Year-end price of an index option (per share, as quoted), for its year-end mark
 python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --close 312.40
 
-# Remove everything SnapTrade brought in (shows what would go; --apply removes it; back up first)
-python -m app.cli retire-snaptrade
-
 # Add what a custodian's activity report holds that is not on file (shows only; --apply writes)
 python -m app.cli import-vanguard-report --account 5678 --file customActivityReport_12345678.xlsx
 
@@ -104,7 +101,6 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/connection_service.py`    | The shared ingest of a feed's or a file's rows (`ingest_batch`) and the holdings reconciliation |
 | `app/services/plaid_refresh_service.py` | The daily Plaid refresh: transactions, balances, holdings; records the day before         |
 | `app/services/account_health.py`        | Each account's record: complete, provisional or incomplete, and where to download from    |
-| `app/services/feed_records.py`          | Clearing a feed's records for a clean start; `retire_snaptrade`                           |
 | `app/models/perf.py`                    | The `perf` schema: daily valuation, holdings, prices, corporate actions                  |
 | `app/services/performance_build_service.py` | Rebuilds reconstructed daily rows from trades, prices and cash; `dietz_factor`       |
 | `app/services/opening_position.py`      | What an account held before its history: worked back, stored as opening trades           |
@@ -358,10 +354,11 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
 
 ## Feeds and files
 
-**SnapTrade is retired (2026-11-14).** Accounts are fed by Plaid (below) and their earlier
-history comes from the custodian's own files. `python -m app.cli retire-snaptrade` removes what
-SnapTrade left (records of the accounts it still fed, its source rows, links and logins); it
-shows what would go and changes nothing without `--apply`.
+**A fresh start (2026-11-14).** SnapTrade is retired and nothing it brought in is kept: the
+migration `d1e5c3a8b2f6` removes every client, client login, account and everything recorded for
+them when the deploy starts the backend (advisor logins, strategies, prices, recorded splits,
+market data and invitation requests stay). Clients and accounts are then added afresh: accounts
+through Plaid (below), their earlier history from the custodian's own files.
 
 - `ConnectionService.ingest_batch` is the one way rows reach an account, from a feed or a file:
   kept verbatim in `brokerage_activities`, routed to the account's sleeves, deduplicated across
@@ -413,13 +410,9 @@ its accounts are `brokerage_accounts` rows. Rules:
   accounts. "same" needs exactly one candidate agreeing on institution and last four *and* on
   holdings (symbol by symbol) or the observed balance to the cent; agreeing on less is "choose";
   nothing is "new". Nothing is linked until `confirm`.
-- **Two feeds never write to one account.** Linking to an account another feed still writes to
-  moves it to Plaid as a **clean start** (`PlaidLinkService._take_over`, sharing
-  `feed_records.clear_account_records`): the old feed's transactions, cash, source rows,
-  positions and daily record are deleted, the old link is set `ignored` with no account so it can
-  never be mapped back, and the account keeps its strategies and the old routing. Only the
-  account's owner may do it (403 for a shared account). Each candidate says which feed it would
-  replace (`replaces`), and the dialog warns before anything is replaced.
+- **Two feeds never write to one account.** Linking an account another link already feeds is
+  refused (409): a second Plaid login gives the same transactions ids of its own, so it would
+  count them twice. Repairing a login that needs signing in again is to come (update mode).
 - **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
   the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
   day late) with the total moved to match; same-day internal transfer pairs and sweeps are not

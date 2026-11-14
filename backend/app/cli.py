@@ -5,7 +5,6 @@
     python -m app.cli load-index-history --full
     python -m app.cli load-index-file --symbol DJI --file dow.csv --source some-name
     python -m app.cli md-index-membership
-    python -m app.cli retire-snaptrade [--apply]
 """
 import argparse
 from typing import Optional
@@ -117,26 +116,6 @@ def load_index_file(symbol: str, path: str, source: str, replace: bool) -> int:
     )
     return 0
 
-
-def retire_snaptrade_command(apply: bool) -> int:
-    """Remove everything SnapTrade brought in. Shows what would go unless --apply."""
-    from app.db.database import SessionLocal
-    from app.services.feed_records import retire_snaptrade
-
-    db = SessionLocal()
-    try:
-        summary = retire_snaptrade(db, apply=apply)
-    finally:
-        db.close()
-    print(
-        f"SnapTrade logins: {summary['logins']}, links: {summary['links']}, "
-        f"source rows: {summary['source_rows']}, accounts whose records go: {summary['accounts_cleared']}"
-    )
-    if apply:
-        print("Removed: " + ", ".join(f"{k} {v}" for k, v in summary["removed"].items()))
-    else:
-        print("Nothing changed. Back up the database, then run again with --apply.")
-    return 0
 
 def md_index_membership() -> int:
     """Fetch the index funds' holdings now and bring membership up to date."""
@@ -495,10 +474,6 @@ def main(argv=None) -> int:
     from_file.add_argument(
         "--replace", action="store_true", help="remove the index's stored days first"
     )
-    retire = commands.add_parser(
-        "retire-snaptrade", help="remove everything SnapTrade brought in (shows first)"
-    )
-    retire.add_argument("--apply", action="store_true", help="remove it; without this, only show")
     commands.add_parser(
         "md-index-membership",
         help="market data: fetch index holdings now and update membership",
@@ -590,8 +565,6 @@ def main(argv=None) -> int:
         return md_set_sector(args.symbol, args.sector, args.industry)
     if args.command == "md-index-membership":
         return md_index_membership()
-    if args.command == "retire-snaptrade":
-        return retire_snaptrade_command(args.apply)
     if args.command == "create-advisor":
         return create_advisor(args.email, args.name)
     if args.command == "set-price":

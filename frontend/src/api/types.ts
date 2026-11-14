@@ -855,8 +855,6 @@ export interface PlaidCandidate {
   relinked: boolean; same_last_four: boolean; same_institution: boolean
   /** null: no holdings on one side to compare */
   same_holdings: boolean | null; same_balance: boolean
-  /** Another feed still updating it: linking replaces that feed's history */
-  replaces?: string | null
 }
 export interface PlaidFoundAccount {
   link_id: string; name: string; mask: string | null

@@ -191,21 +191,19 @@ institutions in Plaid's window, and each login uses one of the plan's places (th
 `https://<DOMAIN>/home/plaid-return`; add it under Allowed redirect URIs in Plaid's
 dashboard. With the keys empty, "Link with Plaid" says linking is not set up.
 
-## Retiring SnapTrade (once)
+## The fresh start (2026-11-14, once)
 
-SnapTrade is no longer used: accounts are fed by Plaid and their history comes from the
-custodian's files. Linking an account through Plaid already replaces what SnapTrade left for
-it. To remove everything else SnapTrade brought in, take a backup first (`deploy/backup.sh`),
-then in `deploy/`:
+The deploy that brings Plaid also starts Achalara afresh. When the backend starts, the
+migration `d1e5c3a8b2f6` removes every client, client login, account and everything recorded
+for them (transactions, cash, the daily record, holdings, groups, sharing, feed links); advisor
+logins, strategies, prices, recorded splits, market data and invitation requests stay. Nothing
+asks first, and there is no undo but a backup, so **take one just before that deploy**
+(`deploy/backup.sh`) and keep it.
 
-```sh
-docker compose exec backend python -m app.cli retire-snaptrade          # shows what would go
-docker compose exec backend python -m app.cli retire-snaptrade --apply  # removes it
-```
-
-The accounts and their strategies stay, empty until Plaid or a file fills them. The
-`SNAPTRADE_*` settings in `deploy/.env` can then be deleted, and the webhook removed from
-SnapTrade's dashboard.
+Afterwards: add each client again (and invite their login), link their accounts through Plaid
+("+ Add an account"), and upload each account's history from the custodian's files ("Update
+from a file"). The `SNAPTRADE_*` settings can be deleted from `deploy/.env`, and the webhook
+removed from SnapTrade's dashboard.
 
 ## Routine
 

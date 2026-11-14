@@ -454,7 +454,7 @@ fund's interest) are stored for audit and never counted. See `CashActivityServic
 |---|---|---|
 | id | String(36) PK | uuid |
 | client_id | String(36) FK→clients.id | not null, **ON DELETE CASCADE** |
-| source | String(50) | the feed: `plaid` (rows from the retired `snaptrade` are removed by `retire-snaptrade`) |
+| source | String(50) | the feed: `plaid` (the retired `snaptrade` rows went with the fresh start, migration `d1e5c3a8b2f6`) |
 | external_user_id | String(255) | the user id the login was linked under at the source |
 | external_connection_id | String(255) | the source's id for the login |
 | institution | String(255) | e.g. "Vanguard" |

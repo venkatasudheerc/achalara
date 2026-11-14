@@ -15,13 +15,11 @@ shared accounts agrees on institution and last four *and* on its holdings
 (symbol by symbol) or its balance to the cent. Anything less certain is left
 for the person to choose, and nothing is linked until they confirm.
 
-Linking an account another feed still writes to moves it to Plaid as a clean
-start (``_take_over``): the old feed's records are removed and the old link set
-aside, so two feeds never write to one account. Only the owner can do this.
+Two feeds never write to one account: linking one that another link already
+feeds is refused.
 """
 from __future__ import annotations
 
-import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -34,22 +32,19 @@ from app.config import settings
 from app.connectors import plaid_reader
 from app.connectors.plaid_connector import PlaidClient, PlaidError, configured
 from app.models.account import Account
-from app.models.brokerage_connection import BrokerageAccount, BrokerageActivity, BrokerageConnection
+from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.sleeve import Sleeve
 from app.services.account_kind import KINDS, OWED, kind_from_plaid
 from app.services.auth_service import AuthService
 from app.services.connection_service import ConnectionService
 from app.services.daily_capture_service import DailyCaptureService
-from app.services.feed_records import clear_account_records
 from app.services.performance_build_service import last_market_day
 from app.utils.secret_box import open_sealed, seal
 
 SOURCE = "plaid"
 # How far back the first pull reads investment transactions (Plaid's limit is
 # 24 months; an institution may give less).
-logger = logging.getLogger(__name__)
-
 HISTORY_DAYS = 730
 # Share counts within this of each other agree.
 _AGREE = Decimal("0.01")
@@ -376,8 +371,6 @@ class PlaidLinkService:
                         "same_institution": same_institution,
                         "same_holdings": same_holdings,
                         "same_balance": same_balance,
-                        # The feed whose history linking would replace, if any.
-                        "replaces": self._other_feed(account.id, link.id),
                     }
                 )
         strong = [
@@ -416,9 +409,7 @@ class PlaidLinkService:
         """Act on the person's choice for each account: ``link`` to one of the
         client's accounts, add as ``new`` (of the ``kind`` chosen), or ``skip``."""
         connection = self._connection(client_id, connection_id)
-        in_view = AuthService(self.db).accounts_for_client(client_id)
-        visible = {a.id for a, _ in in_view}
-        own = {a.id for a, shared in in_view if not shared}
+        visible = {a.id for a, _ in AuthService(self.db).accounts_for_client(client_id)}
         pulled: List[BrokerageAccount] = []
         outcome = {"linked": 0, "added": 0, "skipped": 0, "waiting": 0}
         for choice in choices:
@@ -436,16 +427,13 @@ class PlaidLinkService:
                 account = self.db.get(Account, choice.get("account_id"))
                 if account is None or account.id not in visible:
                     raise PlaidLinkError(404, "Account not found")
-                if self._other_feed(account.id, link.id):
-                    if account.id not in own:
-                        raise PlaidLinkError(403, "Only the account's owner can move it to Plaid")
-                    # Plaid takes over: two feeds never write to one account.
-                    routes = self._take_over(account, link)
-                else:
-                    routes = (self._sleeve(account), None)
+                if self._linked_elsewhere(account.id, link.id):
+                    # Two feeds never write to one account. A second login's ids
+                    # for the same transactions differ, so it would count them twice.
+                    raise PlaidLinkError(409, "This account is already linked")
                 self._describe(account, connection, link, kind)
                 link.account_id = account.id
-                link.default_sleeve_id, link.sleeve_routes = routes
+                link.default_sleeve_id = self._sleeve(account)
                 link.status = "mapped"
                 pulled.append(link)
                 outcome["linked"] += 1
@@ -478,54 +466,18 @@ class PlaidLinkService:
         if link.mask:
             account.last_four = link.mask
 
-    def _other_feed(self, account_id: str, link_id: str) -> Optional[str]:
-        """The institution of another feed still writing to the account, if any."""
-        other = (
-            self.db.query(BrokerageAccount)
+    def _linked_elsewhere(self, account_id: str, link_id: str) -> bool:
+        """Whether another link already feeds the account."""
+        return (
+            self.db.query(BrokerageAccount.id)
             .filter(
                 BrokerageAccount.account_id == account_id,
                 BrokerageAccount.status == "mapped",
                 BrokerageAccount.id != link_id,
             )
             .first()
+            is not None
         )
-        if other is None:
-            return None
-        if other.connection is None:
-            return "another feed"
-        return other.connection.institution or other.connection.source
-
-    def _take_over(self, account: Account, link: BrokerageAccount):
-        """Plaid replaces another feed for this account, as a clean start: every
-        transaction, cash row, source row, position and daily record the old
-        feed left is deleted, and the old link is set aside (``ignored``, no
-        account) so it can never be mapped back by mistake. The account, its
-        strategies and the old feed's routing are kept. Earlier history comes
-        from the owner's files. Returns the routing for the new link."""
-        old_links = (
-            self.db.query(BrokerageAccount)
-            .filter(BrokerageAccount.account_id == account.id, BrokerageAccount.id != link.id)
-            .all()
-        )
-        routes = (self._sleeve(account), None)
-        for old in old_links:
-            if old.status == "mapped" and old.default_sleeve_id:
-                routes = (old.default_sleeve_id, old.sleeve_routes)
-            self.db.query(BrokerageActivity).filter(
-                BrokerageActivity.brokerage_account_id == old.id
-            ).delete(synchronize_session=False)
-            old.status = "ignored"
-            old.account_id = None
-            old.default_sleeve_id = None
-            old.sleeve_routes = None
-            old.cash_balance = None
-            old.cash_balance_at = None
-            old.reconciliation = None
-            old.transactions_synced_through = None
-        clear_account_records(self.db, account.id)
-        self.db.flush()
-        logger.info("Account %s moved to Plaid: the earlier feed's records were removed", account.id)
-        return routes
 
     def _sleeve(self, account: Account) -> str:
         sleeve = self.db.query(Sleeve).filter(Sleeve.account_id == account.id).first()
