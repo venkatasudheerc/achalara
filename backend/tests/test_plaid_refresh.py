@@ -190,3 +190,49 @@ def test_another_clients_login_cannot_be_repaired(db, owner, plaid_keys):
     with _pytest.raises(PlaidLinkError) as refused:
         PlaidLinkService(db, FakePlaid()).repair_start(stranger.id, login.id)
     assert refused.value.status_code == 404
+
+
+def _link_checking_at(db, owner, balance):
+    """The checking account of ``_link_checking`` with the bank's balance today
+    set: the history is 2,000 paid in and a 0.42 fee, so the opening works back
+    to ``balance`` less 1,999.58."""
+    accounts = [dict(CHECKING[0], balances={"current": balance})]
+    service = PlaidLinkService(db, FakePlaid(accounts=accounts))
+    found = service.finish(owner.id, "public-token")
+    service.confirm(owner.id, found["connection_id"], [
+        {"link_id": found["accounts"][0]["link_id"], "action": "new"},
+    ])
+    return db.query(Account).filter(Account.client_id == owner.id).one()
+
+
+def _opening(db, account):
+    PerformanceBuildService(db).rebuild_account(account.id)
+    link = db.query(BrokerageAccount).filter(BrokerageAccount.account_id == account.id).one()
+    return link.reconciliation or {}
+
+
+def test_cash_out_by_a_few_cents_is_rounding_and_the_account_still_opens(db, owner, plaid_keys):
+    account = _link_checking_at(db, owner, 1999.50)  # works back to -0.08
+    report = _opening(db, account)
+    assert report["opening_problems"] == []
+    assert report["opening_notes"] == ["cash works back to -0.08, read as nothing"]
+    health = account_health(db, account, date(2026, 12, 1))
+    assert health["state"] == "provisional"
+    assert "rounding" in " ".join(health["reasons"])
+
+
+def test_cash_out_by_more_than_rounding_still_opens_empty(db, owner, plaid_keys):
+    account = _link_checking_at(db, owner, 1949.58)  # works back to -50.00
+    report = _opening(db, account)
+    assert report["opening_problems"] == ["cash works back to -50.00"]
+    assert account_health(db, account, date(2026, 12, 1))["state"] == "incomplete"
+
+
+def test_a_history_worth_less_than_nothing_is_incomplete(db, owner, plaid_keys):
+    account, _ = _link_checking(db, owner)
+    db.add(DailyValuation(account_id=account.id, as_of_date=date(2026, 10, 1), securities_value=D("-900"),
+                          cash_value=D("100"), total_value=D("-800"), basis="reconstructed"))
+    db.commit()
+    health = account_health(db, account, date(2026, 12, 1))
+    assert health["state"] == "incomplete"
+    assert "less than nothing on 1 Oct 2026" in " ".join(health["reasons"])

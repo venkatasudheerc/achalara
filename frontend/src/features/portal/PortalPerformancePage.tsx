@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePortalPerformance } from '@/hooks/usePortal'
 import { useChartColours } from '@/context/ThemeContext'
@@ -12,6 +12,8 @@ import {
   daysAgo, signedCurrency, td, tdNum, th, thNum, tone, useAccountStrategyFilter,
 } from '@/features/portal/ui'
 import type { MonthFigure, PortalGrain, PortalPeriod } from '@/api/types'
+import { dateTicks } from '@/lib/chartTicks'
+import { accountName } from '@/features/home/selection'
 
 const PERIODS = [
   { value: '1M', label: '1M' }, { value: '3M', label: '3M' }, { value: 'YTD', label: 'YTD' },
@@ -75,11 +77,28 @@ export function PortalPerformancePage() {
     { ...filter.scope, start_date: dates.from || undefined, end_date: dates.to || undefined, grain, benchmark: benchmark || undefined },
     !backwards,
   )
+  const axis = useMemo(() => dateTicks((data?.series ?? []).map((p) => p.date)), [data])
+  // Returns over time read the record; one missing a transaction would show a
+  // gain or loss that never happened, so none is shown until it is complete.
+  const incomplete = (filter.account ? [filter.account] : filter.accounts).filter((a) => a.health?.state === 'incomplete')
   const pickPeriod = (p: Period) => { setPeriod(p); setDates(span(p)) }
   const setDate = (key: 'from' | 'to') => (v: string) => { setPeriod(null); setDates({ ...dates, [key]: v }) }
 
   if (isLoading) return <div className="grid gap-16 md:grid-cols-4"><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
   if (isError || !data) return <ErrorState message={error?.message ?? 'Could not load performance.'} onRetry={() => refetch()} />
+
+  if (incomplete.length) {
+    return (
+      <>
+        <PageHeader title="Performance" sub="Not shown while a record is incomplete" />
+        <p className="text-[15px] leading-relaxed max-w-[640px]">
+          {incomplete.map((a) => `${accountName(a)}${a.number_last4 ? ` ··${a.number_last4}` : ''}`).join(', ')}{' '}
+          {incomplete.length === 1 ? 'is' : 'are'} missing a transaction, so returns over time would count a gain or a loss that
+          never happened. Bring {incomplete.length === 1 ? 'it' : 'them'} up to date from the Dashboard, or choose other accounts.
+        </p>
+      </>
+    )
+  }
 
   const s = data.summary
   const compared = data.benchmarks.find((b) => b.code === data.benchmark)
@@ -195,8 +214,8 @@ export function PortalPerformancePage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data.series} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke={chart.grid} vertical={false} />
-                  <XAxis dataKey="date" minTickGap={70} tick={axisTick} axisLine={false} tickLine={false}
-                    tickFormatter={(d: string) => formatDate(d).replace(/ \d+,/, '')} />
+                  <XAxis dataKey="date" ticks={axis.ticks} interval={0} tick={axisTick} axisLine={false} tickLine={false}
+                    tickFormatter={axis.label} />
                   <YAxis width={64} tick={axisTick} axisLine={false} tickLine={false}
                     tickFormatter={(v: number) => formatPercent(v, 1)} />
                   <ReferenceLine y={0} stroke={chart.zero} strokeDasharray="4 4" />

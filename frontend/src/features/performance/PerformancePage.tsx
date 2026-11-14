@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useScope } from '@/context/ScopeContext'
 import { useDateRange } from '@/context/DateRangeContext'
 
@@ -134,7 +134,13 @@ function useActivePerformance() {
   if (scope.level === 'account') return account
   if (scope.level === 'strategy') return strategy
   if (scope.level === 'client') return client
-  return { data: undefined, isLoading: false, isError: false, refetch: () => {} }
+  return { data: undefined, isLoading: false, isError: false, error: null, refetch: () => {} }
+}
+
+/** Whether a request failed because what it named is not there (or not yours). */
+function isGone(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status
+  return status === 404 || status === 403
 }
 
 function useActiveMonthly() {
@@ -166,10 +172,16 @@ function useActiveReturnsSeries() {
 }
 
 export function PerformancePage() {
-  const { scope } = useScope()
+  const { scope, clearScope } = useScope()
   const navigate = useNavigate()
   const { startDate, endDate, setDateRange } = useDateRange()
-  const { data: perf, isLoading, isError, refetch } = useActivePerformance()
+  const { data: perf, isLoading, isError, error, refetch } = useActivePerformance()
+  // A client, account or strategy remembered from before that is no longer
+  // there (removed, or not this login's): forget it rather than show an error.
+  const gone = isError && isGone(error)
+  useEffect(() => {
+    if (gone) clearScope()
+  }, [gone, clearScope])
   const { data: monthly } = useActiveMonthly()
   const { data: returnsSeries } = useActiveReturnsSeries()
 
@@ -274,7 +286,7 @@ export function PerformancePage() {
     return match?.label ?? null
   })()
 
-  if (!scope.level) {
+  if (!scope.level || gone) {
     return (
       <EmptyState
         title="Select a client or strategy"

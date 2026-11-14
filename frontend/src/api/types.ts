@@ -691,7 +691,7 @@ export interface StatusJob {
   id: string; label: string; next_run_at: string | null
   /** The last run since the app started; null until the job has run once */
   last_started_at: string | null; last_finished_at: string | null
-  last_ok: boolean | null; last_error: string | null
+  last_ok: boolean | null; last_error: string | null; last_skipped?: string | null
 }
 export interface StatusBrokerageAccount {
   id: string; name: string; number_last4: string | null; owner: string | null
@@ -889,6 +889,9 @@ export interface PlaidFoundAccount {
 }
 export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
 export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
+/** A likely ticker change seen in the accounts' own records, waiting for a person */
+export interface TickerChangeProposal { old: string; new: string; on: string; company: string; accounts: number }
+
 export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }
 
 /** After signing in again: `active` once Plaid reads the login again */

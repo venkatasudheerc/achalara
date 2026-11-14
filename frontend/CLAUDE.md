@@ -62,8 +62,9 @@ platform's own pages (`/app/status`, `/app/market-data`, `/app/requests`, `/app/
 `/app/settings`); `AppShell` leaves those out of an advisor's menu. Strategy creation and a
 strategy's performance show only for an admin (`useIsAdmin`), since the API refuses them to an
 advisor. An advisor adds trades, moves symbols and manages logins for their own clients (the API
-answers their `/auth/users` with those logins only). Staff land in `/app`, clients in
-`/home`. The word "Advisor" on screen means the limited role only. The old client portal is
+answers their `/auth/users` with those logins only). Staff land in `/app/clients`, clients in
+`/home`. A client remembered in the tab's scope that this login cannot see is forgotten
+(`AppShell` checks it against the clients list; Performance clears it on a 404). The word "Advisor" on screen means the limited role only. The old client portal is
 retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
 in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
@@ -199,7 +200,7 @@ Each feature directory contains its page component(s). Implemented:
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
 - `invitations/RequestInvitationPage` (`/request-invitation`, in `AuthFrame` beside sign-in) holding `invitations/RequestInvitationForm` ( name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public, in `AuthFrame`; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
-- `status/StatusPage` (`/app/status`) — system status for the advisor: what needs a look, Plaid logins, daily jobs, linked accounts, data freshness, backup, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
+- `status/StatusPage` (`/app/status`) — system status for the admin: what needs a look, ticker changes to confirm (`useTickerChanges`; "Read OLD as NEW" records it and rebuilds), Plaid logins, daily jobs, linked accounts, data freshness, backup, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
 - `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
   component at `/app/markets` (advisor menu) and `/home/research` (the new app's Research); the

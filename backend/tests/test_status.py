@@ -70,8 +70,9 @@ def test_status_reports_accounts_capture_and_data(db, client):
     body = client.get("/api/v1/admin/status").json()
 
     assert body["database"]["ok"] is True
-    assert [j["id"] for j in body["jobs"]][:4] == [
+    assert [j["id"] for j in body["jobs"]][:5] == [
         "plaid_refresh",
+        "ticker_changes",
         "price_history",
         "daily_sheets_sync",
         "index_history",
@@ -262,3 +263,25 @@ def test_a_failed_delivery_is_not_an_error_and_keeps_the_token_out_of_the_log(
     with caplog.at_level("WARNING"):
         assert alerts.send("anything") is False
     assert "test-token" not in caplog.text
+
+
+def test_a_market_data_job_with_nothing_to_do_is_skipped_not_failed(db):
+    from app.md.models import JobRun
+
+    db.add(JobRun(job="md_prune_prices", started_at=datetime(2026, 11, 13, 2, 45, tzinfo=timezone.utc),
+                  finished_at=datetime(2026, 11, 13, 2, 45, tzinfo=timezone.utc),
+                  outcome="skipped", note="No limit set; nothing removed"))
+    db.commit()
+    status = StatusService(db).status()
+    (job,) = [j for j in status["jobs"] if j["id"] == "md_prune_prices"]
+    assert (job["last_ok"], job["last_error"], job["last_skipped"]) == (
+        True, None, "No limit set; nothing removed"
+    )
+    assert not any("history limit" in line for line in status["attention"])
+
+
+def test_a_server_without_plaid_says_so(db, monkeypatch):
+    monkeypatch.setattr(settings, "python_env", "production")
+    monkeypatch.setattr(settings, "scheduler_enabled", True)
+    monkeypatch.setattr(settings, "plaid_client_id", "")
+    assert any("Plaid is not set up" in line for line in StatusService(db).status()["attention"])

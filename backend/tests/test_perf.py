@@ -376,6 +376,64 @@ def test_trades_before_a_split_are_read_in_todays_shares(db):
     assert db.query(Trade).filter(Trade.action == "BUY").one().quantity == D(4)
 
 
+def _rename(db, old, new, day):
+    db.add(CorporateAction(symbol=old, new_symbol=new, effective_date=day, action_type="RENAME",
+                           ratio=D(1), source="manual"))
+    db.commit()
+
+
+def test_trades_before_a_ticker_change_are_read_under_the_new_symbol(db):
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    _trade(db, sleeve, date(2025, 3, 3), "BUY", 10, 50, symbol="OLD")
+    _trade(db, sleeve, date(2025, 7, 1), "SELL", 10, 60, symbol="NEW")
+    _trade(db, sleeve, date(2025, 3, 3), "BUY", 5, 20, symbol="XYZ")
+    _rename(db, "OLD", "NEW", date(2025, 6, 2))
+
+    views = adjusted_trades(db, db.query(Trade).order_by(Trade.trade_date, Trade.symbol).all())
+    positions = PortfolioCalculationService(db).calculate_positions(sleeve.id)
+
+    assert [v.symbol for v in views] == ["NEW", "XYZ", "NEW"]
+    # Bought as one ticker, sold as the other: one holding, closed, no short.
+    assert positions["unmatched_sells"] == 0
+    assert [p["symbol"] for p in positions["open"]] == ["XYZ"]
+    assert positions["closed"][0]["realized_gain"] == D(100)
+    assert db.query(Trade).filter(Trade.action == "BUY", Trade.symbol == "OLD").count() == 1
+
+
+def test_a_ticker_that_changes_back_is_followed_in_order():
+    from app.services.corporate_actions import current_symbol
+
+    changes = {"NEW": [(date(2023, 6, 1), "OLD")], "OLD": [(date(2025, 6, 2), "NEW")]}
+    assert current_symbol("NEW", date(2023, 1, 5), changes)[0] == "NEW"  # OLD, then NEW again
+    assert current_symbol("OLD", date(2024, 1, 5), changes)[0] == "NEW"
+    assert current_symbol("NEW", date(2025, 9, 1), changes)[0] == "NEW"
+    assert current_symbol("XYZ", date(2025, 9, 1), changes) == ("XYZ", date(2025, 9, 1))
+
+
+def test_an_opening_is_worked_back_across_a_ticker_change(db):
+    """Held as NEW today, bought as OLD in the history: the shares held before
+    the history are the difference, not a short of OLD."""
+    from app.services.opening_position import OpeningPositionService
+
+    ba = _fed_account(
+        db, [_deposit("d1", 10000, "2026-01-05"), _buy("b1", "s-abc", 40, 100, "2026-01-06")],
+        6000.0, through=date(2026, 1, 8),
+    )
+    db.add(DailyHolding(account_id=ba.account_id, as_of_date=date(2026, 1, 8), symbol="ABD",
+                        quantity=D(100), price=D(100), market_value=D(10000),
+                        sleeve_id=ba.default_sleeve_id))
+    db.commit()
+
+    before = OpeningPositionService(db).refresh(ba.account_id)
+    assert "ABC works back to -40 shares" in before.problems
+
+    _rename(db, "ABC", "ABD", date(2026, 1, 7))
+    after = OpeningPositionService(db).refresh(ba.account_id)
+    assert after.problems == []
+    assert after.shares["ABD"].quantity == D(60)
+
+
 def test_value_is_continuous_across_a_split(db):
     account = _account(db)
     sleeve = _sleeve(db, account)

@@ -100,9 +100,11 @@ function WhatToDownload({ check, loading }: { check: HoldingsCheck | null | unde
           ? <>They last agreed on {formatDate(check.last_agreed)}.</>
           : check.first_differed ? <>They already differed on the first record there is, {formatDate(check.first_differed)}.</> : null}
       </p>
-      {check.download_from && (
-        <p className="text-[15px] font-semibold">Download the activity report from {formatDate(check.download_from)} to today.</p>
-      )}
+      <p className="text-[15px] font-semibold">
+        {check.download_from
+          ? <>Download the activity report from {formatDate(check.download_from)} to today.</>
+          : <>Download all of this account’s activity, from as far back as the institution allows. Only what is not already here is added.</>}
+      </p>
     </div>
   )
 }
@@ -132,7 +134,9 @@ function Result({ r }: { r: ImportResult }) {
             {r.check.last_agreed
               ? <>They last agreed on {formatDate(r.check.last_agreed)} and first differed on {formatDate(r.check.first_differed)}.</>
               : r.check.first_differed ? <>They already differed on the first record there is, {formatDate(r.check.first_differed)}, so what is missing is earlier.</> : null}
-            {r.check.download_from && <> <strong>Download the activity report from {formatDate(r.check.download_from)} to today</strong>, and go further back if they still differ.</>}
+            {r.check.download_from
+              ? <> <strong>Download the activity report from {formatDate(r.check.download_from)} to today</strong>, and go further back if they still differ.</>
+              : <> <strong>Download all of this account’s activity</strong>, from as far back as the institution allows.</>}
           </p>
           <ul className="text-[14px] flex flex-col gap-[4px]">
             {r.check.differences.map((d) => (

@@ -18,7 +18,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
@@ -32,7 +32,7 @@ from app.models.cash_activity import CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.services.corporate_actions import adjusted_trades
+from app.services.corporate_actions import adjusted_trades, current_symbol, renames
 from app.services.opening_position import NOT_OPENING
 from app.services.connection_service import ConnectionService
 from app.services.vanguard_report import (
@@ -67,8 +67,6 @@ TEMPLATE_TYPES = {
 
 # Share counts within this of each other agree (rounding of fractional shares).
 _AGREE = Decimal("0.01")
-# When even the first record differs, what is missing is earlier: start this far back.
-_LOOK_BACK = timedelta(days=28)
 
 
 def _compared(symbol: str) -> bool:
@@ -240,13 +238,16 @@ class AccountImportService:
 
     @staticmethod
     def _check_names_account(filename: str, ba: BrokerageAccount, account: Account) -> None:
-        """Vanguard names its download after the account's number: refuse a file
-        that names a different account."""
+        """Vanguard names its download after the account's full number: refuse a
+        file that names a different account. Plaid gives only the last four
+        (``mask``), so a number agrees when it is the full number we hold or
+        when its last four are the account's."""
         named = re.findall(r"\d{6,}", filename)
         if not named:
             return
         ours = "".join(ch for ch in f"{ba.name} {account.account_number or ''}" if ch.isdigit())
-        if not any(number in ours for number in named):
+        fours = {f for f in (ba.mask, ba.number_last4, account.last_four) if f}
+        if not any(number in ours or number[-4:] in fours for number in named):
             raise AccountImportError(
                 422, f"This file is for the account ending {named[0][-4:]}, not this one."
             )
@@ -339,9 +340,13 @@ class AccountImportService:
             row[0] for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account.id)
         ]
         recorded: Dict[date, Dict[str, Decimal]] = defaultdict(dict)
+        changes = renames(self.db)
         for day, symbol, quantity in self.db.query(
             DailyHolding.as_of_date, DailyHolding.symbol, DailyHolding.quantity
         ).filter(DailyHolding.account_id == account.id):
+            # Trades are read under today's ticker; so is what was held.
+            if changes:
+                symbol = current_symbol(symbol, day, changes)[0]
             held = recorded[day]
             if _compared(symbol):
                 held[symbol] = held.get(symbol, Decimal(0)) + Decimal(str(quantity))
@@ -404,9 +409,10 @@ class AccountImportService:
             elif first_differed is None:
                 first_differed = day
 
-        download_from = None
-        if first_differed is not None:
-            download_from = last_agreed or first_differed - _LOOK_BACK
+        # From the last day they agreed. When even the first record differs, what
+        # is missing is somewhere before it, so no date is given: the whole of the
+        # account's activity is what to download (only what is new is added).
+        download_from = last_agreed if first_differed is not None else None
         return {
             "as_of": max(recorded),
             "matched": max(compared - len(differences), 0),

@@ -31,6 +31,8 @@ class StatusJob(BaseModel):
     last_finished_at: Optional[datetime] = None
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None
+    # A run that had nothing to do and said why (a market-data job "skipped").
+    last_skipped: Optional[str] = None
 
 
 class StatusBrokerageAccount(BaseModel):

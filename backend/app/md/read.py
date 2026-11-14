@@ -21,6 +21,7 @@ from app.md.models import (
     Security,
     SecurityClassification,
     SecuritySymbol,
+    SecuritySymbolHist,
     US_MARKET,
 )
 from app.md.status_report import build_status, unavailable
@@ -80,6 +81,31 @@ def stale_index_levels(app_db: Session) -> Optional[str]:
 
     with _session(app_db) as db:
         return describe_stale(stale_levels(db, date.today()))
+
+
+class TickerChange(NamedTuple):
+    old: str
+    new: str
+    on: date  # the first day under the new ticker
+
+
+def ticker_changes(app_db: Session) -> List[TickerChange]:
+    """Every change of ticker market data has seen happen to one security (by its
+    permanent id), in the app's spelling, oldest first. Only what was watched:
+    a change from before a security was first followed is not here."""
+    with _session(app_db) as db:
+        rows = (
+            db.query(SecuritySymbolHist.security_id, SecuritySymbolHist.symbol, SecuritySymbolHist.valid_from)
+            .filter(SecuritySymbolHist.market_code == US_MARKET)
+            .order_by(SecuritySymbolHist.security_id, SecuritySymbolHist.valid_from)
+            .all()
+        )
+    changes: List[TickerChange] = []
+    for (security, symbol, since), (later_security, later_symbol, later_since) in zip(rows, rows[1:]):
+        old, new = app_symbol(symbol), app_symbol(later_symbol)
+        if security == later_security and old != new:
+            changes.append(TickerChange(old, new, later_since))
+    return sorted(changes, key=lambda c: c.on)
 
 
 def stocks_without_sector(app_db: Session, symbols: Iterable[str]) -> int:

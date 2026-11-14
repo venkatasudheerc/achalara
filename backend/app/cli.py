@@ -77,6 +77,69 @@ def set_price(symbol: str, on: str, close: str) -> int:
     return 0
 
 
+def add_ticker_change(old: str, new: str, on: str) -> int:
+    """Record that ``old`` trades as ``new`` from ``on``, then rebuild the
+    accounts that traded or held either, so their openings and records follow."""
+    from app.services.ticker_changes import record
+
+    try:
+        day = date.fromisoformat(on)
+    except ValueError:
+        print("Give the date as YYYY-MM-DD.", file=sys.stderr)
+        return 1
+    db = SessionLocal()
+    try:
+        rebuilt = record(db, old, new, day, "manual")
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+    print(f"{old.upper()} is read as {new.upper()} from {day}; {rebuilt} account(s) rebuilt.")
+    return 0
+
+
+def plaid_refresh(client: Optional[str]) -> int:
+    """The morning's Plaid refresh, now: every active login, or one client's.
+    Safe to repeat (rows are matched by Plaid's ids; the cursor only moves
+    forward). It records the day before, as the morning job does."""
+    from app.models.brokerage_connection import BrokerageConnection
+    from app.models.client import Client
+    from app.services.plaid_refresh_service import PlaidRefreshService
+
+    db = SessionLocal()
+    try:
+        logins = db.query(BrokerageConnection).filter(
+            BrokerageConnection.source == "plaid", BrokerageConnection.status == "active"
+        )
+        if client:
+            found = (
+                db.query(Client)
+                .filter((Client.id == client) | (Client.name.ilike(client)))
+                .all()
+            )
+            if len(found) != 1:
+                print(f"No single client is called {client!r}.", file=sys.stderr)
+                return 1
+            logins = logins.filter(BrokerageConnection.client_id == found[0].id)
+        service = PlaidRefreshService(db)
+        logins = logins.all()
+        if not logins:
+            print("No active Plaid login to refresh.")
+            return 0
+        failed = 0
+        for login in logins:
+            try:
+                outcome = service.refresh(login)
+            except Exception as error:  # one login never stops the rest
+                db.rollback()
+                outcome, failed = f"failed ({type(error).__name__})", failed + 1
+            print(f"{login.institution or 'A login'}: {outcome}")
+        return 1 if failed else 0
+    finally:
+        db.close()
+
+
 def load_index_history(symbols, full: bool) -> int:
     """Load or top up the daily bars of the market indices."""
     db = SessionLocal()
@@ -531,6 +594,18 @@ def main(argv=None) -> int:
         help="a list of 'SYMBOL group  # note' lines: checked with Webull; nothing changes without --apply",
     )
     fund.add_argument("--apply", action="store_true", help="with --file: track the ones Webull knows")
+    rename = commands.add_parser(
+        "add-ticker-change",
+        help="a company now trades under a new ticker: read its earlier trades under it",
+    )
+    rename.add_argument("--from", dest="old", required=True)
+    rename.add_argument("--to", dest="new", required=True)
+    rename.add_argument("--date", required=True, help="the first day under the new ticker, YYYY-MM-DD")
+    refresh = commands.add_parser(
+        "plaid-refresh",
+        help="the morning's Plaid refresh, now: every active login, or one client's",
+    )
+    refresh.add_argument("--client", help="the client's id or name; all clients when left out")
     report = commands.add_parser(
         "import-vanguard-report",
         help="add the trades and cash rows in Vanguard's activity report that are not on file",
@@ -543,6 +618,10 @@ def main(argv=None) -> int:
     report.add_argument("--to", dest="end", help="last trade date to read, YYYY-MM-DD")
     report.add_argument("--apply", action="store_true", help="write; without it, only show")
     args = parser.parse_args(argv)
+    if args.command == "add-ticker-change":
+        return add_ticker_change(args.old, args.new, args.date)
+    if args.command == "plaid-refresh":
+        return plaid_refresh(args.client)
     if args.command == "import-vanguard-report":
         return import_vanguard_report(
             args.account, args.file, args.start, args.end, args.apply

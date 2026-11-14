@@ -211,7 +211,11 @@ removed from SnapTrade's dashboard.
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
 The app's own daily jobs keep their UTC times (price history at 23:30 UTC on weekdays), except the Plaid refresh, which runs at 6:30 AM
 Eastern Tuesday to Saturday and records the day before. A server down at that time misses that
-day's record for Plaid accounts; the next run brings their transactions up to date.
+day's record for Plaid accounts; the next run brings their transactions up to date. Ticker changes
+market data has seen are copied at 6:15 AM Eastern every day; one it has not seen is confirmed on
+System status ("Ticker changes to confirm") or entered with
+`docker compose exec backend python -m app.cli add-ticker-change --from OLD --to NEW --date YYYY-MM-DD`.
+To run the Plaid refresh by hand: `docker compose exec backend python -m app.cli plaid-refresh`.
 
 **Market data (the `md` worker)**
 

@@ -81,6 +81,20 @@ def test_a_vanguard_report_naming_another_account_is_refused(client, db, account
     assert right.status_code == 200 and right.json()["file_kind"] == "vanguard_activity"
 
 
+def test_a_plaid_linked_account_knows_only_its_last_four_and_takes_its_own_file(client, db, account):
+    """Plaid gives an account's last four, never its full number."""
+    acct = db.get(Account, account.account_id)
+    account.name, account.mask, acct.account_number = "INDIVIDUAL", "4321", None
+    db.commit()
+    content = _report_xlsx(("10/6/2026", "10/5/2026", "EEE", "EEE ETF", "Buy", "MARGIN",
+                            "4.0000", "$25.0000", "Free", "-$100.0000"))
+    base = _base(account, db)
+    own = client.post(f"{base}/preview", files=_files(content, "customActivityReport_87654321.xlsx"))
+    assert own.status_code == 200, own.text
+    other = client.post(f"{base}/preview", files=_files(content, "customActivityReport_87650000.xlsx"))
+    assert other.status_code == 422 and "0000" in other.json()["detail"]
+
+
 def test_files_it_cannot_read_are_refused_with_a_reason(client, db, account):
     base = _base(account, db)
     assert client.post(f"{base}/preview", files=_files(b"%PDF", "x.pdf")).status_code == 415
@@ -172,7 +186,7 @@ def test_the_check_says_when_holdings_last_agreed_and_first_differed(db, account
     assert check["differences"] == []
 
 
-def test_when_even_the_first_record_differs_the_download_starts_weeks_before(db, account):
+def test_when_even_the_first_record_differs_the_whole_history_is_asked_for(db, account):
     from datetime import date
     from decimal import Decimal as D
 
@@ -185,7 +199,8 @@ def test_when_even_the_first_record_differs_the_download_starts_weeks_before(db,
     db.commit()
     check = AccountImportService(db).holdings_check(acct)
     assert check["last_agreed"] is None and check["first_differed"] == date(2026, 10, 9)
-    assert check["download_from"] == date(2026, 9, 11)
+    # Never a guessed date: what is missing is somewhere before the first record.
+    assert check["download_from"] is None
 
 
 def test_the_check_can_be_asked_for_before_any_upload(client, db, account):

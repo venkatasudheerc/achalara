@@ -10,6 +10,10 @@ is read as 40 shares at 100. Its cash is unchanged, so flows and returns are
 unaffected; only the counts and per-share prices move onto the current basis,
 where they agree with later trades and with split-adjusted price history.
 
+A ticker change (``RENAME``: a company trading under a new symbol) is read the
+same way: a trade under the old symbol before the change is read under the new
+one, so the shares bought as one and sold or held as the other add up.
+
 Stored trades are never altered. The restatement happens on read, through
 ``adjusted_trades``.
 """
@@ -76,6 +80,34 @@ def split_factors(db: Session) -> Dict[str, List[Tuple[date, Decimal]]]:
     return factors
 
 
+def renames(db: Session) -> Dict[str, List[Tuple[date, str]]]:
+    """Every recorded ticker change, by the symbol it changed from, oldest first."""
+    changes: Dict[str, List[Tuple[date, str]]] = {}
+    for action in (
+        db.query(CorporateAction)
+        .filter(CorporateAction.action_type == "RENAME", CorporateAction.new_symbol.isnot(None))
+        .order_by(CorporateAction.effective_date)
+    ):
+        changes.setdefault(action.symbol, []).append((action.effective_date, action.new_symbol))
+    return changes
+
+
+def current_symbol(
+    symbol: str, on: date, changes: Dict[str, List[Tuple[date, str]]]
+) -> Tuple[str, date]:
+    """The symbol ``symbol`` traded as on ``on`` is known by today, and the day
+    it last changed (``on`` when it never did). Each change applies only after
+    the day it was traded, so a company that changed back and forth is followed
+    in order and never loops."""
+    seen = on
+    for _ in range(10):  # a chain of ten ticker changes is beyond anything real
+        later = [(day, new) for day, new in changes.get(symbol, []) if day > seen]
+        if not later:
+            break
+        seen, symbol = min(later)
+    return symbol, seen
+
+
 def _factor(splits: List[Tuple[date, Decimal]], traded_on: date) -> Decimal:
     """How many of today's shares one share traded on ``traded_on`` is.
 
@@ -98,23 +130,28 @@ def adjusted_trades(db: Session, trades: Iterable[Trade]) -> List[TradeView]:
     """
     trades = list(trades)
     factors = split_factors(db)
+    changes = renames(db)
     prices, deliveries = assignment_adjustments(db, {t.sleeve_id for t in trades})
     views: List[TradeView] = []
     for trade in trades:
         quantity = Decimal(str(trade.quantity))
         price = prices.get(trade.id, Decimal(str(trade.price)))
-        splits = factors.get(trade.symbol)
-        if splits:
-            factor = _factor(splits, trade.trade_date)
-            if factor != 1:
-                quantity *= factor
-                price /= factor
+        symbol, renamed_on = trade.symbol, trade.trade_date
+        if changes and not is_option_symbol(trade.symbol):
+            symbol, renamed_on = current_symbol(trade.symbol, trade.trade_date, changes)
+        factor = _factor(factors.get(trade.symbol, []), trade.trade_date)
+        if symbol != trade.symbol:
+            # Splits after the change are recorded under the new symbol.
+            factor *= _factor(factors.get(symbol, []), renamed_on)
+        if factor != 1:
+            quantity *= factor
+            price /= factor
         views.append(
             TradeView(
                 id=trade.id,
                 sleeve_id=trade.sleeve_id,
                 trade_date=trade.trade_date,
-                symbol=trade.symbol,
+                symbol=symbol,
                 action=trade.action,
                 quantity=quantity,
                 price=price,

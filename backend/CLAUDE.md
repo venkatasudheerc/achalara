@@ -46,6 +46,12 @@ python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --clos
 # Add what a custodian's activity report holds that is not on file (shows only; --apply writes)
 python -m app.cli import-vanguard-report --account 5678 --file customActivityReport_12345678.xlsx
 
+# A company now trades under a new ticker: read its earlier trades under it (rebuilds what traded it)
+python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
+
+# The morning's Plaid refresh, now (every active login, or one client's); safe to repeat
+python -m app.cli plaid-refresh [--client "Pat Example"]
+
 # Market indices' daily bars, for research: load a downloaded file, then top up
 python -m app.cli load-index-file --symbol SPX --file SP500_daily.csv --source some-name --replace
 python -m app.cli load-index-history
@@ -312,10 +318,27 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   duplicate check leave them out (`NOT_OPENING`); positions, cost basis, the holdings check and
   the ledger count them. **Nothing is guessed:** a security working back below zero shares, or
   cash below zero in an account not owed money, means a transaction is missing; the account
-  opens empty, as before, and the reason is logged.
+  opens empty, as before, and the reason is logged once, when it changes. Cash out by less than
+  `opening_position.ROUNDING` ($1.00) is rounding in the institution's figures: it opens at
+  nothing and is noted (`reconciliation["opening_notes"]`), which the account's health shows as
+  provisional.
 - **Read trades through `corporate_actions.adjusted_trades`** in any calculation of positions,
-  value or returns. It applies two things on reading and never changes a stored trade: splits,
-  and the assignment rule below.
+  value or returns. It applies three things on reading and never changes a stored trade: splits,
+  ticker changes, and the assignment rule below.
+- **A ticker change is a corporate action** (`RENAME` in `perf.corporate_action`, with
+  `new_symbol`), never a rename of stored rows. It reaches the table three ways
+  (`services/ticker_changes.py`), and recording one rebuilds every account that traded or held
+  either ticker: **copied from market data** each morning (job `ticker_changes`, 6:15 AM ET, from
+  `md.security_symbol_hist` through `md.read.ticker_changes`; only changes market data saw happen
+  while it followed the security); **proposed from an account's own record** and confirmed by an
+  admin on System status (`GET`/`POST /admin/ticker-changes`): a symbol the opening cannot work
+  back, no longer held, whose last trade comes before the first appearance of exactly one held
+  symbol with the same company name in the custodian's rows; none is guessed; or **by hand**
+  (`add-ticker-change`). A trade under the old symbol before the
+  change is read under the new one (`corporate_actions.current_symbol`, followed in date order, so
+  a company that changed back never loops), and so are recorded holdings in the opening and the
+  holdings check. Option contracts keep their own names. Without it an account's shares bought as
+  one ticker and held as the other cannot be worked back, and the account opens empty.
 - **An assigned option's premium belongs to the shares** (`corporate_actions.assignment_adjustments`).
   The brokerage reports the option leaving at no price and the shares changing hands at the
   strike. Read that way: an assigned written put lowers the shares' cost by the premium, an
@@ -476,9 +499,18 @@ written by `OpeningPositionService.refresh`), the holdings check, and `cash_chec
 each day the institution recorded cash with what the history works back to. The record is worked
 back from today, so the latest day always agrees and an earlier day that differs means a movement
 after it is missing; every day before it is out by that amount, so **an opening is never worked
-back through a cash difference**. The rail marks an incomplete account, the Dashboard says which
-to repair and from when, and System status lists it (alert wording names no account). Nothing
-here changes a figure; **no nudge may be built on an account that is not complete.**
+back through a cash difference**. A rebuilt day worth less than nothing in an account not owed
+money is incomplete too (shares and cash cannot be). The holdings check's `download_from` is the
+last day holdings agreed, and none when even the first record differs: then all of the account's
+activity is what to download. The rail marks an incomplete account, the Dashboard says which to
+repair and from when, and System status lists it (alert wording names no account). Nothing here
+changes a figure, but **no figure over time is shown from an incomplete record** (the Dashboard's
+past year and the Performance tab say why instead), and **no nudge may be built on an account
+that is not complete.**
+
+**Accounts added together are measured from the day the last of them joined the record**
+(`PortalService._all_on_record_from`), when they joined holding something already: an account
+whose record starts later would otherwise count what it already held as a gain.
 
 ## Market data: the `md` schema
 

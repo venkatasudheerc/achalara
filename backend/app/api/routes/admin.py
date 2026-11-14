@@ -2,6 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 
 
+from datetime import date
+from typing import List
+
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import logging
@@ -39,6 +42,41 @@ def market_data_status(db: Session = Depends(get_db)):
     """The state of the security master: its jobs, indices, coverage and tables,
     and what is not built yet."""
     return md_read.market_data_status(db)
+
+
+class TickerChangeProposal(BaseModel):
+    old: str
+    new: str
+    on: date
+    company: str
+    accounts: int
+
+
+class TickerChangeIn(BaseModel):
+    old: str
+    new: str
+    on: date
+
+
+@router.get("/ticker-changes", response_model=List[TickerChangeProposal])
+def ticker_change_proposals(db: Session = Depends(get_db)):
+    """Likely ticker changes seen in the accounts' own records, waiting for a person."""
+    from app.services.ticker_changes import proposals
+
+    return proposals(db)
+
+
+@router.post("/ticker-changes")
+def confirm_ticker_change(body: TickerChangeIn, db: Session = Depends(get_db)):
+    """Record a ticker change (read old trades under the new ticker) and rebuild
+    the accounts that traded or held either."""
+    from app.services.ticker_changes import record
+
+    try:
+        rebuilt = record(db, body.old, body.new, body.on, "confirmed")
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"old": body.old.upper(), "new": body.new.upper(), "on": body.on, "accounts_rebuilt": rebuilt}
 
 
 @router.post("/status/test-alert", response_model=AlertTestResponse)

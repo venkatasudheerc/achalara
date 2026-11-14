@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { PortalAccount } from '@/api/types'
 import { usePortalPerformance } from '@/hooks/usePortal'
@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/for
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { KINDS, accountName, type Selection } from './selection'
+import { dateTicks } from '@/lib/chartTicks'
 import { PrivateToggle } from './PrivateToggle'
 
 type Chart = 'balances' | 'activity' | 'returns'
@@ -24,7 +25,13 @@ const compact = (n: number) => {
   const s = a >= 1e6 ? `$${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `$${Math.round(a / 1e3)}K` : `$${Math.round(a)}`
   return n < 0 ? `−${s}` : s
 }
-const monthLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short' })
+// A month's bar: its name, with the year on January and on the first bar, so a
+// year of bars never shows the same label twice.
+const monthLabel = (iso: string, first = false) => {
+  const date = new Date(`${iso}T00:00:00`)
+  const month = date.toLocaleDateString('en-US', { month: 'short' })
+  return first || date.getMonth() === 0 ? `${month} ${date.getFullYear()}` : month
+}
 
 function Figure({ label, value, tone }: { label: string; value: string; tone?: 'gain' | 'loss' }) {
   return (
@@ -56,8 +63,12 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
 
   const incomplete = accounts.filter((a) => a.health?.state === 'incomplete')
 
-  const summary = data?.summary
+  // A record missing a transaction cannot say what happened over time: no
+  // change, gain, return or chart is shown from it, only today's value.
+  const untrusted = incomplete.length > 0
+  const summary = untrusted ? undefined : data?.summary
   const change = summary ? summary.closing_value - summary.opening_value : null
+  const axis = useMemo(() => dateTicks((data?.series ?? []).map((p) => p.date)), [data])
   const chartKind: Chart = allCash && chart === 'returns' ? 'balances' : chart
 
   const kinds = KINDS.map((k) => {
@@ -101,7 +112,12 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           </div>
         </div>
 
-        {isLoading ? <SkeletonCard /> : isError ? (
+        {untrusted ? (
+          <p className="text-[15px] leading-relaxed">
+            Not shown until {incomplete.length === 1 ? 'the account above is' : `the ${incomplete.length} accounts above are`} complete:
+            a missing transaction would show as a gain or a loss that never happened. Today’s values are as the institution reports them.
+          </p>
+        ) : isLoading ? <SkeletonCard /> : isError ? (
           <ErrorState message={error?.message ?? 'Could not load the past year.'} onRetry={() => refetch()} />
         ) : !summary ? (
           <p className="text-[15px] text-stone">No daily record yet for {accounts.length === 1 ? 'this account' : 'these accounts'}.</p>
@@ -121,7 +137,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
             <div className="h-[240px] -ml-[8px]">
               <ResponsiveContainer width="100%" height="100%">
                 {chartKind === 'activity' ? (
-                  <BarChart data={[...data!.periods].sort((a, b) => a.period_start.localeCompare(b.period_start)).map((p) => ({ month: monthLabel(p.period_start), in: p.flow_in, out: -p.flow_out }))}>
+                  <BarChart data={[...data!.periods].sort((a, b) => a.period_start.localeCompare(b.period_start)).map((p, i) => ({ month: monthLabel(p.period_start, i === 0), in: p.flow_in, out: -p.flow_out }))}>
                     <CartesianGrid vertical={false} stroke={colours.grid} />
                     <XAxis dataKey="month" tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
                     <YAxis tickFormatter={compact} tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
@@ -133,7 +149,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
                 ) : (
                   <AreaChart data={data!.series.map((p) => ({ date: p.date, v: chartKind === 'returns' ? p.twr : p.value }))}>
                     <CartesianGrid vertical={false} stroke={colours.grid} />
-                    <XAxis dataKey="date" tickFormatter={monthLabel} minTickGap={40} tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="date" ticks={axis.ticks} tickFormatter={axis.label} interval={0} tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
                     <YAxis domain={['auto', 'auto']} tickFormatter={(v: number) => (chartKind === 'returns' ? formatPercent(v, 0) : compact(v))}
                       tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
                     <Tooltip contentStyle={colours.tooltip} labelFormatter={(d: string) => formatDate(d)}

@@ -66,7 +66,8 @@ export function AppRoutes() {
       {/* The workspace: an admin sees everything, an advisor their own clients. */}
       <Route element={<RequireAuth role="staff" />}>
         <Route path="/app" element={<AppShell />}>
-          <Route index element={<Navigate to="performance" replace />} />
+          {/* Staff start where the work starts: the list of people they look after. */}
+          <Route index element={<Navigate to="clients" replace />} />
           <Route path="performance" element={<PerformancePage />} />
           <Route path="clients" element={<ClientsPage />} />
           <Route path="clients/:clientId" element={<ClientDetailPage />} />
