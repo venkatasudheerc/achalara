@@ -239,6 +239,8 @@ def test_a_new_account_is_added_of_its_kind_and_pulled(db, owner, plaid_keys):
     }
     brokerage = accounts["8069"]
     assert accounts["8069"].institution == INSTITUTION
+    # A feed's sales take the oldest shares first, never round-trip pairing.
+    assert {s.accounting_method for s in db.query(Sleeve).filter(Sleeve.account_id == brokerage.id)} == {"FIFO"}
     trades = db.query(Trade).join(Sleeve).filter(Sleeve.account_id == brokerage.id).all()
     assert [(t.trade_date, t.symbol) for t in trades] == [(date(2026, 10, 30), "AAA")]
     day = (
@@ -479,3 +481,17 @@ def test_a_bank_account_that_works_back_below_nothing_opens_empty(db, owner, pla
     )
     assert first == date(2026, 11, 3)
     assert not db.query(Trade).join(Sleeve).filter(Sleeve.account_id == checking.id).count()
+
+
+def test_a_trade_it_cannot_name_is_set_aside_but_its_cash_still_counts():
+    """Vanguard sends many option trades with no symbol: the trade is set aside
+    and counted, and the premium it cost is still cash that left the account."""
+    rows = [
+        {"investment_transaction_id": "o1", "security_id": "s-unnamed", "type": "buy",
+         "subtype": "buy", "date": "2026-11-05", "quantity": 1, "price": 31, "amount": 3100,
+         "fees": 0, "name": "Buy to open"},
+    ]
+    batch = plaid_reader.read_investment_transactions(rows, {"s-unnamed": {"type": "derivative"}})
+    assert batch.trades == [] and batch.skipped == {"unreadable": 1}
+    (raw,) = batch.raw
+    assert (raw.outcome, raw.cash_amount) == ("skipped:unreadable", D("-3100"))

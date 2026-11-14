@@ -535,10 +535,14 @@ class PlaidLinkService:
         sleeve = self.db.query(Sleeve).filter(Sleeve.account_id == account.id).first()
         if sleeve is None:
             sleeve = Sleeve(
-                account_id=account.id, strategy_id=self.connections._default_strategy().id
+                account_id=account.id, strategy_id=self.connections._default_strategy().id,
             )
             self.db.add(sleeve)
-            self.db.flush()
+        # A feed is real brokerage activity: sales take the oldest shares first.
+        # Round-trip matching (for strategy sheets) drops a sale of shares bought
+        # before the history and keeps every later buy open.
+        sleeve.accounting_method = "FIFO"
+        self.db.flush()
         return sleeve.id
 
     # ------------------------------------------------------------------

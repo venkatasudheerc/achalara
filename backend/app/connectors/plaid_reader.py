@@ -147,7 +147,11 @@ def read_investment_transactions(
             symbol = option_symbol(security) if option else ticker
             quantity = abs(_money(t.get("quantity")))
             if not symbol or quantity == 0:
-                outcome = "skipped:unreadable"
+                # A trade we cannot name (Vanguard sends many options with no
+                # symbol): set aside, but its cash moved, so the ledger keeps it.
+                # A custodian's file that later names it takes this back
+                # (``vanguard_report.VanguardReportImport.apply``).
+                outcome, cash_amount = "skipped:unreadable", holder
             else:
                 if subtype in _EVENTS:
                     action = TradeAction.BUY if _money(t.get("quantity")) > 0 else TradeAction.SELL

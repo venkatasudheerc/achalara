@@ -30,6 +30,9 @@ from app.services.performance_build_service import rebuild_for_sleeves
 
 logger = logging.getLogger(__name__)
 
+# A feed's trade it could not name, whose cash a custodian's file now counts.
+ON_FILE = "skipped:unreadable, on file"
+
 # Strategy a linked account's trades land in until they are split out.
 DEFAULT_STRATEGY_NAME = "Unallocated"
 
@@ -182,6 +185,8 @@ class ConnectionService:
                 f"noid:{raw.occurred_on}:{raw.type}:{raw.symbol}:{position}"
             )
             record = existing.get(key)
+            if record is not None and record.outcome == ON_FILE and raw.outcome == "skipped:unreadable":
+                continue  # a file named this trade and counts its cash; keep it taken back
             if record is None:
                 record = BrokerageActivity(
                     brokerage_account_id=ba.id, source_activity_id=key

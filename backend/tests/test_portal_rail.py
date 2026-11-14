@@ -283,3 +283,20 @@ def test_a_report_listing_no_holdings_means_the_account_holds_none(maya, db, wor
     assert mine == ["ZZZ270115C00020000"]
     rail = next(a for a in maya.get(ACCOUNTS).json()["accounts"] if a["id"] == account.id)
     assert rail["value"] == pytest.approx(1500)
+
+
+def test_an_account_of_options_and_cash_counts_options_its_feed_could_not_name(maya, db, world):  # noqa: F811
+    """No trade on file names the option (the feed sent it without a symbol);
+    the custodian's securities total is still the options' value."""
+    from app.models.account import Account
+    from app.models.sleeve import Sleeve
+
+    account = Account(client_id=world["maya"].id, name="Options Roth")
+    db.add(account)
+    db.flush()
+    db.add(Sleeve(account_id=account.id, strategy_id=world["growth"].id))
+    _valuation(db, account, date(2026, 11, 3), 2500, 500)  # 2,000 of options, 500 cash
+    db.commit()
+
+    rail = next(a for a in maya.get(ACCOUNTS).json()["accounts"] if a["id"] == account.id)
+    assert rail["value"] == pytest.approx(2500)

@@ -38,7 +38,7 @@ from app.connectors.models import is_option_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount
 from app.models.cash_activity import CashActivity
-from app.models.perf import DailyHolding
+from app.models.perf import DailyHolding, DailyValuation
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.account_health import INCOMPLETE, cash_check
@@ -400,13 +400,24 @@ class OpeningPositionService:
         )
         if complete is None:
             return Opening()
-        days = [
+        # Days the institution listed holdings, and days it recorded the account
+        # and listed none (an account of options and cash): that holds no shares.
+        listed = {
             row[0]
             for row in self.db.query(DailyHolding.as_of_date)
             .filter(DailyHolding.account_id == account_id, DailyHolding.as_of_date <= complete)
             .distinct()
-            .order_by(DailyHolding.as_of_date.desc())
-        ]
+        }
+        observed = {
+            row[0]
+            for row in self.db.query(DailyValuation.as_of_date).filter(
+                DailyValuation.account_id == account_id,
+                DailyValuation.sleeve_id.is_(None),
+                DailyValuation.basis == "observed",
+                DailyValuation.as_of_date <= complete,
+            )
+        }
+        days = sorted(listed | observed, reverse=True)
         default_sleeve = self._default_sleeve(account_id, sleeve_ids)
         first_tried: Optional[Opening] = None
         for anchor in days:

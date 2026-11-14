@@ -712,12 +712,9 @@ class PortalService:
             options_value = None
             # The custodian lists its holdings but not its options: what its
             # securities total holds beyond them is the options. An account
-            # holding only options and cash lists no holdings at all.
-            options_only = (
-                not holdings
-                and account.id in option_costs
-                and account.id not in (with_shares or set())
-            )
+            # holding only options and cash lists no holdings at all, whether or
+            # not our trades show the options (a feed may not name them).
+            options_only = not holdings and account.id not in (with_shares or set())
             if latest.basis == "observed" and (
                 options_only or (recorded and recorded[0] == latest.as_of_date)
             ):

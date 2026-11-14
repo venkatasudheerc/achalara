@@ -210,3 +210,37 @@ def test_the_check_can_be_asked_for_before_any_upload(client, db, account):
     _as_client(acct.client_id)
     own = client.get(f"/api/v1/portal/accounts/{acct.id}/imports/check")
     assert own.status_code == 200
+
+
+def test_a_file_naming_a_trade_the_feed_could_not_takes_its_cash_back(client, db, account):
+    """The feed kept the cash of a trade it could not name; once the file names
+    that trade, its cash is counted with the file's row, once, and a later
+    refresh does not put it back on the feed's row."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.connectors.models import ActivityBatch, RawActivity
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.connection_service import ON_FILE, ConnectionService
+
+    unnamed = RawActivity(source_id="plaid:u1", type="PLAID BUY/BUY", occurred_on=date(2026, 10, 6),
+                          symbol=None, outcome="skipped:unreadable", cash_amount=D("-100"),
+                          is_external_flow=False, payload={"amount": 100})
+    db.add(BrokerageActivity(
+        brokerage_account_id=account.id, source_activity_id="plaid:u1",
+        activity_date=date(2026, 10, 6), type="PLAID BUY/BUY", outcome="skipped:unreadable",
+        cash_amount=D("-100"), payload={"amount": 100}))
+    db.commit()
+    content = _report_xlsx(("10/6/2026", "10/5/2026", "EEE", "EEE ETF", "Buy", "MARGIN",
+                            "4.0000", "$25.0000", "Free", "-$100.0000"))
+    done = client.post(_base(account, db), files=_files(content, "report.xlsx"))
+    assert done.status_code == 200, done.text
+
+    feed = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:u1").one()
+    assert (feed.outcome, feed.cash_amount) == (ON_FILE, D("0"))
+
+    # The next refresh hands the same row back; it stays taken back.
+    ConnectionService(db, connector=object()).ingest_batch(
+        account, ActivityBatch(trades=[], cash=[], raw=[unnamed], skipped={}, security_type_sources={}))
+    db.refresh(feed)
+    assert (feed.outcome, feed.cash_amount) == (ON_FILE, D("0"))
