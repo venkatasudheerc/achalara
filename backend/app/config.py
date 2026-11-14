@@ -21,6 +21,20 @@ class Settings(BaseSettings):
     # The SnapTrade userId the brokerage logins were linked under. With a
     # Personal key this is one fixed id for the key owner.
     snaptrade_user_id: str = ""
+    # Plaid: clients link their own bank, card, loan and brokerage logins. One
+    # developer account (these keys) serves every client. PLAID_ENV is sandbox
+    # or production. PLAID_TOKEN_KEY encrypts each login's access key at rest
+    # (a Fernet key). Empty keys: linking with Plaid is not offered.
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"
+    plaid_token_key: str = ""
+    # Where a bank that signs in by redirect (OAuth) returns to; built from the
+    # domain in docker-compose.yml. Empty: Plaid's pop-up is used instead.
+    plaid_redirect_uri: str = ""
+    # How many logins the Plaid plan allows in all, across every client. The
+    # trial allows 10, and a removed login never frees its place.
+    plaid_max_logins: int = 10
     python_env: str = "development"
     log_level: str = "INFO"
     port: int = 8000

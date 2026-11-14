@@ -32,6 +32,8 @@ export default {
         'k-taxable': themed('k-taxable'), 'k-taxable-bg': themed('k-taxable-bg'),
         'k-retire': themed('k-retire'), 'k-retire-bg': themed('k-retire-bg'),
         'k-kids': themed('k-kids'), 'k-kids-bg': themed('k-kids-bg'),
+        'k-bank': themed('k-bank'), 'k-bank-bg': themed('k-bank-bg'),
+        'k-owed': themed('k-owed'), 'k-owed-bg': themed('k-owed-bg'),
       },
       // As text and outlines these need to lift off a dark page; as fills
       // (bg-pine, bg-gain, bg-loss) they stay the brand colours above.

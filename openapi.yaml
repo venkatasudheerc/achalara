@@ -3764,6 +3764,225 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/portal/links/plaid:
+    get:
+      tags:
+      - portal
+      summary: Portal Plaid Availability
+      description: Whether linking with Plaid is offered, and how many logins the plan has left.
+      operationId: portal_plaid_availability_api_v1_portal_links_plaid_get
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidLinkAvailability'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/start:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Start
+      description: A token that opens Plaid Link for this client.
+      operationId: portal_plaid_start_api_v1_portal_links_plaid_start_post
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidLinkStart'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/finish:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Finish
+      description: Keep the login Plaid Link made, and say what each of its accounts may be.
+      operationId: portal_plaid_finish_api_v1_portal_links_plaid_finish_post
+      parameters:
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaidLinkFinish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidFound'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/{connection_id}:
+    get:
+      tags:
+      - portal
+      summary: Portal Plaid Found
+      description: A linked login's accounts, each with what is proposed for it.
+      operationId: portal_plaid_found_api_v1_portal_links_plaid__connection_id__get
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Connection Id
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidFound'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/portal/links/plaid/{connection_id}/confirm:
+    post:
+      tags:
+      - portal
+      summary: Portal Plaid Confirm
+      description: Link, add or skip each account as chosen; new and linked ones get their first pull.
+      operationId: portal_plaid_confirm_api_v1_portal_links_plaid__connection_id__confirm_post
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Connection Id
+      - name: as_client
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Advisor only: the client whose portal to preview'
+          title: As Client
+        description: 'Advisor only: the client whose portal to preview'
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Achalara Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaidConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaidConfirmed'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/portal/groups:
     get:
       tags:
@@ -4955,6 +5174,243 @@ components:
             check:
               nullable: true
               allOf: [{$ref: "#/components/schemas/ImportCheck"}]
+
+    PlaidCandidate:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        name:
+          type: string
+          title: Name
+        last_four:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Four
+        shared:
+          type: boolean
+          title: Shared
+        relinked:
+          type: boolean
+          title: Relinked
+        same_last_four:
+          type: boolean
+          title: Same Last Four
+        same_institution:
+          type: boolean
+          title: Same Institution
+        same_holdings:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Same Holdings
+        same_balance:
+          type: boolean
+          title: Same Balance
+      type: object
+      required:
+      - account_id
+      - name
+      - shared
+      - relinked
+      - same_last_four
+      - same_institution
+      - same_balance
+      title: PlaidCandidate
+      description: One of the client's accounts this one might be, and the evidence.
+    PlaidChoice:
+      properties:
+        link_id:
+          type: string
+          title: Link Id
+        action:
+          type: string
+          enum:
+          - link
+          - new
+          - skip
+          title: Action
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+      type: object
+      required:
+      - link_id
+      - action
+      title: PlaidChoice
+    PlaidConfirm:
+      properties:
+        choices:
+          items:
+            $ref: '#/components/schemas/PlaidChoice'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Choices
+      type: object
+      required:
+      - choices
+      title: PlaidConfirm
+    PlaidConfirmed:
+      properties:
+        linked:
+          type: integer
+          title: Linked
+        added:
+          type: integer
+          title: Added
+        skipped:
+          type: integer
+          title: Skipped
+        waiting:
+          type: integer
+          title: Waiting
+      type: object
+      required:
+      - linked
+      - added
+      - skipped
+      - waiting
+      title: PlaidConfirmed
+    PlaidFound:
+      properties:
+        connection_id:
+          type: string
+          title: Connection Id
+        institution:
+          type: string
+          title: Institution
+        logins_left:
+          type: integer
+          title: Logins Left
+        accounts:
+          items:
+            $ref: '#/components/schemas/PlaidFoundAccount'
+          type: array
+          title: Accounts
+      type: object
+      required:
+      - connection_id
+      - institution
+      - logins_left
+      - accounts
+      title: PlaidFound
+    PlaidFoundAccount:
+      properties:
+        link_id:
+          type: string
+          title: Link Id
+        name:
+          type: string
+          title: Name
+        mask:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mask
+        plaid_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plaid Type
+        plaid_subtype:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plaid Subtype
+        kind:
+          type: string
+          title: Kind
+        owed:
+          type: boolean
+          title: Owed
+        balance:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Balance
+        status:
+          type: string
+          title: Status
+        proposal:
+          type: string
+          enum:
+          - same
+          - choose
+          - new
+          title: Proposal
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        candidates:
+          items:
+            $ref: '#/components/schemas/PlaidCandidate'
+          type: array
+          title: Candidates
+      type: object
+      required:
+      - link_id
+      - name
+      - kind
+      - owed
+      - status
+      - proposal
+      - candidates
+      title: PlaidFoundAccount
+    PlaidLinkAvailability:
+      properties:
+        available:
+          type: boolean
+          title: Available
+        logins_left:
+          type: integer
+          title: Logins Left
+      type: object
+      required:
+      - available
+      - logins_left
+      title: PlaidLinkAvailability
+      description: Whether linking with Plaid is offered, and how many logins are left.
+    PlaidLinkFinish:
+      properties:
+        public_token:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Public Token
+      type: object
+      required:
+      - public_token
+      title: PlaidLinkFinish
+      description: The token Plaid Link handed back.
+    PlaidLinkStart:
+      properties:
+        link_token:
+          type: string
+          title: Link Token
+        expiration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expiration
+        logins_left:
+          type: integer
+          title: Logins Left
+      type: object
+      required:
+      - link_token
+      - logins_left
+      title: PlaidLinkStart
 
     # ── Clients ──────────────────────────────────────────────────────────────
 
@@ -6697,6 +7153,14 @@ components:
           type: boolean
         kind:
           type: string
+          description: "taxable, retirement, kids, cash, checking, savings, credit_card, mortgage, car_loan or loan: chosen when the account was added, else read from its name"
+        owed:
+          type: boolean
+          default: false
+          description: A card or loan, whose value is what is owed (negative)
+        institution:
+          type: string
+          nullable: true
         value:
           type: number
           nullable: true

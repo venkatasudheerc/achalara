@@ -359,10 +359,14 @@ export type SecurityGroup = 'stock' | 'etf' | 'option' | 'other'
 
 export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy_name: string }
 /** What kind of account it is, read from the brokerage's name for it */
-export type AccountKind = 'taxable' | 'retirement' | 'kids' | 'cash'
+export type AccountKind =
+  | 'taxable' | 'retirement' | 'kids' | 'cash' | 'checking' | 'savings'
+  | 'credit_card' | 'mortgage' | 'car_loan' | 'loan'
 export interface PortalAccount extends VisibleAccount {
   owner_name: string
   kind: AccountKind
+  /** A card or loan: its value is what is owed, negative */
+  owed: boolean; institution: string | null
   /** The account now: holdings at live prices, options and cash as last reported;
    * what the Holdings view's account tile shows. `priced_at` is when prices were fetched. */
   value: number | null; priced_at: string | null
@@ -830,3 +834,25 @@ export interface ImportResult extends ImportPreview {
   /** Our holdings against the custodian's last recorded ones; null when none are on file */
   check: HoldingsCheck | null
 }
+
+// ── Linking with Plaid ────────────────────────────────────────────────────
+
+export interface PlaidLinkAvailability { available: boolean; logins_left: number }
+export interface PlaidLinkStart { link_token: string; expiration: string | null; logins_left: number }
+export interface PlaidCandidate {
+  account_id: string; name: string; last_four: string | null; shared: boolean
+  relinked: boolean; same_last_four: boolean; same_institution: boolean
+  /** null: no holdings on one side to compare */
+  same_holdings: boolean | null; same_balance: boolean
+}
+export interface PlaidFoundAccount {
+  link_id: string; name: string; mask: string | null
+  plaid_type: string | null; plaid_subtype: string | null
+  kind: AccountKind; owed: boolean; balance: number | null
+  status: 'unmapped' | 'mapped' | 'matched' | 'ignored'
+  proposal: 'same' | 'choose' | 'new'; account_id: string | null
+  candidates: PlaidCandidate[]
+}
+export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
+export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
+export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }

@@ -35,7 +35,7 @@ from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.services.account_kind import CASH, account_kind
+from app.services.account_kind import CASH, CHECKING, OWED, SAVINGS, kind_of
 from app.services.cash_activity_service import CashActivityService
 from app.services.cash_ledger import CashLedger
 from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
@@ -154,6 +154,11 @@ class _Holding:
         )
 
 
+# Accounts whose value is a balance, not investments: a change in it is money in
+# or out, except its interest, dividends, fees and tax.
+CASH_LIKE = (CASH, CHECKING, SAVINGS) + OWED
+
+
 class PerformanceBuildService:
     """Rebuilds the daily valuation rows of an account and its sleeves."""
 
@@ -178,7 +183,7 @@ class PerformanceBuildService:
         account = self.db.get(Account, account_id)
         # A cash account earns only its interest: every other change in its
         # balance is money moving in or out, whatever the transfers on file say.
-        cash_only = account is not None and account_kind(account.name) == CASH
+        cash_only = account is not None and kind_of(account) in CASH_LIKE
         cash_income = self._cash_account_income(sleeve_ids) if cash_only else {}
         stored = (
             self.db.query(Trade)

@@ -22,7 +22,7 @@ from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services import benchmarks
-from app.services.account_kind import account_kind
+from app.services.account_kind import OWED, kind_of
 from app.services.auth_service import AuthService, display_name, last_four
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, option_event
 from app.services.live_quotes import live_quotes
@@ -313,7 +313,9 @@ class PortalService:
         return [
             {
                 **self._account_fields(account, shared),
-                "kind": account_kind(account.name),
+                "kind": kind_of(account),
+                "owed": kind_of(account) in OWED,
+                "institution": account.institution,
                 "value": live.get(account.id),
                 "priced_at": priced_at,
                 "recorded_value": money(reported[account.id].total_value)

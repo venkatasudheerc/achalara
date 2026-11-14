@@ -72,6 +72,8 @@
     --k-taxable: 15 106 64;  --k-taxable-bg: 227 245 236;
     --k-retire: 138 79 0;    --k-retire-bg: 255 241 220;
     --k-kids: 142 42 91;     --k-kids-bg: 251 238 244;
+    --k-bank: 0 112 127;     --k-bank-bg: 224 244 246;
+    --k-owed: 88 92 118;     --k-owed-bg: 236 237 243;
     color-scheme: light;
   }
   :root.one-app.dark {
@@ -98,6 +100,8 @@
     --k-taxable: 111 214 160; --k-taxable-bg: 19 48 31;
     --k-retire: 242 190 107; --k-retire-bg: 58 42 16;
     --k-kids: 242 156 192;   --k-kids-bg: 58 22 38;
+    --k-bank: 110 210 222;   --k-bank-bg: 16 46 52;
+    --k-owed: 176 180 204;   --k-owed-bg: 38 39 52;
     color-scheme: dark;
   }
   :root.one-app body { font-family: 'Inter', system-ui, sans-serif; }

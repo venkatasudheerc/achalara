@@ -114,6 +114,15 @@ def password_problems(password: str, email: str) -> List[str]:
 
 
 def last_four(account: Account) -> Optional[str]:
+    """The last four digits of the institution's own number for the account, as
+    the owner sees them on statements: the ones recorded when it was linked,
+    else those of the full number the brokerage puts in its name, else those of
+    the stored account number (a feed's own numbering, which can differ)."""
+    if getattr(account, "last_four", None):
+        return account.last_four
+    in_name = re.findall(r"\d{6,}", account.name or "")
+    if in_name:
+        return in_name[-1][-4:]
     digits = re.sub(r"\D", "", account.account_number or "")
     return digits[-4:] if len(digits) >= 4 else None
 

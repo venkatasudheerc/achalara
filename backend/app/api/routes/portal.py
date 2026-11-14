@@ -29,6 +29,16 @@ from app.api.schemas.portal import (
     PortalRealizedResponse,
     PortalTradesResponse,
 )
+from app.api.schemas.plaid import (
+    PlaidConfirm,
+    PlaidConfirmed,
+    PlaidFound,
+    PlaidLinkAvailability,
+    PlaidLinkFinish,
+    PlaidLinkStart,
+)
+from app.connectors.plaid_connector import configured as plaid_configured
+from app.services.plaid_link_service import PlaidLinkError, PlaidLinkService
 from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.db.database import get_db
 from app.models.account import Account
@@ -495,3 +505,71 @@ def portal_import(
     """Add what the file holds that is not on file to one of the client's own
     accounts, rebuild its history and check its holdings."""
     return _import(viewer, db, account_id, file, write=True)
+
+
+# ----------------------------------------------------------------------
+# Linking with Plaid: the client links their own institution logins (an
+# advisor previewing does exactly what the client can)
+# ----------------------------------------------------------------------
+
+
+@contextmanager
+def _plaid_errors():
+    try:
+        yield
+    except PlaidLinkError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get("/links/plaid", response_model=PlaidLinkAvailability)
+def portal_plaid_availability(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """Whether linking with Plaid is offered, and how many logins the plan has left."""
+    service = PlaidLinkService(db)
+    return {"available": plaid_configured(), "logins_left": service.logins_left()}
+
+
+@router.post("/links/plaid/start", response_model=PlaidLinkStart)
+def portal_plaid_start(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """A token that opens Plaid Link for this client."""
+    with _plaid_errors():
+        return PlaidLinkService(db).start(viewer.client_id)
+
+
+@router.post("/links/plaid/finish", response_model=PlaidFound)
+def portal_plaid_finish(
+    body: PlaidLinkFinish,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Keep the login Plaid Link made, and say what each of its accounts may be."""
+    with _plaid_errors():
+        return PlaidLinkService(db).finish(viewer.client_id, body.public_token)
+
+
+@router.get("/links/plaid/{connection_id}", response_model=PlaidFound)
+def portal_plaid_found(
+    connection_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A linked login's accounts, each with what is proposed for it."""
+    with _plaid_errors():
+        return PlaidLinkService(db).found(viewer.client_id, connection_id)
+
+
+@router.post("/links/plaid/{connection_id}/confirm", response_model=PlaidConfirmed)
+def portal_plaid_confirm(
+    connection_id: str,
+    body: PlaidConfirm,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Link, add or skip each account as chosen; new and linked ones get their first pull."""
+    with _plaid_errors():
+        return PlaidLinkService(db).confirm(
+            viewer.client_id, connection_id, [c.model_dump() for c in body.choices]
+        )

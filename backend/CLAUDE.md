@@ -413,6 +413,37 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   stamps `clients.brokerage_link_started_at` and `discover` files a link seen for the first
   time under that client, falling back to the client asked about only when none started one.
 
+## Linking with Plaid
+
+A client adds their own accounts through Plaid (`connectors/plaid_connector.py`,
+`connectors/plaid_reader.py`, `services/plaid_link_service.py`, routes under
+`/portal/links/plaid`). One developer account (`PLAID_CLIENT_ID`, `PLAID_SECRET`) serves every
+client; each login a client links is a `brokerage_connections` row with `source = "plaid"` and
+its accounts are `brokerage_accounts` rows. Rules:
+
+- **The access key is stored only encrypted** (`access_token_enc`, `utils/secret_box.py`, key
+  `PLAID_TOKEN_KEY`). Never log it, return it, or keep it anywhere else.
+- **An account's identity is its own id; a link is Plaid's ids.** Institution and last four
+  (Plaid's `mask`, the real last four) are clues, never unique. `account_fingerprint` is not set
+  for Plaid: it needs the full number, which Plaid does not give for investments.
+- **Matching needs evidence and a person.** Candidates are only the client's own and shared
+  accounts. "same" needs exactly one candidate agreeing on institution and last four *and* on
+  holdings (symbol by symbol) or the observed balance to the cent; agreeing on less is "choose";
+  nothing is "new". Nothing is linked until `confirm`.
+- **Two feeds never write to one account.** Linking to an account another feed still writes to
+  sets the link `matched`, with no pull; the account is moved over later.
+- **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
+  the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
+  day late) with the total moved to match; same-day internal transfer pairs and sweeps are not
+  activity; bank and card rows are money in or out, with interest and bank fees their own
+  types. A card's or loan's balance is stored negative (`account_kind.OWED`), so totals are net
+  worth.
+- **The plan's limit:** every Plaid login ever linked counts (`PLAID_MAX_LOGINS`, the trial's
+  10); `start` refuses at the limit and the dialog warns when two or fewer are left.
+- SnapTrade's daily capture (`DailyCaptureService.capture_all`) is limited to SnapTrade logins.
+  A feed that fetched its own figures records its day through `DailyCaptureService.record`.
+- Tests never reach Plaid: they pass a fake client to `PlaidLinkService`.
+
 ## Market data: the `md` schema
 
 Reference data about securities and indices (`app/md/`, `DATA_MODEL.md` § "The `md` schema"),

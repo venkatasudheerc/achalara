@@ -158,6 +158,9 @@ fields within length limits and has no foreign keys; becoming a client is done b
 | name | String(255) | not null |
 | description | String(500) | nullable |
 | cost_basis_method | String(20) | not null, default `FIFO`; `MIN_TAX` where the brokerage is set that way |
+| kind | String(20) | nullable — chosen when added: `taxable`, `retirement`, `kids`, `cash`, `checking`, `savings`, `credit_card`, `mortgage`, `car_loan`, `loan`; NULL = read from the name (`account_kind.kind_of`) |
+| institution | String(255) | nullable — who holds it, e.g. "Vanguard" |
+| last_four | String(4) | nullable — the last four of the institution's own number (not a feed's numbering) |
 
 Relationships: `client` (N→1), `sleeves` (1→N, cascade delete).
 
@@ -450,6 +453,10 @@ fund's interest) are stored for audit and never counted. See `CashActivityServic
 | external_connection_id | String(255) | the source's id for the login |
 | institution | String(255) | e.g. "Vanguard" |
 | status | String(20) | `active` / `broken` / `deleted` |
+| access_token_enc | Text | nullable — a Plaid login's access key, encrypted with `PLAID_TOKEN_KEY` (`utils/secret_box.py`); never logged or returned |
+| products | String(255) | nullable — Plaid products the login was linked for |
+| consent_expires_at | DateTime(tz) | nullable — when the client's consent to share runs out, where the institution sets one |
+| transactions_cursor | Text | nullable — where Plaid's bank and card transactions were last read to |
 
 Constraints: `UNIQUE(source, external_connection_id)`. One row per brokerage login. Holds
 references only — no credentials and no secret (the Personal SnapTrade flow issues none).
@@ -467,7 +474,7 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
 | sleeve_routes | JSON | nullable — security type → sleeve id, e.g. `{"ETF": "…"}`; other types use `default_sleeve_id` |
 | sync_start_date | Date | nullable — earliest activity date to load; NULL = full history |
-| status | String(20) | `unmapped` / `mapped` / `ignored` |
+| status | String(20) | `unmapped` / `mapped` / `ignored`; Plaid also `matched`: linked to an account another feed still writes to, moved over later |
 | initial_sync_completed | Boolean | false while the source is still loading history |
 | transactions_synced_through | Date | nullable — the source's own completeness watermark |
 | last_synced_at | DateTime(tz) | nullable — gates the 24h-per-account sync limit |
@@ -475,6 +482,9 @@ references only — no credentials and no secret (the Personal SnapTrade flow is
 | reconciliation | JSON | nullable — `{matched, drifted[], unmatched_sells, skipped_rows}` |
 | cash_balance | Numeric(18,2) | nullable — cash the source last reported; NULL means cash is not tracked |
 | cash_balance_at | DateTime(tz) | nullable — when that was read |
+| persistent_account_id | String(255) | nullable — Plaid: the institution's id for the account that survives a relink |
+| mask | String(4) | nullable — Plaid: the real last four |
+| plaid_type, plaid_subtype | String(30), String(50) | nullable — Plaid: `investment`/`brokerage`, `depository`/`checking`, `credit`/`credit card`, `loan`/`mortgage`, … |
 
 Constraints: `UNIQUE(connection_id, external_account_ref)`.
 

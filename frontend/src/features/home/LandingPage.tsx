@@ -14,8 +14,9 @@ import { AccountRail } from './AccountRail'
 import { DashboardView } from './DashboardView'
 import { AccountsView, AnalysisView, IncomeView } from './MoreViews'
 import { GroupsDialog } from './GroupsDialog'
+import { AddAccountDialog } from './AddAccountDialog'
 import { ImportDialog } from '@/components/ImportDialog'
-import { KINDS, VIEWS, accountName, resolveSelection, useGroupBy, useHomeSelection, type View } from './selection'
+import { INVESTED, KINDS, VIEWS, accountName, resolveSelection, useGroupBy, useHomeSelection, type View } from './selection'
 
 const narrowScreen = () => window.matchMedia?.('(max-width: 767px)').matches ?? false
 
@@ -33,6 +34,7 @@ export function LandingPage() {
   const [railOpen, setRailOpen] = useState(() => !narrowScreen())
   const [editing, setEditing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [adding, setAdding] = useState(false)
   const narrow = narrowScreen()
 
   const accounts = useMemo(() => portal?.accounts ?? [], [portal])
@@ -44,7 +46,8 @@ export function LandingPage() {
 
   const chosen = resolveSelection(selection, accounts, groups)
   const accountIds = selection.type === 'all' ? undefined : chosen.map((a) => a.id)
-  const allCash = chosen.length > 0 && chosen.every((a) => a.kind === 'cash')
+  // Holdings, cost basis and analysis need investments; a bank, card or loan has none.
+  const allCash = chosen.length > 0 && chosen.every((a) => !INVESTED.includes(a.kind))
 
   // Views that cannot apply to what is chosen are not offered.
   const tabs = VIEWS.filter((v) => {
@@ -60,7 +63,14 @@ export function LandingPage() {
   if (isLoading) return <div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>
   if (isError || !portal) return <div className="p-[24px]"><ErrorState message={error?.message ?? 'Could not load your accounts.'} onRetry={() => refetch()} /></div>
   if (!accounts.length) {
-    return <div className="p-[24px]"><EmptyState title="No accounts yet" message="Once an account is linked, it will show here." /></div>
+    return (
+      <div className="p-[24px] flex flex-col items-center gap-[16px]">
+        <EmptyState title="No accounts yet" message="Add your first account: sign in to your bank, card, lender or brokerage." />
+        <button type="button" onClick={() => setAdding(true)}
+          className="h-[44px] px-[20px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold">+ Add an account</button>
+        <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
+      </div>
+    )
   }
 
   const name = (() => {
@@ -115,7 +125,7 @@ export function LandingPage() {
             accounts={accounts} groups={groups} viewerId={viewerId}
             groupBy={grouping} onGroupBy={setGroupBy} showPerson={showPerson}
             selection={selection} onSelect={pick} onHide={() => setRailOpen(false)}
-            onEditGroups={() => setEditing(true)} canEditGroups
+            onEditGroups={() => setEditing(true)} onAddAccount={() => setAdding(true)} canEditGroups
           />
         </div>
       )}
@@ -147,6 +157,7 @@ export function LandingPage() {
           </HomeSelection.Provider>
         </main>
       )}
+      <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
       <GroupsDialog open={editing} onClose={() => setEditing(false)} groups={groups} accounts={accounts} />
       {own && (
         <ImportDialog open={importing} onClose={() => setImporting(false)} door={{ kind: 'portal', accountId: own.id, asClient: preview }}

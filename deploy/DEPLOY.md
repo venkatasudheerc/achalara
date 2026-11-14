@@ -174,6 +174,24 @@ A link is a way in: the app shows the address and asks before sending, and sends
 login's own sign-in email. If a send fails the page says so and the link can still be copied;
 the reason is under **System status → Recent warnings**.
 
+## Linking with Plaid (clients add their own accounts)
+
+One Plaid developer account serves every client; each client signs in to their own
+institutions in Plaid's window, and each login uses one of the plan's places (the trial:
+10 in all, never freed). In `deploy/.env`:
+
+- `PLAID_CLIENT_ID`, `PLAID_SECRET` from Plaid's dashboard, and `PLAID_ENV` (`sandbox` or
+  `production`).
+- `PLAID_TOKEN_KEY`: encrypts each login's access key in the database. Make one with
+  `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+  and keep a copy with the backups: without it the stored logins cannot be used and every
+  client must link again.
+- `PLAID_MAX_LOGINS`: the plan's limit (10 on the trial).
+
+`docker-compose.yml` builds the return address for banks that sign in by redirect,
+`https://<DOMAIN>/home/plaid-return`; add it under Allowed redirect URIs in Plaid's
+dashboard. With the keys empty, "Link with Plaid" says linking is not set up.
+
 ## Notices from the brokerage source (webhook)
 
 Without this the app learns of changes only when it asks: the 8am sync, the evening capture

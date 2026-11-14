@@ -43,12 +43,14 @@ const sum = (xs: PortalAccount[]) => xs.reduce((t, a) => t + (a.value ?? 0), 0)
  */
 export function AccountRail({
   accounts, groups, viewerId, groupBy, onGroupBy, showPerson, selection, onSelect, onHide, onEditGroups,
-  canEditGroups, privateNote,
+  canEditGroups, privateNote, onAddAccount,
 }: {
   accounts: PortalAccount[]; groups: AccountGroup[]; viewerId?: string
   groupBy: GroupBy; onGroupBy: (g: GroupBy) => void; showPerson: boolean
   selection: Selection; onSelect: (s: Selection) => void; onHide: () => void
   onEditGroups: () => void; canEditGroups: boolean; privateNote?: string
+  /** Offered where the viewer may add accounts of their own */
+  onAddAccount?: () => void
 }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState('')
@@ -162,6 +164,12 @@ export function AccountRail({
           <button type="button" onClick={onEditGroups}
             className="h-[44px] rounded-[22px] border border-dashed border-stone/40 text-pine text-[14px] font-semibold hover:bg-line">
             {groups.length ? 'Edit my groups' : 'Make a group'}
+          </button>
+        )}
+        {onAddAccount && (
+          <button type="button" onClick={onAddAccount}
+            className="h-[44px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line">
+            + Add an account
           </button>
         )}
       </div>

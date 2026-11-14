@@ -30,6 +30,10 @@ from app.services.performance_build_service import (
 logger = logging.getLogger(__name__)
 
 
+# The feed this capture asks for its figures; other feeds record their own day.
+SNAPTRADE = "snaptrade"
+
+
 class DailyCaptureService:
     """Captures the brokerage's figures for the day into the perf schema."""
 
@@ -48,6 +52,8 @@ class DailyCaptureService:
             .filter(
                 BrokerageAccount.status == "mapped",
                 BrokerageConnection.status == "active",
+                # Other feeds (Plaid) record their own day as they refresh.
+                BrokerageConnection.source == SNAPTRADE,
             )
             .all()
         )
@@ -72,6 +78,7 @@ class DailyCaptureService:
             .filter(
                 BrokerageAccount.status == "mapped",
                 BrokerageConnection.status == "active",
+                BrokerageConnection.source == SNAPTRADE,
             )
         ]
         if not mapped:
@@ -107,7 +114,24 @@ class DailyCaptureService:
         remote = self.connections._remote_account(user_id, ba.external_account_ref)
         reported_total = remote.total_value if remote is not None else None
         cash = Decimal(str(ba.cash_balance)) if ba.cash_balance is not None else None
+        return self.record(ba, day, holdings, cash, reported_total)
 
+    def record(
+        self,
+        ba,
+        day: date,
+        holdings,
+        cash: Optional[Decimal],
+        reported_total,
+        valuation_adjustment: Optional[Decimal] = None,
+    ) -> Dict:
+        """Store one day as the institution reported it: its holdings (each with
+        the price it came with), its cash and its total. A feed that fetched the
+        figures itself (Plaid) records them through here. ``valuation_adjustment``
+        is passed to the reconciliation where the feed cannot work it out."""
+        if ba.status != "mapped" or not ba.default_sleeve_id or not ba.account_id:
+            raise ValueError("Map the account to a sleeve before capturing it")
+        now = datetime.now(timezone.utc)
         sleeve_ids = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(
@@ -214,7 +238,9 @@ class DailyCaptureService:
         # Brokerage figures are in hand, so refresh the comparison with our
         # trades from the same read, then work the day's flows and return in.
         try:
-            self.connections.reconcile(ba.id, holdings=holdings)
+            self.connections.reconcile(
+                ba.id, holdings=holdings, valuation_adjustment=valuation_adjustment
+            )
         except Exception as exc:  # noqa: BLE001
             self.db.rollback()
             logger.warning("Reconciliation failed for account %s: %s", ba.id, exc)

@@ -41,6 +41,8 @@ services:
       # Research's read-only login (create-md-reader.sh). With no password set yet,
       # the app ignores it and reads md through read-only sessions on DATABASE_URL.
       MD_READ_DATABASE_URL: postgresql://${MD_READER_USER:-md_reader}:${MD_READER_PASSWORD:-}@db:5432/${POSTGRES_DB:-achalara}
+      # A bank that signs in by redirect returns here; registered with Plaid.
+      PLAID_REDIRECT_URI: https://${DOMAIN}/home/plaid-return
       PYTHON_ENV: production
       SCHEDULER_ENABLED: "true"
       CORS_ALLOW_ORIGINS: https://${DOMAIN:?set DOMAIN in deploy/.env}

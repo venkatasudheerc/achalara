@@ -192,6 +192,14 @@ Each feature directory contains its page component(s). Implemented:
   fractions. It describes the past: no advice or forecast wording. The luck estimate
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
   members found it confusing, so `/home/research`, previews included, leaves it out.
+- `home/AddAccountDialog` ("+ Add an account" on the rail, and on the empty landing page; clients
+  and the advisor's preview): "Link with Plaid" loads Plaid's script from `cdn.plaid.com` only
+  when chosen, opens Plaid's window, then "What we found": each account with what is proposed
+  (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
+  Nothing is added until "Add these". "Upload files" is shown as coming later. Hooks in
+  `usePlaid.ts`. The kinds (`selection.ts` `KINDS`) include checking, savings, credit card,
+  mortgage, car loan and loan (colours `k-bank`, `k-owed`); `INVESTED` kinds alone offer
+  Holdings, Cost basis and Analysis. An owed account's value is negative, so totals are net worth.
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 - "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
   new app when the rail's selection is one account the client owns (not a shared one). An advisor's

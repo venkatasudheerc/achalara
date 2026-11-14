@@ -24,8 +24,11 @@ class PortalAccount(BaseModel):
     name: str
     number_last4: Optional[str] = None
     shared: bool
-    # taxable | retirement | kids | cash, read from the brokerage's account name
+    # taxable | retirement | kids | cash | checking | savings | credit_card |
+    # mortgage | car_loan | loan: chosen when added, else read from its name
     kind: str
+    owed: bool = False  # a card or loan: its value is what is owed, negative
+    institution: Optional[str] = None
     # The account now: holdings at live prices, options and cash as the custodian
     # last reported them; what the Holdings view's account tile shows.
     value: Optional[float] = None
