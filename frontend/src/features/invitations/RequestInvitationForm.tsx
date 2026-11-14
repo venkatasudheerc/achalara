@@ -1,9 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useRequestInvitation } from '@/hooks/useInvitations'
-
-const field =
-  'w-full rounded-btn border border-on-dark/25 bg-on-dark/5 px-16 py-3 text-sm text-on-dark placeholder:text-on-dark/40 focus:outline-none focus:border-gold'
-const label = 'block text-left text-xs font-mono uppercase tracking-wide text-on-dark/70 mb-2'
+import { authInput as field, authLabel as label, authSubmit } from '@/features/auth/AuthFrame'
 // Kept in step with the server's rules (backend/app/api/schemas/invitation.py).
 const MIN_NOTE = 50
 
@@ -12,7 +9,7 @@ function reasons(error: Error | null): string {
   return (error?.message ?? '').replace(/Value error, /g, '').replace(/value is not a valid email address: /g, '')
 }
 
-/** The public page's form: a visitor asks for an invitation. Sits on a dark panel in both themes. */
+/** A visitor asks for an invitation. Shown on its own page, in the sign-in look. */
 export function RequestInvitationForm() {
   const request = useRequestInvitation()
   const [name, setName] = useState('')
@@ -29,19 +26,19 @@ export function RequestInvitationForm() {
 
   if (request.isSuccess) {
     return (
-      <div className="max-w-xl mx-auto rounded-card border border-on-dark/20 bg-on-dark/5 px-8 py-10">
+      <div role="status" className="space-y-3">
         {request.data.confirm_by_email ? (
           <>
-            <p className="font-display text-2xl text-on-dark mb-3">Check your email.</p>
-            <p className="text-on-dark/70">
-              We have sent a link to <span className="text-on-dark">{email.trim()}</span>. Open it within 48 hours to
+            <p className="font-display text-[26px]">Check your email.</p>
+            <p className="text-[15px] leading-relaxed text-summit-ink/80">
+              We have sent a link to <strong>{email.trim()}</strong>. Open it within 48 hours to
               confirm your request; we see it once you have.
             </p>
           </>
         ) : (
           <>
-            <p className="font-display text-2xl text-on-dark mb-3">Thank you.</p>
-            <p className="text-on-dark/70">We have your request and will be in touch.</p>
+            <p className="font-display text-[26px]">Thank you.</p>
+            <p className="text-[15px] leading-relaxed text-summit-ink/80">We have your request and will be in touch.</p>
           </>
         )}
       </div>
@@ -50,8 +47,8 @@ export function RequestInvitationForm() {
   const noteLength = note.trim().replace(/\s+/g, ' ').length
 
   return (
-    <form onSubmit={submit} className="max-w-xl mx-auto text-left space-y-5">
-      <div className="grid sm:grid-cols-2 gap-5">
+    <form onSubmit={submit} className="space-y-5">
+      <div className="space-y-5">
         <div>
           <label htmlFor="invite-name" className={label}>Name</label>
           <input id="invite-name" required minLength={2} maxLength={120} autoComplete="name"
@@ -72,10 +69,10 @@ export function RequestInvitationForm() {
       </div>
       <div>
         <label htmlFor="invite-note" className={label}>Why are you interested, and how did you hear about us?</label>
-        <textarea id="invite-note" required minLength={MIN_NOTE} maxLength={1000} rows={4}
+        <textarea id="invite-note" required minLength={MIN_NOTE} maxLength={1000} rows={5}
           aria-describedby="invite-note-count"
-          value={note} onChange={(e) => setNote(e.target.value)} className={`${field} resize-y`} />
-        <p id="invite-note-count" className={`text-right text-xs mt-1 font-mono ${noteLength >= MIN_NOTE ? 'text-on-dark/50' : 'text-on-dark/70'}`}>
+          value={note} onChange={(e) => setNote(e.target.value)} className={`${field} h-auto py-[12px] resize-y`} />
+        <p id="invite-note-count" className="text-right text-[13px] mt-1 tabular-nums text-stone">
           {noteLength < MIN_NOTE ? `${MIN_NOTE - noteLength} more characters needed` : `${noteLength} / 1000`}
         </p>
       </div>
@@ -86,17 +83,14 @@ export function RequestInvitationForm() {
       </div>
 
       {request.isError && (
-        <p className="text-sm text-on-dark" role="alert">
+        <p className="px-3.5 py-3 rounded-btn bg-loss/10 text-loss text-sm leading-snug" role="alert">
           That could not be sent. {reasons(request.error) || 'Check each field and try again.'}
         </p>
       )}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-16 pt-2">
-        <p className="text-xs text-on-dark/60">All fields are needed. We use them only to reply to you.</p>
-        <button type="submit" disabled={request.isPending}
-          className="shrink-0 px-10 py-3 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors disabled:opacity-60">
-          {request.isPending ? 'Sending…' : 'Request an invitation'}
-        </button>
-      </div>
+      <button type="submit" disabled={request.isPending} className={authSubmit}>
+        {request.isPending ? 'Sending…' : 'Request an invitation'}
+      </button>
+      <p className="text-[13px] text-stone">All fields are needed. We use them only to reply to you.</p>
     </form>
   )
 }

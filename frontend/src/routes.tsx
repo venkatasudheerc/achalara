@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
-import { HomePage } from '@/features/HomePage'
 import { PerformancePage } from '@/features/performance/PerformancePage'
 import { ClientsPage } from '@/features/clients/ClientsPage'
 import { ClientDetailPage } from '@/features/clients/ClientDetailPage'
@@ -13,6 +12,8 @@ import { StatusPage } from '@/features/status/StatusPage'
 import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
 import { ResearchPage } from '@/features/research/ResearchPage'
 import { RequestsPage } from '@/features/invitations/RequestsPage'
+import { HomePage } from '@/features/HomePage'
+import { RequestInvitationPage } from '@/features/invitations/RequestInvitationPage'
 import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
 import { RiskPage } from '@/features/RiskPage'
@@ -52,7 +53,11 @@ function HomeResearch() {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      {/* No public front page: the way in is sign-in, or a request for an invitation. */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/request-invitation" element={<RequestInvitationPage />} />
+      {/* The old marketing page, kept at an address nothing links to. */}
+      <Route path="/about" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<AcceptLinkPage />} />
       <Route path="/reset/:token" element={<AcceptLinkPage />} />
@@ -89,7 +94,7 @@ export function AppRoutes() {
         {/* The old portal's addresses, kept for bookmarks: each opens the matching place in the new app. */}
         <Route path="/portal/*" element={<OldPortalRedirect />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
 }

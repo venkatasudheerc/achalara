@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom'
-import { RequestInvitationForm } from '@/features/invitations/RequestInvitationForm'
 
 const THEMES = [
   {
@@ -214,7 +213,10 @@ export function HomePage() {
         <p className="text-on-dark/60 text-lg max-w-lg mx-auto mb-12">
           Achalara is by invitation. Tell us a little about yourself and we will be in touch.
         </p>
-        <RequestInvitationForm />
+        <button onClick={() => navigate('/request-invitation')}
+          className="px-10 py-3 rounded-btn bg-gold text-on-gold text-sm font-semibold hover:bg-gold/90 transition-colors">
+          Request an invitation
+        </button>
         <p className="text-sm text-on-dark/60 mt-10">
           Already invited?{' '}
           <button onClick={() => navigate('/login')} className="text-on-dark underline underline-offset-2 hover:text-gold">
