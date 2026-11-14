@@ -12,6 +12,7 @@ import { StatusPage } from '@/features/status/StatusPage'
 import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
 import { ResearchPage } from '@/features/research/ResearchPage'
 import { RequestsPage } from '@/features/invitations/RequestsPage'
+import { HomePage } from '@/features/HomePage'
 import { RequestInvitationPage } from '@/features/invitations/RequestInvitationPage'
 import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
 import { PortfolioPage } from '@/features/PortfolioPage'
@@ -55,6 +56,8 @@ export function AppRoutes() {
       {/* No public front page: the way in is sign-in, or a request for an invitation. */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/request-invitation" element={<RequestInvitationPage />} />
+      {/* The old marketing page, kept at an address nothing links to. */}
+      <Route path="/about" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<AcceptLinkPage />} />
       <Route path="/reset/:token" element={<AcceptLinkPage />} />

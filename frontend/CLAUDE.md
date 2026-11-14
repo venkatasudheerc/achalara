@@ -49,7 +49,8 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 There is no public front page: `/` (and any unknown address) opens `/login`, whose "Request an
 invitation" link is the way in for someone new. `/login`, `/request-invitation`,
 `/request-invitation/confirm/:token`, `/invite/:token` and `/reset/:token` are open, all in the
-sign-in look (`AuthFrame`). Everything else sits under
+sign-in look (`AuthFrame`). The old marketing page (`features/HomePage`, dark in both themes) is
+kept at `/about`, which nothing links to; its "Request an invitation" opens `/request-invitation`. Everything else sits under
 `<RequireAuth role=…>` (`src/features/auth/RequireAuth.tsx`): the advisor workspace at `/app/*`,
 **the new app at `/home/*`** (where a client lands after signing in). The old client portal is
 retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
