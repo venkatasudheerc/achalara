@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMe } from '@/hooks/useAuth'
-import { usePortalAccounts, usePortalGroups, usePreviewClient } from '@/hooks/usePortal'
+import { usePortalAccounts, usePortalGroups } from '@/hooks/usePortal'
 import { formatCurrency } from '@/lib/formatters'
 import { Tabs } from '@/features/research/ui'
 import { HomeSelection } from '@/features/portal/ui'
@@ -24,8 +23,6 @@ const narrowScreen = () => window.matchMedia?.('(max-width: 767px)').matches ?? 
  * tabs across the page choose the view, and every view answers for that choice.
  */
 export function LandingPage() {
-  const { data: me } = useMe()
-  const preview = usePreviewClient()
   const { data: portal, isLoading, isError, error, refetch } = usePortalAccounts()
   const { data: groups = [] } = usePortalGroups()
   const { selection, view, select, setView } = useHomeSelection()
@@ -111,7 +108,7 @@ export function LandingPage() {
             accounts={accounts} groups={groups} viewerId={viewerId}
             groupBy={grouping} onGroupBy={setGroupBy} showPerson={showPerson}
             selection={selection} onSelect={pick} onHide={() => setRailOpen(false)}
-            onEditGroups={() => setEditing(true)} canEditGroups={!preview && me?.role !== 'advisor'}
+            onEditGroups={() => setEditing(true)} canEditGroups
           />
         </div>
       )}

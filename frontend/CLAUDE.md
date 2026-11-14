@@ -59,7 +59,8 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 **view tabs**:
 - The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
   (only when more than one owner is in view), Kind (`account.kind`) or My groups
-  (`/portal/groups`, edited in `GroupsDialog`; an advisor's preview cannot edit them).
+  (`/portal/groups`, edited in `GroupsDialog`, in an advisor's preview too: it is exactly what
+  the client sees).
 - The selection and the open view live in the address, `?sel=all|owner:<id>|kind:<kind>|group:<id>|account:<id>&view=…`
   (`selection.ts`), and become `account_ids` on every portal request.
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;
