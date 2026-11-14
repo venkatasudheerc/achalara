@@ -663,6 +663,8 @@ export interface StatusBrokerageAccount {
   /** The latest day with the brokerage's own holdings and total on record */
   captured_through: string | null
   holdings_differ: number | null; skipped_rows: number
+  /** The first recorded day holdings differed, and where a report should start */
+  holdings_differ_since: string | null; download_from: string | null
 }
 /** One brokerage login, and whether the source is still sharing it */
 export interface StatusBrokerageLink {
@@ -793,6 +795,15 @@ export interface ImportTrade { action: TradeAction; symbol: string; quantity: nu
 /** `amount` is positive for money received */
 export interface ImportCash { type: string; symbol: string | null; amount: number }
 export interface ImportDay { date: string; trades: ImportTrade[]; cash: ImportCash[] }
+/** The account's holdings against the custodian's record, and what to download */
+export interface HoldingsCheck {
+  as_of: string; matched: number
+  differences: { symbol: string; custodian_quantity: number; our_quantity: number }[]
+  /** The last recorded day holdings agreed, and the first they differed after it (null while they agree) */
+  last_agreed: string | null; first_differed: string | null
+  /** Where a report should start to cover what is missing; null while they agree */
+  download_from: string | null
+}
 export interface ImportPreview {
   account_id: string
   file_kind: 'vanguard_activity' | 'template'
@@ -812,10 +823,5 @@ export interface ImportPreview {
 export interface ImportResult extends ImportPreview {
   added_trades: number; added_cash: number
   /** Our holdings against the custodian's last recorded ones; null when none are on file */
-  check: {
-    as_of: string; matched: number
-    differences: { symbol: string; custodian_quantity: number; our_quantity: number }[]
-    /** The last recorded day holdings agreed, and the first they differed after it (null while they agree) */
-    last_agreed: string | null; first_differed: string | null
-  } | null
+  check: HoldingsCheck | null
 }

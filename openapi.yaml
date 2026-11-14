@@ -938,6 +938,29 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/clients/{client_id}/accounts/{account_id}/imports/check:
+    get:
+      tags: [accounts]
+      summary: Whether the account's holdings agree with the custodian's record
+      description: Compares every day the custodian recorded holdings with what the trades on file add up to, and says from which date a report should be downloaded to cover what is missing. Null before any record. 
+      operationId: accountHoldingsCheck
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      responses:
+        "200":
+          description: The check, or null when the custodian has never recorded the account's holdings
+          content:
+            application/json:
+              schema:
+                nullable: true
+                allOf: [{$ref: "#/components/schemas/ImportCheck"}]
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/clients/{client_id}/accounts/{account_id}/imports/preview:
     post:
       tags: [accounts]
@@ -3558,6 +3581,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/portal/accounts/{account_id}/imports/check:
+    get:
+      tags: [portal]
+      summary: Whether the account's holdings agree with the custodian's record
+      description: Compares every day the custodian recorded holdings with what the trades on file add up to, and says from which date a report should be downloaded to cover what is missing. Null before any record. Only for an account the client owns.
+      operationId: portalHoldingsCheck
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: as_client
+          in: query
+          required: false
+          schema:
+            type: string
+            nullable: true
+          description: An advisor previewing this client
+      responses:
+        "200":
+          description: The check, or null when the custodian has never recorded the account's holdings
+          content:
+            application/json:
+              schema:
+                nullable: true
+                allOf: [{$ref: "#/components/schemas/ImportCheck"}]
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/portal/accounts/{account_id}/imports/preview:
     post:
       tags: [portal]
@@ -4889,7 +4945,8 @@ components:
         matched: {type: integer}
         differences: {type: array, items: {$ref: "#/components/schemas/ImportDifference"}}
         last_agreed: {type: string, format: date, nullable: true, description: The last recorded day our holdings agreed with the custodian's}
-        first_differed: {type: string, format: date, nullable: true, description: The first recorded day they differed after it; null while they agree now. A report from last_agreed to today covers what is missing}
+        first_differed: {type: string, format: date, nullable: true, description: The first recorded day they differed after it; null while they agree now}
+        download_from: {type: string, format: date, nullable: true, description: "Where a report should start to cover what is missing: last_agreed, or four weeks before first_differed when even the first record differs; null while they agree"}
 
     ImportPreview:
       type: object
@@ -7799,6 +7856,17 @@ components:
         holdings_differ:
           type: integer
           nullable: true
+          description: Holdings that differ from the custodian's last record (the same check an upload makes)
+        holdings_differ_since:
+          type: string
+          format: date
+          nullable: true
+          description: The first recorded day they differed, after they last agreed
+        download_from:
+          type: string
+          format: date
+          nullable: true
+          description: Where a custodian's activity report should start to cover what is missing
         skipped_rows:
           type: integer
           default: 0

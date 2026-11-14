@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { ImportDoor } from '@/api/endpoints/imports'
-import type { ImportDay, ImportPreview, ImportResult } from '@/api/types'
-import { useAccountImport } from '@/hooks/useImports'
+import type { HoldingsCheck, ImportDay, ImportPreview, ImportResult } from '@/api/types'
+import { useAccountImport, useHoldingsCheck } from '@/hooks/useImports'
 import { formatCurrency, formatDate, formatNumber, securityLabel } from '@/lib/formatters'
 
 const plural = (n: number, one: string, many = `${one}s`) => `${formatNumber(n, 0)} ${n === 1 ? one : many}`
@@ -71,6 +71,34 @@ function Preview({ p }: { p: ImportPreview }) {
   )
 }
 
+/** Before a file is chosen: whether anything looks missing, and which dates to download. */
+function WhatToDownload({ check, loading }: { check: HoldingsCheck | null | undefined; loading: boolean }) {
+  if (loading) return <p className="text-[14px] text-stone">Checking this account against the institution’s record…</p>
+  if (!check) return null
+  if (!check.differences.length) {
+    return (
+      <p className="text-[15px] leading-relaxed">
+        <span className="text-gain font-semibold">Holdings match</span> the institution’s record of {formatDate(check.as_of)}.
+        Upload a report only if you know something is missing.
+      </p>
+    )
+  }
+  return (
+    <div className="rounded-[14px] bg-accent-soft p-[16px] flex flex-col gap-[6px]">
+      <p className="text-[15px] leading-relaxed">
+        <span className="text-loss font-semibold">{plural(check.differences.length, 'holding')} differ</span>{' '}
+        from the institution’s record of {formatDate(check.as_of)}.{' '}
+        {check.last_agreed
+          ? <>They last agreed on {formatDate(check.last_agreed)}.</>
+          : check.first_differed ? <>They already differed on the first record there is, {formatDate(check.first_differed)}.</> : null}
+      </p>
+      {check.download_from && (
+        <p className="text-[15px] font-semibold">Download the activity report from {formatDate(check.download_from)} to today.</p>
+      )}
+    </div>
+  )
+}
+
 function Result({ r }: { r: ImportResult }) {
   const added = [
     r.added_trades ? plural(r.added_trades, 'trade') : '',
@@ -93,11 +121,10 @@ function Result({ r }: { r: ImportResult }) {
             from the institution’s record of {formatDate(r.check.as_of)}.
           </p>
           <p className="text-[15px] leading-relaxed">
-            {r.check.first_differed && r.check.last_agreed
-              ? <>They last agreed on <strong>{formatDate(r.check.last_agreed)}</strong> and first differed on {formatDate(r.check.first_differed)}. A report from {formatDate(r.check.last_agreed)} to today will cover what is missing.</>
-              : r.check.first_differed
-                ? <>They already differed on the first record there is, {formatDate(r.check.first_differed)}, so what is missing is earlier. Start the report a few weeks before that date, and go further back if they still differ.</>
-                : 'A report covering more dates may fill the gap.'}
+            {r.check.last_agreed
+              ? <>They last agreed on {formatDate(r.check.last_agreed)} and first differed on {formatDate(r.check.first_differed)}.</>
+              : r.check.first_differed ? <>They already differed on the first record there is, {formatDate(r.check.first_differed)}, so what is missing is earlier.</> : null}
+            {r.check.download_from && <> <strong>Download the activity report from {formatDate(r.check.download_from)} to today</strong>, and go further back if they still differ.</>}
           </p>
           <ul className="text-[14px] flex flex-col gap-[4px]">
             {r.check.differences.map((d) => (
@@ -120,6 +147,7 @@ export function ImportDialog({ open, onClose, door, accountName }: {
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const { preview, apply } = useAccountImport(door)
+  const check = useHoldingsCheck(door, open)
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -158,6 +186,7 @@ export function ImportDialog({ open, onClose, door, accountName }: {
 
         {apply.data ? <Result r={apply.data} /> : preview.data && file ? <Preview p={preview.data} /> : (
           <div className="flex flex-col gap-[14px]">
+            <WhatToDownload check={check.data} loading={check.isLoading} />
             <p className="text-[15px] leading-relaxed text-summit-ink/80">
               From Vanguard, download the account’s activity report (Excel) and drop it here. For any other institution, fill in our template.
               Only what is not already here is added, and you see it before anything changes.

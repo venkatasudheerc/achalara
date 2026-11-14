@@ -29,7 +29,7 @@ from app.api.schemas.portal import (
     PortalRealizedResponse,
     PortalTradesResponse,
 )
-from app.api.schemas.imports import ImportPreview, ImportResult
+from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.db.database import get_db
 from app.models.account import Account
 from app.services.account_import_service import (
@@ -466,6 +466,17 @@ def _import(viewer, db, account_id: str, file: UploadFile, write: bool):
         return service.preview(account, file.filename or "", content)
     except AccountImportError as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get("/accounts/{account_id}/imports/check", response_model=Optional[ImportCheck])
+def portal_holdings_check(
+    account_id: str,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Whether one of the client's own accounts agrees with the custodian's
+    record, and if not, from which date a report should be downloaded."""
+    return AccountImportService(db).holdings_check(_own_account(viewer, db, account_id))
 
 
 @router.post("/accounts/{account_id}/imports/preview", response_model=ImportPreview)

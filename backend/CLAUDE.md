@@ -373,10 +373,14 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   activity. Splits and mergers are not read. Added rows are stored in `brokerage_activities`
   with their cash, under ids starting `vanguard:` (`REPORT_ID_PREFIX`); `rederive` leaves those
   out, and ingestion recognises a feed trade or cash row that matches one, so a day is never
-  counted twice. After an import the holdings check (`AccountImportService._check`) also says
-  when holdings last agreed with the custodian's record and first differed after it
-  (`last_agreed`, `first_differed`, from every recorded day; options and the feed's "~" names
-  of securities that no longer trade are not compared), so only those dates need downloading.
+  counted twice. **One holdings check** (`AccountImportService.holdings_check`) compares every
+  day the custodian recorded holdings with what the trades add up to and says which differ, when
+  they last agreed and first differed (`last_agreed`, `first_differed`), and where a report should
+  start (`download_from`: the last day they agreed, or 28 days before the first record when even
+  that differs). Options and the feed's "~" names of securities that no longer trade are not
+  compared. It is asked before an upload (`GET …/imports/check`, both doors), shown after one,
+  and System status reads it for its holdings column (`holdings_differ`,
+  `holdings_differ_since`, `download_from`), so all three always agree.
   The file itself is never kept. A shared account takes no uploads. An advisor
   previewing a client (`as_client`) sees and may use exactly what the client does.
 - Rows the connector still cannot represent are skipped **and counted**

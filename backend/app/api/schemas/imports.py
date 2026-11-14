@@ -49,6 +49,8 @@ class ImportCheck(BaseModel):
     # from the first date to today covers what is missing.
     last_agreed: Optional[date] = None
     first_differed: Optional[date] = None
+    # Where a report should start to cover what is missing; None while they agree.
+    download_from: Optional[date] = None
 
 
 class ImportPreview(BaseModel):

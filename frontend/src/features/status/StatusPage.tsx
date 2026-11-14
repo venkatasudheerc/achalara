@@ -182,6 +182,12 @@ function Accounts({ status, now }: { status: SystemStatusResponse; now: number }
                     {a.holdings_differ == null ? <span className="text-stone">Not checked</span>
                       : a.holdings_differ === 0 ? 'Match'
                       : <span className="text-loss">{a.holdings_differ} differ</span>}
+                    {a.holdings_differ ? (a.holdings_differ_since || a.download_from) && (
+                      <div className="text-xs text-stone">
+                        {a.holdings_differ_since && `since ${formatDate(a.holdings_differ_since)}`}
+                        {a.download_from && ` · report from ${formatDate(a.download_from)}`}
+                      </div>
+                    ) : null}
                     {a.skipped_rows > 0 && <div className="text-xs text-stone">{a.skipped_rows} rows skipped</div>}
                   </td>
                 </tr>

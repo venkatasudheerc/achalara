@@ -19,7 +19,7 @@ from app.services.account_import_service import (
 from app.services.auth_service import AuthService
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.api.schemas.imports import ImportPreview, ImportResult
+from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
 from app.api.schemas.performance import (
     LevelPerformance,
     MonthlyReturnsResponse,
@@ -307,6 +307,16 @@ def _import(db: Session, client_id: str, account_id: str, file: UploadFile, writ
         return service.preview(account, file.filename or "", content)
     except AccountImportError as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+@router.get(
+    "/{client_id}/accounts/{account_id}/imports/check",
+    response_model=Optional[ImportCheck],
+)
+def account_holdings_check(client_id: str, account_id: str, db: Session = Depends(get_db)):
+    """Whether the account's holdings agree with the custodian's record, and if
+    not, from which date a report should be downloaded. None before any record."""
+    return AccountImportService(db).holdings_check(_account_or_404(db, client_id, account_id))
 
 
 @router.post(

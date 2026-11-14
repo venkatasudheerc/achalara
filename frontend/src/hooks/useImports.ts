@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { importsApi, type ImportDoor } from '@/api/endpoints/imports'
 
 /** Preview and import a custodian's file into one account. After an import every
@@ -13,7 +13,17 @@ export function useAccountImport(door: ImportDoor) {
         qc.invalidateQueries({ queryKey: ['portal'] })
         qc.invalidateQueries({ queryKey: ['accounts'] })
         qc.invalidateQueries({ queryKey: ['performance'] })
+        qc.invalidateQueries({ queryKey: ['holdings-check'] })
       },
     }),
   }
+}
+
+/** The account's holdings against the custodian's record, asked before any upload. */
+export function useHoldingsCheck(door: ImportDoor, enabled: boolean) {
+  return useQuery({
+    queryKey: ['holdings-check', door],
+    queryFn: () => importsApi.check(door),
+    enabled,
+  })
 }

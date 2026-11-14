@@ -157,9 +157,41 @@ def test_the_check_says_when_holdings_last_agreed_and_first_differed(db, account
     db.commit()
 
     service = AccountImportService(db)
-    assert service._agreement(acct) == (date(2026, 10, 2), date(2026, 10, 9))
+    check = service.holdings_check(acct)
+    assert (check["last_agreed"], check["first_differed"]) == (date(2026, 10, 2), date(2026, 10, 9))
+    assert check["download_from"] == date(2026, 10, 2)
+    assert check["differences"] == [{"symbol": "AAA", "custodian_quantity": 4.0, "our_quantity": 10.0}]
 
     # Once the sale is on file, they agree throughout.
     _on_file(db, account, date(2026, 10, 5), "AAA", "SELL", 6, 55, ext="sale")
     db.commit()
-    assert service._agreement(acct) == (date(2026, 10, 12), None)
+    check = service.holdings_check(acct)
+    assert (check["last_agreed"], check["first_differed"], check["download_from"]) == (
+        date(2026, 10, 12), None, None
+    )
+    assert check["differences"] == []
+
+
+def test_when_even_the_first_record_differs_the_download_starts_weeks_before(db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+    from app.services.account_import_service import AccountImportService
+
+    acct = db.get(Account, account.account_id)
+    db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
+                        quantity=D(4), price=D(50), market_value=D(200)))
+    db.commit()
+    check = AccountImportService(db).holdings_check(acct)
+    assert check["last_agreed"] is None and check["first_differed"] == date(2026, 10, 9)
+    assert check["download_from"] == date(2026, 9, 11)
+
+
+def test_the_check_can_be_asked_for_before_any_upload(client, db, account):
+    acct = db.get(Account, account.account_id)
+    advisor = client.get(f"{_base(account, db)}/check")
+    assert advisor.status_code == 200 and advisor.json() is None  # nothing recorded yet
+    _as_client(acct.client_id)
+    own = client.get(f"/api/v1/portal/accounts/{acct.id}/imports/check")
+    assert own.status_code == 200

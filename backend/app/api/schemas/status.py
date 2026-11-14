@@ -46,6 +46,10 @@ class StatusBrokerageAccount(BaseModel):
     # The latest day with the brokerage's own holdings and total on record.
     captured_through: Optional[date] = None
     holdings_differ: Optional[int] = None  # None until a reconciliation has run
+    # The first recorded day holdings differed (after they last agreed), and the
+    # date a custodian's report should start from to cover what is missing.
+    holdings_differ_since: Optional[date] = None
+    download_from: Optional[date] = None
     skipped_rows: int = 0
 
 

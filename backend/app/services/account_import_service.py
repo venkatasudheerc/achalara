@@ -18,7 +18,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
@@ -65,6 +65,8 @@ TEMPLATE_TYPES = {
 
 # Share counts within this of each other agree (rounding of fractional shares).
 _AGREE = Decimal("0.01")
+# When even the first record differs, what is missing is earlier: start this far back.
+_LOOK_BACK = timedelta(days=28)
 
 
 def _compared(symbol: str) -> bool:
@@ -271,7 +273,7 @@ class AccountImportService:
             summary["added_cash"] = result["cash_imported"]
         else:
             summary["added_trades"] = summary["added_cash"] = 0
-        summary["check"] = self._check(ba, account)
+        summary["check"] = self.holdings_check(account)
         return summary
 
     # ------------------------------------------------------------------
@@ -297,42 +299,22 @@ class AccountImportService:
             )
         ]
 
-    def _check(self, ba: BrokerageAccount, account: Account) -> Optional[Dict]:
-        """Our holdings against the custodian's last recorded ones, symbol by symbol."""
-        last = (
-            self.db.query(func.max(DailyHolding.as_of_date))
-            .filter(DailyHolding.account_id == account.id)
-            .scalar()
-        )
-        if last is None:
-            return None
-        self.db.refresh(ba)
-        report = ba.reconciliation or {}
-        last_agreed, first_differed = self._agreement(account)
-        return {
-            "as_of": last,
-            "matched": report.get("matched", 0),
-            "last_agreed": last_agreed,
-            "first_differed": first_differed,
-            "differences": [
-                {
-                    "symbol": row["symbol"],
-                    "custodian_quantity": row["brokerage_quantity"],
-                    "our_quantity": row["derived_quantity"],
-                }
-                for row in report.get("drifted", [])
-                if _compared(row["symbol"])
-            ],
-        }
+    def holdings_check(self, account: Account) -> Optional[Dict]:
+        """Our holdings against the custodian's record, and what to download.
 
-    def _agreement(self, account: Account) -> Tuple[Optional[date], Optional[date]]:
-        """When our holdings last agreed with the custodian's record, and the first
-        recorded day they differed after that (None while they agree now).
+        Every day the custodian recorded holdings is compared with what our
+        trades add up to, symbol by symbol. Returns the latest recorded day and
+        the holdings that differ on it, the last day they agreed and the first
+        day they differed after it (None while they agree now), and the date a
+        report should start from to cover what is missing: the last day they
+        agreed, or a few weeks before the first record when even that differs.
+        None when the custodian has never recorded the account's holdings.
 
-        Every day the custodian listed holdings is compared with what our trades
-        add up to, symbol by symbol (options aside: the record never lists them).
-        A record may or may not include that day's own trades, so it agrees if it
-        matches either. A reported day that listed nothing means nothing was held.
+        Options are left out (the record never lists them), as is anything the
+        feed names by its company with a leading "~" (a security that no longer
+        trades). A record may or may not include that day's own trades, so a day
+        agrees if it matches either; a reported day that listed nothing means
+        nothing was held.
         """
         sleeve_ids = [
             row[0] for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account.id)
@@ -341,11 +323,11 @@ class AccountImportService:
         for day, symbol, quantity in self.db.query(
             DailyHolding.as_of_date, DailyHolding.symbol, DailyHolding.quantity
         ).filter(DailyHolding.account_id == account.id):
+            held = recorded[day]
             if _compared(symbol):
-                held = recorded[day]
                 held[symbol] = held.get(symbol, Decimal(0)) + Decimal(str(quantity))
         if not recorded:
-            return None, None
+            return None
         first_listed = min(recorded)
         for (day,) in self.db.query(DailyValuation.as_of_date).filter(
             DailyValuation.account_id == account.id,
@@ -369,30 +351,51 @@ class AccountImportService:
             key=lambda t: t.trade_date,
         )
 
-        def same(ours: Dict[str, Decimal], theirs: Dict[str, Decimal]) -> bool:
-            return all(
-                abs(ours.get(s, Decimal(0)) - theirs.get(s, Decimal(0))) <= _AGREE
-                for s in set(ours) | set(theirs)
-            )
+        def differing(ours: Dict[str, Decimal], theirs: Dict[str, Decimal]) -> List[Dict]:
+            return [
+                {
+                    "symbol": symbol,
+                    "custodian_quantity": float(theirs.get(symbol, Decimal(0))),
+                    "our_quantity": float(ours.get(symbol, Decimal(0))),
+                }
+                for symbol in sorted(set(ours) | set(theirs))
+                if abs(ours.get(symbol, Decimal(0)) - theirs.get(symbol, Decimal(0))) > _AGREE
+            ]
 
         position: Dict[str, Decimal] = {}
         at = 0
         last_agreed = first_differed = None
+        differences: List[Dict] = []
+        compared = 0
         for day in sorted(recorded):
             while at < len(trades) and trades[at].trade_date < day:
                 _apply(position, trades[at])
                 at += 1
-            before = dict(position)
             through = dict(position)
             later = at
             while later < len(trades) and trades[later].trade_date == day:
                 _apply(through, trades[later])
                 later += 1
-            if same(before, recorded[day]) or same(through, recorded[day]):
+            differences = min(
+                differing(position, recorded[day]), differing(through, recorded[day]), key=len
+            )
+            compared = len(set(recorded[day]) | {s for s, q in position.items() if abs(q) > _AGREE})
+            if not differences:
                 last_agreed, first_differed = day, None
             elif first_differed is None:
                 first_differed = day
-        return last_agreed, first_differed
+
+        download_from = None
+        if first_differed is not None:
+            download_from = last_agreed or first_differed - _LOOK_BACK
+        return {
+            "as_of": max(recorded),
+            "matched": max(compared - len(differences), 0),
+            "differences": differences,
+            "last_agreed": last_agreed,
+            "first_differed": first_differed,
+            "download_from": download_from,
+        }
 
     @staticmethod
     def _summary(account: Account, kind: str, plan: Plan) -> Dict:

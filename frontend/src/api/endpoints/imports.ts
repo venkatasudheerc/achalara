@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { ImportPreview, ImportResult } from '../types'
+import type { HoldingsCheck, ImportPreview, ImportResult } from '../types'
 
 /**
  * Where an upload goes. A client imports into an account they own through the
@@ -24,6 +24,9 @@ const params = (door: ImportDoor) =>
   door.kind === 'portal' && door.asClient ? { as_client: door.asClient } : undefined
 
 export const importsApi = {
+  /** Whether the holdings agree with the custodian's record, and from which date to download. */
+  check: (door: ImportDoor) =>
+    apiClient.get<HoldingsCheck | null>(`${path(door)}/check`, { params: params(door) }).then((r) => r.data),
   /** What the file would add. Nothing is written. */
   preview: (door: ImportDoor, file: File) =>
     apiClient.post<ImportPreview>(`${path(door)}/preview`, form(file), { params: params(door) }).then((r) => r.data),
