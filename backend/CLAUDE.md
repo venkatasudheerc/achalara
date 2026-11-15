@@ -329,7 +329,7 @@ Live tests must stay **read-only** and never loop a third-party API.
   and do not feed live quotes into Home, Performance or the `perf` schema: returns stay tied
   to the custodian's daily record.
 - **Positions say where each holding sits in the 11 sectors** (`sector_group`, `sector`,
-  `sector_code`, set by `PortalService._place_in_sectors`) from `security_sectors`, the app's own
+  `sector_code`, and the security's `name`, set by `PortalService._place_in_sectors`) from `security_sectors`, the app's own
   copy of market data's classification, filled daily by `services/sector_copy.py` (job `sector_copy`,
   6:20 AM Eastern, through `md.read.sectors_for`). The portal never reads market data, and if market
   data cannot be read the copy is left as it was. `sector`: a stock with a sector; `fund`: an ETF or

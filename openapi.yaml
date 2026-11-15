@@ -8257,6 +8257,10 @@ components:
           type: string
         security_type:
           type: string
+        name:
+          type: string
+          nullable: true
+          description: What the security is called, from the app's copy of market data's names; null for an option or while market data has none
         quantity:
           type: number
         avg_cost:
@@ -8317,6 +8321,7 @@ components:
       - strategy_name
       - symbol
       - security_type
+      - name
       - quantity
       - is_short
       - avg_cost

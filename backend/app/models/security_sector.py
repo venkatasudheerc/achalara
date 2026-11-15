@@ -5,7 +5,7 @@ from app.models.base import BaseModel
 
 
 class SecuritySector(BaseModel):
-    """A held symbol's sector, as market data last said it.
+    """A held symbol's sector and name, as market data last said them.
 
     The portal's sector view reads this copy and never market data itself, so
     it works whether or not market data can be reached (``md`` shares no tables
@@ -22,4 +22,6 @@ class SecuritySector(BaseModel):
     kind = Column(String(20))
     sector_code = Column(String(4))  # IT, HC, FIN, ...
     sector_name = Column(String(40))
+    # The security's name as market data has it (SEC style); None while it has none.
+    name = Column(String(200))
     refreshed_at = Column(DateTime(timezone=True), nullable=False)

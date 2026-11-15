@@ -1,4 +1,4 @@
-"""A copy of market data's sector for each symbol the app holds.
+"""A copy of market data's sector and name for each symbol the app holds.
 
 The portal's sector view (Analysis) reads ``security_sectors``; it never reads
 market data. This job fills the copy each morning, after market data's own
@@ -41,9 +41,9 @@ def refresh(db: Session) -> int:
     for symbol in sorted(symbols):
         sector = known.get(symbol)
         values = (
-            (sector.kind, sector.sector_code, sector.sector_name)
+            (sector.kind, sector.sector_code, sector.sector_name, sector.name)
             if sector
-            else (None, None, None)
+            else (None, None, None, None)
         )
         row = have.get(symbol)
         if row is None:
@@ -53,12 +53,13 @@ def refresh(db: Session) -> int:
                     kind=values[0],
                     sector_code=values[1],
                     sector_name=values[2],
+                    name=values[3],
                     refreshed_at=now,
                 )
             )
             changed += 1
-        elif (row.kind, row.sector_code, row.sector_name) != values:
-            row.kind, row.sector_code, row.sector_name = values
+        elif (row.kind, row.sector_code, row.sector_name, row.name) != values:
+            row.kind, row.sector_code, row.sector_name, row.name = values
             row.refreshed_at = now
             changed += 1
     db.commit()

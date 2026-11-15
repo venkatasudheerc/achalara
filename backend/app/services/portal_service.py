@@ -757,7 +757,7 @@ class PortalService:
     FUND_KINDS = ("etf", "fund")
 
     def _place_in_sectors(self, rows: List[Dict]) -> None:
-        """Say where each holding sits in the 11 sectors, from the app's copy of
+        """Say where each holding sits in the 11 sectors, and what it is called, from the app's copy of
         market data's classification (never market data itself). A fund has no
         sector and is not guessed at; a stock with none is "unclassified"."""
         symbols = {r["symbol"] for r in rows if r["security_type"] != "option"}
@@ -769,10 +769,11 @@ class PortalService:
             ):
                 copy[row.symbol] = row
         for r in rows:
-            r["sector_group"] = r["sector"] = r["sector_code"] = None
+            r["sector_group"] = r["sector"] = r["sector_code"] = r["name"] = None
             if r["security_type"] == "option":
                 continue
             known = copy.get(r["symbol"])
+            r["name"] = known.name if known else None
             if r["security_type"] == "etf" or (known and known.kind in self.FUND_KINDS):
                 r["sector_group"] = "fund"
             elif known and known.sector_code:
