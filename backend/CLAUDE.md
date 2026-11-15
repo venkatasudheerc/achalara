@@ -10,7 +10,7 @@ Read the root `../CLAUDE.md` first for shared context (project overview, Sleeve 
 - **Migrations:** Alembic
 - **Database:** PostgreSQL 15 (Docker); SQLite in-memory for tests (built via `create_all`)
 - **Validation:** Pydantic v2
-- **Scheduler:** APScheduler 3 (`BackgroundScheduler`), started/stopped in the lifespan hook; Redis 7 is the optional jobstore
+- **Scheduler:** APScheduler 3 (`BackgroundScheduler`), started/stopped in the lifespan hook, jobs kept in memory (the local Redis container and `REDIS_URL` are unused)
 - **Testing:** pytest + httpx `TestClient`
 - **Linting:** Black, Flake8
 
