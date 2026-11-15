@@ -529,7 +529,7 @@ Plaid login's access key, kept encrypted.
 | sync_start_date | Date | nullable — earliest activity date to load; NULL = full history |
 | status | String(20) | `unmapped` / `mapped` / `ignored`; Plaid also `matched`: linked to an account another feed still writes to, moved over later |
 | initial_sync_completed | Boolean | false while the source is still loading history |
-| transactions_synced_through | Date | nullable — the source's own completeness watermark |
+| transactions_synced_through | Date | nullable — the day the account's transactions are known complete through: the feed's own watermark, or the later day a file says it is complete through (a Vanguard report's "to" date, or a Through row in the template) |
 | last_synced_at | DateTime(tz) | nullable — gates the 24h-per-account sync limit |
 | last_reconciled_at | DateTime(tz) | nullable |
 | reconciliation | JSON | nullable — `{matched, drifted[], unmatched_sells, skipped_rows}` |

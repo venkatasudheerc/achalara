@@ -19,6 +19,8 @@ test('a file is shown before anything is added, then added once', async ({ page,
     buffer: Buffer.from('date,type,symbol,quantity,price,amount\n2026-01-20,BUY,ZZZT,10,25,\n'),
   })
   await expect(dialog.getByText(/Bought 10 ZZZT/)).toBeVisible()
+  // A file that does not say how far it is complete says nothing about it.
+  await expect(dialog.getByText(/complete through/)).toHaveCount(0)
   expect(api.count(`POST ${imports}`), 'the preview writes nothing').toBe(0)
 
   await dialog.getByRole('button', { name: 'Add these' }).click()
@@ -35,4 +37,17 @@ test('an account shared with the viewer takes no uploads', async ({ page, api })
   await page.goto(`/home?sel=account:${BROKERAGE.id}`)
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Sam’s')
   await expect(page.getByRole('button', { name: 'Update from a file' })).toHaveCount(0)
+})
+
+test('a file that says how far it is complete is shown saying so', async ({ page, api }) => {
+  signedIn(api)
+    .on(`GET ${imports}/check`, HOLDINGS_DIFFER)
+    .on(`POST ${imports}/preview`, { ...PREVIEW, complete_through: '2026-02-20' })
+  await page.goto(`/home?sel=account:${BROKERAGE.id}`)
+  await page.getByRole('button', { name: 'Update from a file' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Update from a file' })
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'activity.csv', mimeType: 'text/csv', buffer: Buffer.from('Date,Type\n2026-01-20,Through\n'),
+  })
+  await expect(dialog.getByText(/complete through Feb 20, 2026/)).toBeVisible()
 })

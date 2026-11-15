@@ -133,7 +133,7 @@ export const HOLDINGS_DIFFER: HoldingsCheck = {
 
 export const PREVIEW: ImportPreview = {
   account_id: BROKERAGE.id, file_kind: 'template', rows: 2, first_date: '2026-01-20', last_date: '2026-01-21',
-  history_starts: '2025-06-02',
+  complete_through: null, history_starts: '2025-06-02',
   on_file_trades: 0, on_file_cash: 0, on_file_a_day_later: 0, on_file_other_symbol: 0, set_aside: {},
   to_add_trades: 1, to_add_cash: 1,
   days: [
