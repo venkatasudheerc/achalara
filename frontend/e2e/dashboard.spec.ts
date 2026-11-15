@@ -6,7 +6,7 @@ test('the Dashboard adds up the accounts in view and follows the account chosen'
   await page.goto('/home')
 
   const headline = page.getByRole('heading', { level: 1 })
-  await expect(headline).toContainText('Everything you have is worth')
+  await expect(headline).toContainText('Your net worth is')
   await expect(headline).toContainText('$162,000.50')
 
   const list = await accountList(page)

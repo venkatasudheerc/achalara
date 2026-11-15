@@ -27,7 +27,7 @@ test('the front door is sign-in, and signing in opens the person\'s own page', a
   await page.getByLabel('Password', { exact: true }).fill('a long invented phrase')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/home/)
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Everything you have is worth')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your net worth is')
 })
 
 test('a page behind sign-in sends a visitor to sign in', async ({ page, api }) => {

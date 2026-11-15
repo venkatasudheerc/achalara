@@ -20,6 +20,18 @@ export const KINDS: { kind: AccountKind; label: string; plural: string; text: st
 export const INVESTED: AccountKind[] = ['taxable', 'retirement', 'kids']
 export const kindOf = (kind: AccountKind) => KINDS.find((k) => k.kind === kind) ?? KINDS[1]
 
+/**
+ * Assets, what is owed, and net worth of the accounts given. A card or loan is a
+ * liability (``owed``), stored as a negative value, so net worth is the plain sum.
+ * It covers the linked accounts only: nothing else is known.
+ */
+export function netWorth(accounts: PortalAccount[]): { assets: number; owed: number; net: number } {
+  const sum = (list: PortalAccount[]) => list.reduce((t, a) => t + (a.value ?? 0), 0)
+  const assets = sum(accounts.filter((a) => !a.owed))
+  const owed = -sum(accounts.filter((a) => a.owed))
+  return { assets, owed, net: assets - owed }
+}
+
 export type GroupBy = 'person' | 'kind' | 'mine'
 
 /** The views of the chosen accounts, as tabs. */
