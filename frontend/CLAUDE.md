@@ -106,6 +106,11 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   "Updated just now", "Already up to date" or "Sign in again first").
 - The selection and the open view live in the address, `?sel=all|owner:<id>|kind:<kind>|group:<id>|account:<id>&view=…`
   (`selection.ts`), and become `account_ids` on every portal request.
+- The Dashboard's one-line change agrees with the figures under it: for investments the gain or
+  loss (never closing less opening, which would count deposits and newly added accounts as growth);
+  for bank and card accounts the balance's change. What accounts held when their history here
+  begins is "Added to the record" (`summary.brought`), apart from deposits, there and on Performance.
+  A record younger than a year says "since <date>".
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;
   Holdings, Transactions, Performance and Cost basis are the portal's own pages, rendered inside
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and
@@ -310,7 +315,9 @@ live as you type: nothing new loads, and clearing it on a click would throw the 
 ### Formatters (`src/lib/formatters.ts`)
 
 `shortAccountName` drops the owner names the brokerage puts in front of an account's name ("Pat Doe —
-Roth IRA Brokerage Account" → "Roth IRA Brokerage"). Every screen names accounts this way:
+Roth IRA Brokerage Account" → "Roth IRA Brokerage") and puts a feed's code into words ("INDIVIDUAL" →
+"Individual", "ROTH_IRA" → "Roth IRA"). Several accounts can share such a name, so **a list of
+accounts always shows the last four** (`··1234`). Every screen names accounts this way:
 `accountLabel` and `useAccountName` (`portal/ui.tsx`) add the owner's first name for an account
 shared with the viewer, since the short name no longer says whose it is.
 

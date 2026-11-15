@@ -4,6 +4,7 @@ import { usePortalAccounts, usePortalPeople, useRelativeChanges, useSharingChang
 import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { OneTimeLink } from '@/features/auth/OneTimeLink'
+import { useAccountName } from '@/features/portal/ui'
 import { SharingPanel } from './SharingPanel'
 
 const input = 'h-[44px] px-[14px] rounded-[12px] border border-stone/30 bg-paper text-[15px] text-summit-ink'
@@ -19,8 +20,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 /** What a row says about both directions of sharing with one person. */
 function sharingLine(p: PersonRow): string {
   const parts: string[] = []
-  parts.push(p.you_share ? `You share ${p.you_share}` : 'You share none')
-  if (p.shares_with_you) parts.push(`${first(p.name)} shares ${p.shares_with_you} with you`)
+  parts.push(p.you_share ? `You share ${plural(p.you_share, 'account')}` : 'You share no accounts')
+  if (p.shares_with_you) parts.push(`${first(p.name)} shares ${plural(p.shares_with_you, 'account')} with you`)
   if (p.own_together) parts.push(`You own ${plural(p.own_together, 'account')} together`)
   if (p.you_hold_for) parts.push(`You hold ${plural(p.you_hold_for, 'account')} for ${first(p.name)}`)
   return parts.join(' · ')
@@ -35,6 +36,8 @@ const first = (name: string) => name.split(' ')[0]
  */
 export function AccessPage() {
   const { data: portal } = usePortalAccounts()
+  // Several accounts can share a name ("Individual"), so each row carries its last four.
+  const accountName = useAccountName()
   const isMinor = portal?.viewer.is_minor ?? false
   const { data, isLoading, isError, refetch } = usePortalPeople(!!portal && !isMinor)
   const changes = useSharingChanges()
@@ -100,7 +103,7 @@ export function AccessPage() {
                 {data.your_accounts.map((a) => (
                   <li key={a.id} className="px-[16px] py-[10px] flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[4px]">
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[15px] font-semibold">{a.name}</span>
+                      <span className="text-[15px] font-semibold">{accountName(a.id, a.name)}</span>
                       <span className="text-[13px] text-stone">
                         {a.owners.length > 1 ? `Owners: ${a.owners.join(', ')} · ` : ''}Seen by {a.seen_by.length ? a.seen_by.join(', ') : 'nobody else'}
                       </span>
@@ -121,7 +124,7 @@ export function AccessPage() {
                 {data.shared_with_you.map((a) => (
                   <li key={a.id} className="px-[16px] py-[10px] flex flex-wrap items-center justify-between gap-x-[16px]">
                     <div className="flex flex-col">
-                      <span className="text-[15px] font-semibold">{a.name}</span>
+                      <span className="text-[15px] font-semibold">{accountName(a.id, a.name)}</span>
                       <span className="text-[13px] text-stone">{a.owner} · View only</span>
                     </div>
                     <button type="button" disabled={changes.stopSeeing.isPending} onClick={() => changes.stopSeeing.mutate(a.id)}

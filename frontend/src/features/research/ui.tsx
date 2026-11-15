@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { isAxiosError } from 'axios'
 import { Skeleton } from '@/components/Skeleton'
 import { formatPercent } from '@/lib/formatters'
@@ -156,8 +156,18 @@ export function HowToRead({ notes }: { notes: (string | null | undefined | false
 export function Tabs<T extends string>({ tabs, value, onChange, label = 'Market patterns views' }: {
   tabs: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void; label?: string
 }) {
+  // On a phone the strip scrolls sideways: keep the open view's tab in sight.
+  const strip = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = strip.current
+    const on = el?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!el || !on) return
+    const left = on.offsetLeft - el.offsetLeft
+    if (left < el.scrollLeft) el.scrollLeft = left
+    else if (left + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = left + on.offsetWidth - el.clientWidth
+  }, [value])
   return (
-    <div role="tablist" aria-label={label}
+    <div role="tablist" aria-label={label} ref={strip}
       className="flex overflow-x-auto overflow-y-hidden border-b border-stone/30 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const on = t.value === value

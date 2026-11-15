@@ -133,7 +133,7 @@ export function AppShell() {
         )}
 
         {/* Page content */}
-        <main className="flex-1 px-16 md:px-6 py-8 min-w-0">
+        <main className="flex-1 px-16 md:px-6 py-[24px] min-w-0">
           <Outlet />
         </main>
       </div>

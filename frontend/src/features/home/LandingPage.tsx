@@ -56,9 +56,11 @@ export function LandingPage() {
     return true
   })
   const shown: View = tabs.some((t) => t.value === view) ? view : 'dashboard'
+  // Only once the accounts are here: before that nothing is chosen, and a view
+  // opened by its address (Accounts, on a reload) would be sent to the Dashboard.
   useEffect(() => {
-    if (shown !== view) setView(shown)
-  }, [shown, view, setView])
+    if (!isLoading && portal && shown !== view) setView(shown)
+  }, [isLoading, portal, shown, view, setView])
 
   if (isLoading) return <div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>
   if (isError || !portal) return <div className="p-[24px]"><ErrorState message={error?.message ?? 'Could not load your accounts.'} onRetry={() => refetch()} /></div>
@@ -160,7 +162,7 @@ export function LandingPage() {
           <Tabs label="Views of the chosen accounts" tabs={tabs} value={shown} onChange={setView} />
           <HomeSelection.Provider value={{ accountIds }}>
             {/* A new view (and new accounts) start the old pages' own filters afresh. */}
-            <div key={`${shown}:${accountIds?.join(',') ?? 'all'}`}>{body}</div>
+            <div key={`${shown}:${accountIds?.join(',') ?? 'all'}`} className="flex flex-col gap-[20px] min-w-0">{body}</div>
           </HomeSelection.Provider>
         </main>
       )}

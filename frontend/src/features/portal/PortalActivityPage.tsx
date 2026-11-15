@@ -154,7 +154,7 @@ export function PortalActivityPage() {
   if (isLoading) return <div className="grid gap-[20px] md:grid-cols-4"><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
   if (isError || !data) return <ErrorState message={error?.message ?? 'Could not load your activity.'} onRetry={() => refetch()} />
 
-  const tile = 'bg-surface border border-stone/25 rounded-[12px] px-[22px] py-[20px]'
+  const tile = 'bg-surface border border-stone/25 rounded-[12px] min-w-0 px-[14px] sm:px-[22px] py-[16px] sm:py-[20px]'
   const everything = data.accounts.map((a) => a.account_id)
   const allOpen = everything.length > 1 && everything.every((id) => open.has(id))
 
@@ -206,11 +206,11 @@ export function PortalActivityPage() {
       ] as const).map(([heading, tiles]) => (
         <section key={heading} aria-label={heading}>
           <h2 className="text-[18px] font-semibold mb-[10px]">{heading}</h2>
-          <div className="grid gap-[20px] grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-[12px] sm:gap-[20px] grid-cols-2 lg:grid-cols-4">
             {tiles.map(([label, value, note]) => (
               <div key={label} className={tile}>
                 <div className="text-[16px] text-summit-ink/70">{label}</div>
-                <div className="font-mono text-[26px] mt-[6px]">{value}</div>
+                <div className="font-mono text-[17px] sm:text-[26px] mt-[6px]">{value}</div>
                 {note && <div className="text-[14px] text-summit-ink/70 mt-[4px]">{note}</div>}
               </div>
             ))}
@@ -246,13 +246,14 @@ export function PortalActivityPage() {
                 <span>
                   <span className="block text-[19px] font-semibold">{accountName(account.account_id, account.account_name)}</span>
                   <span className="block text-[15px] text-summit-ink/70">
-                    {formatNumber(account.total, 0)} {account.total === 1 ? 'item' : 'items'} · {formatNumber(account.trades, 0)} {account.trades === 1 ? 'trade' : 'trades'}{account.shared && ' · shared'}
+                    {formatNumber(account.total, 0)} {account.total === 1 ? 'item' : 'items'}{account.trades > 0 && ` · ${formatNumber(account.trades, 0)} ${account.trades === 1 ? 'trade' : 'trades'}`}{account.shared && ' · shared'}
                   </span>
                 </span>
               </span>
-              <span className="shrink-0 flex flex-wrap justify-end gap-x-[28px] gap-y-[4px] font-mono text-right">
-                <span><span className="block font-sans text-[14px] text-summit-ink/70">Bought</span><span className="text-[19px]">{formatCurrency(account.bought)}</span></span>
-                <span><span className="block font-sans text-[14px] text-summit-ink/70">Sold</span><span className="text-[19px]">{formatCurrency(account.sold)}</span></span>
+              {/* A bank or card account never trades: only the money that moved is shown for it. */}
+              <span className="max-w-full flex flex-wrap justify-end gap-x-[20px] sm:gap-x-[28px] gap-y-[4px] font-mono text-right">
+                {account.trades > 0 && <span><span className="block font-sans text-[14px] text-summit-ink/70">Bought</span><span className="text-[19px]">{formatCurrency(account.bought)}</span></span>}
+                {account.trades > 0 && <span><span className="block font-sans text-[14px] text-summit-ink/70">Sold</span><span className="text-[19px]">{formatCurrency(account.sold)}</span></span>}
                 <span><span className="block font-sans text-[14px] text-summit-ink/70">Money in</span><span className="text-[19px]">{formatCurrency(account.money_in)}</span></span>
                 <span><span className="block font-sans text-[14px] text-summit-ink/70">Money out</span><span className="text-[19px]">{formatCurrency(account.money_out)}</span></span>
               </span>

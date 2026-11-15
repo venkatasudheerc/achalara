@@ -8,7 +8,7 @@ import { loadPlaid } from '@/lib/plaid'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
-import { KINDS, accountName, type Selection } from './selection'
+import { INVESTED, KINDS, accountName, type Selection } from './selection'
 import { dateTicks } from '@/lib/chartTicks'
 import { SharingPanel } from './SharingPanel'
 import { AccountNameEditor } from './AccountNameEditor'
@@ -59,7 +59,8 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   })
   const one = selection.type === 'account' ? accounts[0] : undefined
   const total = accounts.reduce((t, a) => t + (a.value ?? 0), 0)
-  const allCash = accounts.every((a) => a.kind === 'cash')
+  // Banks and cards as much as a cash account: nothing there is invested, so no "gain" or "return".
+  const allCash = accounts.every((a) => !INVESTED.includes(a.kind))
   const latest = accounts.map((a) => a.as_of).filter(Boolean).sort().pop()
   const priced = accounts.map((a) => a.priced_at).filter(Boolean).sort().shift()
 
@@ -69,7 +70,17 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   // change, gain, return or chart is shown from it, only today's value.
   const untrusted = incomplete.length > 0
   const summary = untrusted ? undefined : data?.summary
-  const change = summary ? summary.closing_value - summary.opening_value : null
+  // What changed, said so it agrees with the figures beneath it. Investments:
+  // the gain or loss, which leaves out money added, taken out, and what an
+  // account held when its history here begins. Banks and cards: the balance's
+  // change, again without what an account brought.
+  const change = summary
+    ? (allCash ? summary.closing_value - summary.opening_value - (summary.brought ?? 0) : summary.gain)
+    : null
+  // The record can be younger than a year: say when it starts, not "the past year".
+  const short = summary ? summary.start > isoDaysAgo(350) : false
+  const span = summary && short ? `since ${formatDate(summary.start)}` : 'over the past year'
+  const brought = summary?.brought ?? 0
   const axis = useMemo(() => dateTicks((data?.series ?? []).map((p) => p.date)), [data])
   const chartKind: Chart = allCash && chart === 'returns' ? 'balances' : chart
 
@@ -93,8 +104,10 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
         </h1>
         {change != null && (
           <p className="text-[16px]">
-            <strong className={change >= 0 ? 'text-gain' : 'text-loss'}>{change >= 0 ? 'Up' : 'Down'} {formatCurrency(Math.abs(change))}</strong>
-            {' '}over the past year.
+            <strong className={change >= 0 ? 'text-gain' : 'text-loss'}>
+              {allCash ? (change >= 0 ? 'Up' : 'Down') : (change >= 0 ? 'A gain of' : 'A loss of')} {formatCurrency(Math.abs(change))}
+            </strong>
+            {' '}{span}{allCash ? '.' : ', after what was added and taken out.'}
           </p>
         )}
       </section>
@@ -104,7 +117,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
 
       <section aria-labelledby="past-year" className="border border-line rounded-[20px] p-[18px] md:p-[22px] flex flex-col gap-[18px]">
         <div className="flex flex-wrap justify-between items-center gap-[12px]">
-          <h2 id="past-year" className="font-display text-[20px]">The past year</h2>
+          <h2 id="past-year" className="font-display text-[20px]">{summary && short ? `Since ${formatDate(summary.start)}` : 'The past year'}</h2>
           <div role="group" aria-label="What the chart shows" className="flex border border-stone/30 rounded-[21px] p-[2px] gap-[2px]">
             {(['balances', 'activity', 'returns'] as Chart[]).filter((c) => !(allCash && c === 'returns')).map((c) => (
               <button key={c} type="button" aria-pressed={chartKind === c} onClick={() => setChart(c)}
@@ -128,11 +141,12 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           <p className="text-[15px] text-stone">No daily record yet for {accounts.length === 1 ? 'this account' : 'these accounts'}.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-[16px]">
+            <div className={`grid grid-cols-2 gap-[16px] ${brought > 0 ? 'md:grid-cols-6' : 'md:grid-cols-5'}`}>
               <Figure label={`On ${formatDate(summary.start)}`} value={formatCurrency(summary.opening_value)} />
               <Figure label="Added" value={formatCurrency(summary.flow_in)} />
               <Figure label="Taken out" value={formatCurrency(summary.flow_out)} />
-              <Figure label={allCash ? 'Interest and gains' : 'Gain or loss'} value={signed(summary.gain)}
+              {brought > 0 && <Figure label="Added to the record" value={formatCurrency(brought)} />}
+              <Figure label={allCash ? 'Interest' : 'Gain or loss'} value={signed(summary.gain)}
                 tone={summary.gain >= 0 ? 'gain' : 'loss'} />
               {!allCash && summary.twr_pct != null
                 ? <Figure label="Return" value={formatPercent(summary.twr_pct)} tone={summary.twr_pct >= 0 ? 'gain' : 'loss'} />
@@ -154,7 +168,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
                 ) : (
                   <AreaChart data={data!.series.map((p) => ({ date: p.date, v: chartKind === 'returns' ? p.twr : p.value }))}>
                     <CartesianGrid vertical={false} stroke={colours.grid} />
-                    <XAxis dataKey="date" ticks={axis.ticks} tickFormatter={axis.label} interval={0} tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="date" ticks={axis.ticks} tickFormatter={axis.label} interval="preserveStartEnd" minTickGap={28} tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
                     <YAxis domain={['auto', 'auto']} tickFormatter={(v: number) => (chartKind === 'returns' ? formatPercent(v, 0) : compact(v))}
                       tick={{ fill: colours.axis, fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
                     <Tooltip contentStyle={colours.tooltip} labelFormatter={(d: string) => formatDate(d)}
@@ -168,6 +182,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
               {chartKind === 'activity' ? 'Money added and taken out each month.'
                 : chartKind === 'returns' ? 'Time-weighted return since the start of the year shown: deposits and withdrawals leave it unchanged.'
                   : 'Value each day, as the custodian recorded it.'}
+              {brought > 0 && ' “Added to the record” is what accounts already held on the day their history here begins: not a deposit, and not a gain.'}
             </p>
           </>
         )}

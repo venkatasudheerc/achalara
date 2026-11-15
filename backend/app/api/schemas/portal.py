@@ -393,6 +393,9 @@ class PortalSummary(BaseModel):
     net_flow: float
     flow_in: float = 0  # money added in the window
     flow_out: float = 0  # money taken out in the window
+    # What accounts joining the record brought with them: inside net_flow, so
+    # never a gain, but not a deposit. Shown as "Added to the record".
+    brought: float = 0
     gain: float
     twr_pct: Optional[float] = None
     mwr_pct: Optional[float] = None  # None for a single strategy
@@ -434,6 +437,7 @@ class PortalPeriod(BaseModel):
     net_flow: float
     flow_in: float = 0
     flow_out: float = 0
+    brought: float = 0  # accounts joining the record; inside net_flow, not a deposit
     gain: float
     twr_pct: Optional[float] = None
     twr_ytd_pct: Optional[float] = None

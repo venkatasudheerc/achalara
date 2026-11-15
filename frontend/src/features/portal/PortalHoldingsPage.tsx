@@ -9,6 +9,7 @@ import {
   AccountStrategyFields, Field, HomeSelection, Pills, TextInput, TYPE_LABEL, signedCurrency, tone, useAccountStrategyFilter, useAccountName, useDebounced,
 } from '@/features/portal/ui'
 import type { PortalHomeResponse, PortalPosition, SecurityGroup } from '@/api/types'
+import { INVESTED } from '@/features/home/selection'
 
 const TYPES = [
   { value: '', label: 'All' }, { value: 'stock', label: 'Stocks' }, { value: 'etf', label: 'ETFs' },
@@ -63,7 +64,7 @@ function Chevron({ open }: { open: boolean }) {
 /** The figures on the right of an account or strategy tile. */
 function Figures({ group, large }: { group: Group; large?: boolean }) {
   return (
-    <div className="shrink-0 flex flex-wrap items-baseline justify-end gap-x-[28px] gap-y-[4px] font-mono text-right">
+    <div className="max-w-full flex flex-wrap items-baseline justify-end gap-x-[20px] sm:gap-x-[28px] gap-y-[4px] font-mono text-right">
       <div>
         <div className="font-sans text-[14px] text-summit-ink/70">Value</div>
         <div className={large ? 'text-[26px]' : 'text-[20px]'}>{formatCurrency(group.value)}</div>
@@ -239,7 +240,8 @@ export function PortalHoldingsPage() {
     for (const row of data?.positions ?? []) {
       byAccount.set(row.account_id, [...(byAccount.get(row.account_id) ?? []), row])
     }
-    return listed.map((account) => {
+    // Banks, cards and cash accounts hold no investments: they are not tiles here.
+    return listed.filter((account) => INVESTED.includes(account.kind)).map((account) => {
       const rows = byAccount.get(account.id) ?? []
       const balance = partial ? undefined : data?.account_balances.find((b) => b.account_id === account.id)
       const priced = summarise(account.id, account.name, rows)
@@ -337,8 +339,9 @@ export function PortalHoldingsPage() {
                         {account.shared && <span className="ml-[10px] align-middle text-[13px] font-semibold px-[9px] py-[3px] rounded-full bg-gold/25">Shared with you</span>}
                       </span>
                       <span className="block text-[15px] text-summit-ink/70 mt-[2px]">
-                        {account.last4 ? `••${account.last4} · ` : ''}
-                        {account.strategies.length} {account.strategies.length === 1 ? 'strategy' : 'strategies'} · {account.rows.length} {account.rows.length === 1 ? 'holding' : 'holdings'}
+                        {account.rows.length === 0
+                          ? (account.optionsValue != null || account.cash != null ? 'Options and cash only' : 'Nothing held right now')
+                          : `${account.strategies.length > 1 ? `${account.strategies.length} strategies · ` : ''}${account.rows.length} ${account.rows.length === 1 ? 'holding' : 'holdings'}`}
                       </span>
                     </span>
                   </span>
@@ -427,6 +430,8 @@ export function PortalHoldingsPage() {
             )
           })}
           <p className="text-[15px] text-summit-ink/70 max-w-4xl">
+            {(portal?.accounts ?? []).some((a) => filter.inView(a.id) && !INVESTED.includes(a.kind))
+              && 'Bank, card and cash accounts hold no investments, so they are not listed here. '}
             An account’s value is its holdings at live prices, plus its options and cash as your custodian last
             reported them. Your custodian gives one value for all of an account’s options together, shown on the
             account’s Options line: their unrealised gain is that value less what they cost, and single contracts

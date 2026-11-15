@@ -85,6 +85,8 @@ export type CostBasisMethod = 'FIFO' | 'MIN_TAX'
 export interface AccountResponse {
   id: string; client_id: string; name: string
   description: string; account_number: string | null
+  /** What tells same-named accounts apart: where it is held, its last four there, the owner's own name for it */
+  institution: string | null; last_four: string | null; display_name: string | null
   cost_basis_method: CostBasisMethod
   /** True for an account another client owns that this client may view; client_id is always the owner */
   shared: boolean; owner_name: string | null
@@ -620,8 +622,10 @@ export interface PortalSummary {
   start: string; end: string
   opening_value: number; closing_value: number; cash_value: number | null
   net_flow: number; gain: number
-  /** Money added and taken out in the window; net_flow is their difference */
+  /** Money added and taken out in the window */
   flow_in: number; flow_out: number
+  /** What accounts joining the record brought with them: inside net_flow, so never a gain, but not a deposit */
+  brought: number
   twr_pct: number | null
   /** null for a single strategy: deposits are made to the account */
   mwr_pct: number | null
@@ -640,6 +644,8 @@ export interface PortalPeriod {
   period_start: string; period_end: string
   opening_value: number; closing_value: number; net_flow: number; gain: number
   flow_in: number; flow_out: number
+  /** Accounts joining the record in this period: inside net_flow, not a deposit */
+  brought: number
   twr_pct: number | null; twr_ytd_pct: number | null
   benchmark_return_pct: number | null; excess_return_pct: number | null
   is_provisional: boolean

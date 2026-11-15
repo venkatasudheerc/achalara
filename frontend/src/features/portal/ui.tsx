@@ -35,12 +35,13 @@ export function accountLabel(a: {
   name: string; display_name?: string | null; number_last4: string | null; shared?: boolean; owner_name?: string
 }): string {
   const owner = a.shared ? (a.owner_name ? ` · ${a.owner_name.split(' ')[0]}` : ' (shared)') : ''
-  return `${a.display_name || shortAccountName(a.name)}${a.number_last4 ? ` ••${a.number_last4}` : ''}${owner}`
+  return `${a.display_name || shortAccountName(a.name)}${a.number_last4 ? ` ··${a.number_last4}` : ''}${owner}`
 }
 
 /**
- * A row's account by its id, named as in accountLabel; rows carry only the
- * account's full name, so the owner comes from the accounts in view.
+ * A row's account by its id, named as in accountLabel (last four included, since
+ * several accounts can share a name); rows carry only the account's full name,
+ * so the rest comes from the accounts in view.
  */
 export function useAccountName() {
   const { data } = usePortalAccounts()
@@ -48,8 +49,7 @@ export function useAccountName() {
   return (id: string, fallback: string) => {
     const a = byId.get(id)
     if (!a) return shortAccountName(fallback)
-    const owner = a.shared ? ` · ${a.owner_name.split(' ')[0]}` : ''
-    return `${a.display_name || shortAccountName(a.name)}${owner}`
+    return accountLabel(a)
   }
 }
 
@@ -80,7 +80,7 @@ export function Field({ label, htmlFor, children, grow }: {
   label: string; htmlFor?: string; children: ReactNode; grow?: boolean
 }) {
   return (
-    <div className={`flex flex-col gap-1.5 ${grow ? 'flex-1 basis-40 min-w-0' : ''}`}>
+    <div className={`flex flex-col gap-1.5 min-w-0 max-w-full ${grow ? 'flex-1 basis-40' : ''}`}>
       <label htmlFor={htmlFor} className="text-[15px] font-medium text-summit-ink/70">{label}</label>
       {children}
     </div>
@@ -92,7 +92,7 @@ export function Select({ id, value, onChange, children, minWidth = 170 }: {
 }) {
   return (
     <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-      className={control} style={{ minWidth }}>
+      className={control} style={{ minWidth, maxWidth: '100%' }}>
       {children}
     </select>
   )
@@ -134,13 +134,14 @@ export function Card({ label, children, sub, dark }: {
   label: string; children: ReactNode; sub?: ReactNode; dark?: boolean
 }) {
   return (
-    <div className={`p-5 rounded-card flex flex-col gap-2 ${
+    <div className={`p-[14px] sm:p-5 min-w-0 rounded-card flex flex-col gap-2 ${
       dark
         ? 'bg-pine-deep text-on-dark dark:bg-surface dark:border dark:border-gold/70'
         : 'bg-surface border border-stone/25'
     }`}>
       <div className={`text-[13px] ${dark ? 'text-on-dark/75' : 'text-stone'}`}>{label}</div>
-      <div className="font-mono text-2xl font-medium">{children}</div>
+      {/* Two tiles share a phone's width: a seven-figure amount must still fit. */}
+      <div className="font-mono text-[17px] sm:text-2xl font-medium">{children}</div>
       {sub && <div className={`text-[13px] ${dark ? 'text-on-dark/75' : 'text-stone'}`}>{sub}</div>}
     </div>
   )

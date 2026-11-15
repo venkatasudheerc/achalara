@@ -800,11 +800,18 @@ def test_an_account_joining_the_record_later_is_not_a_gain(maya, db, world):
     _rows(db, world["brokerage"], [1000, 1000, 1000, 1010], start=date(2026, 9, 1))
     _rows(db, world["ira"], [1000, 1000], start=date(2026, 9, 3))
 
-    summary = maya.get("/api/v1/portal/performance").json()["summary"]
+    body = maya.get("/api/v1/portal/performance", params={"grain": "month"}).json()
+    summary = body["summary"]
 
     assert summary["start"] == "2026-09-01"
     assert summary["closing_value"] == 2010
     assert summary["gain"] == pytest.approx(10)
+    # What each account held on arriving (the brokerage's 1,000 on the record's
+    # first day, the IRA's 1,000 two days on) is stated on its own, apart from
+    # money anyone deposited: none was.
+    assert summary["brought"] == pytest.approx(2000)
+    assert summary["flow_in"] == 0 and summary["net_flow"] == pytest.approx(2000)
+    assert sum(p["brought"] for p in body["periods"]) == pytest.approx(2000)
     assert summary["twr_pct"] == pytest.approx(0.005, abs=1e-3)
 
     # One account alone is measured from its own first day, as before.

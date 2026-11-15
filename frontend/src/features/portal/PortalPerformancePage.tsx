@@ -138,7 +138,7 @@ export function PortalPerformancePage() {
         <AccountStrategyFields filter={filter} idPrefix="performance" />
         <Field label="Period"><Pills mono label="Period" options={PERIODS} value={period} onChange={pickPeriod} /></Field>
         {/* The two dates travel together, so one never wraps away from the other. */}
-        <div className="flex gap-3 items-end">
+        <div className="flex flex-wrap gap-3 items-end max-w-full">
           <Field label="Start date" htmlFor="performance-from">
             <TextInput id="performance-from" type="date" value={dates.from} onChange={setDate('from')} />
           </Field>
@@ -191,7 +191,12 @@ export function PortalPerformancePage() {
             </div>
             <div className="px-6 py-16 border border-stone/25 rounded-card bg-surface flex flex-wrap gap-x-48 gap-y-3 text-sm text-summit-ink/85">
               <div>Gain / loss <span className={`font-mono font-medium ${tone(s.gain)}`}>{signedCurrency(s.gain)}</span></div>
-              <div>Net deposits <span className="font-mono font-medium text-summit-ink">{signedCurrency(s.net_flow)}</span></div>
+              <div>Net deposits <span className="font-mono font-medium text-summit-ink">{signedCurrency(s.net_flow - (s.brought ?? 0))}</span></div>
+              {(s.brought ?? 0) > 0 && (
+                <div title="What accounts already held on the day their history here begins: not a deposit, and not a gain.">
+                  Added to the record <span className="font-mono font-medium text-summit-ink">{signedCurrency(s.brought)}</span>
+                </div>
+              )}
               <div>Best month <span className="font-mono font-medium text-summit-ink">{monthText(s.best_month)}</span></div>
               <div>Worst month <span className="font-mono font-medium text-summit-ink">{monthText(s.worst_month)}</span></div>
               <div>Months up <span className="font-mono font-medium text-summit-ink">{s.months_up} of {s.months_total}</span></div>
@@ -214,7 +219,7 @@ export function PortalPerformancePage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data.series} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke={chart.grid} vertical={false} />
-                  <XAxis dataKey="date" ticks={axis.ticks} interval={0} tick={axisTick} axisLine={false} tickLine={false}
+                  <XAxis dataKey="date" ticks={axis.ticks} interval="preserveStartEnd" minTickGap={28} tick={axisTick} axisLine={false} tickLine={false}
                     tickFormatter={axis.label} />
                   <YAxis width={64} tick={axisTick} axisLine={false} tickLine={false}
                     tickFormatter={(v: number) => formatPercent(v, 1)} />
@@ -286,7 +291,10 @@ export function PortalPerformancePage() {
               <tr key={row.period_start} className="border-t border-stone/15">
                 <td className={`${td} font-mono whitespace-nowrap`}>{periodLabel(row, grain)}<Star show={row.is_provisional} /></td>
                 <td className={tdNum}>{formatCurrency(row.opening_value)}</td>
-                <td className={`${tdNum} text-summit-ink/85`}>{row.net_flow ? signedCurrency(row.net_flow) : '–'}</td>
+                <td className={`${tdNum} text-summit-ink/85`}>
+                  {row.net_flow - (row.brought ?? 0) ? signedCurrency(row.net_flow - (row.brought ?? 0)) : '–'}
+                  {(row.brought ?? 0) > 0 && <span className="block text-[12px] text-stone font-sans">{signedCurrency(row.brought)} added to the record</span>}
+                </td>
                 <td className={`${tdNum} ${tone(row.gain)}`}>{signedCurrency(row.gain)}</td>
                 <td className={tdNum}>{formatCurrency(row.closing_value)}</td>
                 <td className={`${tdNum} ${tone(row.twr_pct)}`}>{formatPercent(row.twr_pct)}</td>

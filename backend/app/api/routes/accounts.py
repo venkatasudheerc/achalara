@@ -47,6 +47,12 @@ class AccountResponse(BaseModel):
     name: str
     description: str
     account_number: Optional[str] = None
+    # What tells one account from another on a list: several can share a name
+    # ("Individual"). The institution holding it, the last four digits of its
+    # number there, and the name its owner gave it, if any.
+    institution: Optional[str] = None
+    last_four: Optional[str] = None
+    display_name: Optional[str] = None
     cost_basis_method: str = "FIFO"
     # True for an account another client owns that this client may view.
     # ``client_id`` is always the owner, so it differs from the client asked
@@ -112,6 +118,9 @@ def list_accounts(
             name=account.name,
             description=account.description or "",
             account_number=account.account_number,
+            institution=account.institution,
+            last_four=account.last_four,
+            display_name=account.display_name,
             cost_basis_method=account.cost_basis_method,
             shared=shared,
             owner_name=account.client.name,
