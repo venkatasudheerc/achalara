@@ -240,6 +240,51 @@ def this_week(db: Session, today: Optional[date] = None) -> Dict:
     }
 
 
+PATTERN_YEARS = 20
+
+
+def _pattern(closes, grain: str, number: int, today: date) -> Optional[Dict]:
+    """How one week of the year (ISO week ``number``) or one calendar month has
+    gone in the most recent years on file that have ended, oldest first."""
+    ended = [
+        (k[0], r.ret)
+        for k, r in sorted(_ended(closes, grain, today).items())
+        if k[1] == number
+    ][-PATTERN_YEARS:]
+    stats = _stats([ret for _, ret in ended])
+    if stats is None:
+        return None
+    return {
+        **stats,
+        "years": [{"year": year, "up": ret > 0} for year, ret in ended],
+        "first_year": ended[0][0],
+        "last_year": ended[-1][0],
+    }
+
+
+def market_pattern(db: Session, today: Optional[date] = None) -> Dict:
+    """The S&P 500's record for the week of the year and the calendar month it is
+    now: a square per year, and the typical, best and worst. What happened, not
+    a forecast; the index level leaves dividends out. Read by the app's daily
+    copy (``services/market_pattern_copy``), not offered to the chatbot."""
+    today = today or date.today()
+    found = _try_series(db, "SPX")
+    if found is None:
+        raise perf.UnknownSubject("No S&P 500 levels on file yet")
+    _, basis, closes = found
+    iso_year, iso_week, _ = today.isocalendar()
+    return {
+        "code": "SPX",
+        "name": "S&P 500",
+        "basis": basis,
+        "as_of": today,
+        "week_key": [iso_year, iso_week],
+        "month_key": [today.year, today.month],
+        "week": _pattern(closes, "week", iso_week, today),
+        "month": _pattern(closes, "month", today.month, today),
+    }
+
+
 def _month_record(closes, month: int, today: date) -> Optional[Dict]:
     """How this calendar month has gone in every year on file that has ended."""
     values = [r.ret for k, r in _ended(closes, "month", today).items() if k[1] == month]

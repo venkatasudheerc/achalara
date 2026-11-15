@@ -18,6 +18,7 @@ from app.api.schemas.auth import LinkResponse
 from app.api.schemas.client import Relative, RelativeCreate, RelativeInvite
 from app.models.client import Client
 from app.services.auth_service import AuthError, AuthService
+from app.api.schemas.insights import InsightsResponse
 from app.api.schemas.portal import (
     AccountSharing,
     HandOverRequest,
@@ -64,6 +65,7 @@ from app.services.account_import_service import (
     AccountImportService,
 )
 from app.services.account_group_service import AccountGroupService
+from app.services.insights.service import InsightService
 from app.services.sharing_service import SharingService
 from app.services.performance_stats_service import GRAINS
 from app.services.portal_service import (
@@ -147,6 +149,25 @@ def portal_connections(
     read-only, the logins of others that feed an account in view; each with
     its state, its last refresh and the accounts it feeds with their health."""
     return _service(viewer, db).connections()
+
+
+@router.get("/insights", response_model=InsightsResponse)
+def portal_insights(
+    account_ids: Optional[List[str]] = _ACCOUNTS,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """The Dashboard's "Next best action" (things to do, most pressing first;
+    a must-do stays in place) and "Insights" (facts about what is held), for the
+    accounts in view. Worked out on each read from what the viewer may see:
+    nothing is stored, and nothing is built on an account whose record is
+    incomplete."""
+    with _http_errors():
+        service = InsightService(
+            _service(viewer, db, account_ids),
+            lambda ids: _service(viewer, db, list(ids)),
+        )
+        return service.respond()
 
 
 @router.patch("/accounts/{account_id}", response_model=PortalAccountSettings)

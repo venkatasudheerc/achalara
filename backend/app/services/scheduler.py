@@ -16,6 +16,7 @@ from app.db.database import SessionLocal
 from app.services import alerts, job_history, run_log
 from app.services.index_history_service import IndexHistoryService
 from app.services.plaid_refresh_service import run_plaid_refresh
+from app.services.market_pattern_copy import refresh as refresh_market_pattern
 from app.services.sector_copy import refresh as refresh_sectors
 from app.services.ticker_changes import run_ticker_changes
 from app.services.price_history_service import PriceHistoryService
@@ -82,6 +83,18 @@ def _sector_copy_wrapper() -> None:
         refresh_sectors(db)
     except Exception as exc:
         logger.error(f"Unhandled error in sector copy job: {type(exc).__name__}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("market_pattern_copy")
+def _market_pattern_copy_wrapper() -> None:
+    """Copy market data's S&P 500 record for this week and month into the app."""
+    db = SessionLocal()
+    try:
+        refresh_market_pattern(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in market pattern copy job: {type(exc).__name__}")
     finally:
         db.close()
 
@@ -155,6 +168,13 @@ def _schedule() -> list:
             "sector_copy",
             _sector_copy_wrapper,
             CronTrigger(hour=6, minute=20, timezone=MARKET_TIMEZONE),
+            timedelta(hours=12),
+        ),
+        # After market data's index levels (6:15 AM Eastern).
+        (
+            "market_pattern_copy",
+            _market_pattern_copy_wrapper,
+            CronTrigger(hour=6, minute=25, timezone=MARKET_TIMEZONE),
             timedelta(hours=12),
         ),
         (

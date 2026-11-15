@@ -143,6 +143,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
 | `app/cli.py`                            | `python -m app.cli create-admin` — the first admin login                            |
+| `app/services/insights/`                | Next best action and Insights: one small `Rule` class each, `registry.RULES`, `InsightService`  |
+| `app/services/market_pattern_copy.py`   | The daily copy of the S&P 500's record for this week and month, read by the market tile |
 | `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
 | `app/services/account_kind.py`          | An account's kind (taxable, retirement, kids, cash), read from the brokerage's account name |
 | `app/services/account_group_service.py` | A client's own named groups of accounts ("My groups")                                    |
@@ -276,6 +278,31 @@ Live tests must stay **read-only** and never loop a third-party API.
   account in view; each with a plain `state` (`sharing`, `needs_sign_in`, `consent_ending`
   within `CONSENT_WARNING_DAYS`, `stopped`), its last refresh and check, and only the accounts
   in view it feeds, as `/portal/accounts` gives them (health included). Never the access key.
+- **Next best action and Insights (`GET /portal/insights`, `services/insights/`)** are worked out
+  on each read from what the viewer may see (`PortalService.narrow` applies): nothing is stored, so
+  a finding stops the moment an account is unshared. **Code rules decide and compute every figure;
+  wording is the rule's own template; no model writes or reads anything.** A rule is one small class
+  in `rules/` (`id`, `find(ctx) -> [Finding]`) listed in `registry.RULES`; add a rule there, never
+  in a route or on a screen. `InsightService` applies the checks once, so no rule can skip them:
+  a finding built on an account whose record is **incomplete** is dropped (only the rules about
+  such a record or a stopped login set `allow_incomplete`), a rule that raises is logged and
+  skipped, and findings are ordered must-do first, then by `rank`. A nudge (`tier` `nudge`) has
+  at most one action and is for cash, cards and other debt, and connections; an insight is a fact
+  about what is held with **no action and no advice wording**. `must` (a login or record only the
+  viewer can fix) stays in place; for anyone else the same finding has no action and says whose it
+  is. Visuals are a closed set (`meter`, `split`, `countdown`, `figure`): a rule picks one, so a
+  new kind of account needs a rule file and no screen. Cash is worth a mention above 10% of what
+  the accounts in view hold (`rules/cash.CASH_SHARE`). A card's figures older than three days are
+  not acted on. `Context` reads holdings and tax facts only when a rule asks
+  (`PortalService.tax_facts` is for taxable accounts only). Nothing in `perf` or `md` reads it.
+- **The market-pattern tile (`rules/markets.CashAndMarket`)** sets cash above a tenth of what is
+  held beside the S&P 500's record for this week of the year and this month, a square per year
+  (up to 20, at least 10 ended). It reads `market_pattern_copies`, the app's own copy, never market
+  data: the daily job `market_pattern_copy` (6:25 AM Eastern, after the index levels) fills it through
+  `md.read.market_pattern`, and a copy older than four days, or made for another week or month, is
+  not used. It says what happened in both directions, "not what this year will do", index level,
+  dividends left out; no quarter record, and no action. It is outside `insights.TOOLS`, so the chatbot
+  cannot call it. The copy holds index history only, no client data.
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an

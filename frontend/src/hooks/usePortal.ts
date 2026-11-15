@@ -33,6 +33,19 @@ export function usePortalConnections() {
   })
 }
 
+/** Next best actions and insights. Supplementary: a failure leaves the Dashboard as it is. */
+export function usePortalInsights(filters: PortalScope) {
+  const as_client = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'insights', as_client, filters],
+    queryFn: () => portalApi.insights({ ...filters, as_client }),
+    placeholderData: keepPreviousData,
+    // Live prices feed some of them, so they follow the page's own clock.
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  })
+}
+
 export function usePortalHome(filters: PortalScope) {
   const as_client = usePreviewClient()
   return useQuery({

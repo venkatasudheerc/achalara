@@ -225,6 +225,16 @@ def market_movers(**kwargs) -> Dict:
         return md_performance.movers(db, **kwargs)
 
 
+def market_pattern(**kwargs) -> Dict:
+    """The S&P 500's record for this week of the year and this month, for the
+    app's own daily copy. Raises ``MdUnavailable`` when market data cannot be read."""
+    with _read() as db:
+        try:
+            return md_insights.market_pattern(db, **kwargs)
+        except md_performance.UnknownSubject as exc:
+            raise MdUnavailable("no S&P 500 levels yet") from exc
+
+
 def research(name: str, **kwargs) -> Dict:
     """Run one research function from the registry by name."""
     tool = md_insights.TOOLS_BY_NAME.get(name)

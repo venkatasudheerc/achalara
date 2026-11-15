@@ -52,7 +52,8 @@ export type Selection =
   | { type: 'all' }
   | { type: 'owner' | 'kind' | 'group' | 'account'; id: string }
 
-function parse(sel: string | null): Selection {
+/** A selection as written in the address (`account:<id>`, `kind:cash`, `all`). */
+export function parse(sel: string | null | undefined): Selection {
   if (!sel || sel === 'all') return { type: 'all' }
   const [type, ...rest] = sel.split(':')
   const id = rest.join(':')
@@ -87,6 +88,9 @@ export function useHomeSelection() {
     selection, view,
     select: (s: Selection) => update({ sel: s.type === 'all' ? null : selectionKey(s) }),
     setView: (v: View) => update({ view: v === 'dashboard' ? null : v }),
+    /** Choose accounts and a view in one step (a nudge's button). */
+    go: (s: Selection, v: View = 'dashboard') =>
+      update({ sel: s.type === 'all' ? null : selectionKey(s), view: v === 'dashboard' ? null : v }),
   }
 }
 

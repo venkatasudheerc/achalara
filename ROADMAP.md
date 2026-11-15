@@ -27,6 +27,12 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
   light, dark or the device's own setting. It replaced the old client portal, whose addresses
   redirect to it. The advisor workspace (`/app`) is unchanged and reached from it as "Manage".
 - **Operations.** Deployment to one server (`deploy/`), backups, System status with alerts.
+- **Next best action and Insights on the Dashboard.** Rules decide what is worth a look (a login
+  that stopped sharing, a record to repair, a card payment due, cash above a tenth of what is
+  held, a holding that dominates, options expiring, shares turning long-term, and how the S&P 500 has gone in this week and month in past years beside
+  cash held) and work out every
+  figure; the Dashboard shows one rolling "Next best action" and a set of fact tiles. No AI
+  writes anything yet.
 - **Market data (`md` schema).** Securities, daily index membership (S&P 500, Russell
   1000/2000/3000), identifiers, sectors and industries, in its own worker and migration history.
   A data model that can hold any market; every feed is American. A Market data page shows its state.
@@ -34,7 +40,8 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
 ## Next
 
 - **The household.** Households above clients, accounts of every kind (bank, card, loan,
-  property) with balances entered by hand, then linked through Plaid; money in and out; nudges.
+  property) with balances entered by hand, then linked through Plaid; money in and out; more
+  rules as each kind arrives (mortgage, car loan, retirement limits), and an AI-written summary of the checked facts (never raw data).
   Plan and Tax, shown as "coming soon" in the new app, follow.
 - Deploy market data so its daily collection starts; then sectors on the Holdings page, daily
   prices for index members and chosen funds, and fundamentals.

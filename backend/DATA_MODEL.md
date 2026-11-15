@@ -324,6 +324,16 @@ file. Written daily by `services/sector_copy.refresh` (job `sector_copy`, 6:20 A
 `md.read.sectors_for`; read by `PortalService._place_in_sectors`. Nothing in `perf` reads it. It names
 symbols only, never a client or an account. (Migration `e2a7c5d9b1f4`.)
 
+### `market_pattern_copies`
+The S&P 500's record for this week of the year and this calendar month, copied from market data so
+the Dashboard's market tile never depends on market data being reachable. `key` (PK; `sp500`),
+`payload` (JSON: the week's and month's squares per year, oldest first, up to 20 years, with the
+typical, best and worst, and the week and month it was made for), `refreshed_at`. Written daily by
+`services/market_pattern_copy.refresh` (job `market_pattern_copy`, 6:25 AM Eastern) from
+`md.read.market_pattern`; read by `services/insights/rules/markets`, which ignores a copy older than
+four days or made for another week or month. Nothing in `perf` reads it. It holds index history
+only, never a client, an account or a figure of theirs. (Migration `a9c4e1d7b3f2`.)
+
 ### `sync_logs`
 | Column | Type | Notes |
 |---|---|---|

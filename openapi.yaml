@@ -3150,6 +3150,33 @@ paths:
               schema: {$ref: '#/components/schemas/PortalConnectionsResponse'}
         '401': {description: Not signed in}
         '404': {description: (advisor) client not found}
+  /api/v1/portal/insights:
+    get:
+      tags: [portal]
+      summary: What is worth a look on the Dashboard
+      description: >-
+        "Next best action" (nudges, most pressing first; a `must` one stays in place until it is
+        done) and "Insights" (facts about what is held, with no action), for the accounts in view
+        (`account_ids`). Worked out on each read from what the viewer may see; nothing is stored.
+        Nothing is built on an account whose record is incomplete, except the findings about that
+        record or a stopped login. A section with nothing to say is an empty list.
+      operationId: portalInsights
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+        - name: account_ids
+          in: query
+          required: false
+          schema: {type: array, items: {type: string}}
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: The findings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InsightsResponse'}
+        '401': {description: Not signed in}
+        '404': {description: An account is not in view, or (advisor) client not found}
   /api/v1/portal/accounts:
     get:
       tags:
@@ -5907,6 +5934,119 @@ components:
         needs_sign_in:
           type: integer
           description: How many of the viewer's own logins wait on them to sign in again
+
+    InsightChip:
+      type: object
+      required: [tone, label]
+      properties:
+        tone: {type: string, description: 'link, record, card, cash, investments or all: picks the colour'}
+        label: {type: string}
+
+    InsightAction:
+      type: object
+      required: [kind, label, view, sel, login_id, account_id]
+      description: What the one button does; the screen decides how.
+      properties:
+        kind: {type: string, enum: [view, repair_login, update_from_file]}
+        label: {type: string}
+        view: {type: string, nullable: true, description: 'dashboard, accounts, connections or research'}
+        sel: {type: string, nullable: true, description: 'A selection as in the address, e.g. account:<id>'}
+        login_id: {type: string, nullable: true}
+        account_id: {type: string, nullable: true}
+
+    InsightPart:
+      type: object
+      required: [label, value]
+      properties:
+        label: {type: string}
+        value: {type: number}
+
+    InsightRow:
+      type: object
+      required: [label, value]
+      properties:
+        label: {type: string}
+        value: {type: string}
+
+    InsightSpan:
+      type: object
+      required: [when, said, years, nums]
+      description: 'One stretch of a record: a square per year, oldest first (true: it rose)'
+      properties:
+        when: {type: string}
+        said: {type: string}
+        years:
+          type: array
+          items: {type: boolean}
+        nums: {type: string}
+
+    InsightVisual:
+      type: object
+      required: [type, part, whole, left, right, warn, parts, days, note, rows, text, spans]
+      description: >-
+        One of a closed set the screen can draw; only its own fields are set. meter: part, whole,
+        left, right, warn. split: parts. countdown: days, note, rows. figure: text. record: spans.
+      properties:
+        type: {type: string, enum: [meter, split, countdown, figure, record]}
+        part: {type: number, nullable: true}
+        whole: {type: number, nullable: true}
+        left: {type: string, nullable: true}
+        right: {type: string, nullable: true}
+        warn: {type: boolean, nullable: true}
+        parts:
+          type: array
+          nullable: true
+          items: {$ref: '#/components/schemas/InsightPart'}
+        days: {type: integer, nullable: true}
+        note: {type: string, nullable: true}
+        rows:
+          type: array
+          nullable: true
+          items: {$ref: '#/components/schemas/InsightRow'}
+        text: {type: string, nullable: true}
+        spans:
+          type: array
+          nullable: true
+          items: {$ref: '#/components/schemas/InsightSpan'}
+
+    InsightFinding:
+      type: object
+      required: [key, rule, tier, rank, chip, title, detail, must, when, foot, visual, action, wide, account_ids, link]
+      properties:
+        key: {type: string, description: 'Stable: the rule and what it is about'}
+        rule: {type: string}
+        tier: {type: string, enum: [nudge, insight]}
+        rank: {type: integer, description: Lower is more pressing}
+        chip: {$ref: '#/components/schemas/InsightChip'}
+        title: {type: string}
+        detail: {type: string}
+        must: {type: boolean, description: Stays in place until it is done; never rolls}
+        when: {type: string, nullable: true}
+        foot: {type: string, nullable: true, description: Where the figure comes from and when}
+        visual:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/InsightVisual'}]
+        action:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/InsightAction'}]
+        wide: {type: boolean}
+        account_ids:
+          type: array
+          items: {type: string}
+        link:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/InsightAction'}]
+
+    InsightsResponse:
+      type: object
+      required: [nudges, insights]
+      properties:
+        nudges:
+          type: array
+          items: {$ref: '#/components/schemas/InsightFinding'}
+        insights:
+          type: array
+          items: {$ref: '#/components/schemas/InsightFinding'}
 
     PortalAccountUpdate:
       type: object

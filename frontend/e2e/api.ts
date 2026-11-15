@@ -9,7 +9,7 @@
 import { test as base, expect, type Page, type Route } from '@playwright/test'
 import type {
   HoldingsCheck, ImportPreview, ImportResult, MeResponse, PeopleResponse, PlaidLinkAvailability,
-  PortalAccount, PortalAccountsResponse, PortalConnectionsResponse, PortalPerformanceResponse,
+  InsightFinding, InsightsResponse, PortalAccount, PortalAccountsResponse, PortalConnectionsResponse, PortalPerformanceResponse,
 } from '../src/api/types'
 
 /** What the server would return, or a function that works it out (or answers the route itself). */
@@ -89,6 +89,17 @@ export function accounts(list: PortalAccount[]): PortalAccountsResponse {
 }
 
 export const NO_CONNECTIONS: PortalConnectionsResponse = { connections: [], needs_sign_in: 0 }
+export const NO_INSIGHTS: InsightsResponse = { nudges: [], insights: [] }
+
+/** A finding with only what a test cares about; the rest as the server fills it. */
+export function finding(over: Partial<InsightFinding> & Pick<InsightFinding, 'key' | 'title'>): InsightFinding {
+  return {
+    rule: 'test_rule', tier: 'nudge', rank: 50, chip: { tone: 'cash', label: 'Cash' }, detail: '', must: false,
+    when: null, foot: null, visual: null, action: null, wide: false, account_ids: [], link: null,
+    ...over,
+  }
+}
+
 export const CAN_LINK: PlaidLinkAvailability = { available: true, logins_left: 6 }
 
 /** A record with nothing over time to draw: the Dashboard still gives its headline. */
@@ -144,6 +155,7 @@ export function signedIn(api: Api, list: PortalAccount[] = [BROKERAGE, CHECKING]
     .on('GET /api/v1/portal/accounts', accounts(list))
     .on('GET /api/v1/portal/groups', { groups: [] })
     .on('GET /api/v1/portal/connections', NO_CONNECTIONS)
+    .on('GET /api/v1/portal/insights', NO_INSIGHTS)
     .on('GET /api/v1/portal/links/plaid', CAN_LINK)
     .on('GET /api/v1/portal/performance', NO_HISTORY)
 }

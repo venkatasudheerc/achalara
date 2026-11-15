@@ -1850,6 +1850,15 @@ class PortalService:
             ],
         }
 
+    def tax_facts(self, today: Optional[date] = None) -> Dict:
+        """What only a taxable account has: wash-sale losses still carried in the
+        cost of shares held, and holdings that pass a year before the year ends."""
+        refs = self._refs()
+        return {
+            "carried_losses": self._carried_losses(refs),
+            "turning_long_term": self._turning_long_term(refs, today or date.today()),
+        }
+
     def _income(self, refs: Sequence[SleeveRef], since: date) -> float:
         """Dividends and interest received since ``since``."""
         if not refs:
