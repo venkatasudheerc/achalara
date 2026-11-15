@@ -41,7 +41,7 @@ from app.services.auth_service import AuthService
 from app.services.connection_service import ConnectionService
 from app.services.daily_capture_service import DailyCaptureService
 from app.services.performance_build_service import last_market_day
-from app.utils.secret_box import open_sealed, seal
+from app.utils.secret_box import SecretBoxError, open_sealed, seal
 
 SOURCE = "plaid"
 # How far back the first pull reads investment transactions (Plaid's limit is
@@ -119,7 +119,9 @@ class PlaidLinkService:
     # Repair: signing in again to a login Plaid has stopped reading
     # ------------------------------------------------------------------
 
-    def repair_start(self, client_id: str, connection_id: str) -> Dict:
+    def repair_start(
+        self, client_id: str, connection_id: str, select_accounts: bool = False
+    ) -> Dict:
         """A token that opens Plaid Link in update mode for one of the client's
         logins: they sign in again to the same login, so no new place on the
         plan is used and its history carries on."""
@@ -131,6 +133,7 @@ class PlaidLinkService:
                 client_id,
                 redirect_uri=settings.plaid_redirect_uri,
                 access_token=self._access_token(connection),
+                select_accounts=select_accounts,
             )
         except PlaidError as error:
             raise PlaidLinkError(502, error.message)
@@ -298,6 +301,72 @@ class PlaidLinkService:
 
     def _access_token(self, connection: BrokerageConnection) -> str:
         return open_sealed(connection.access_token_enc or "")
+
+    def discover(self, client_id: str, connection_id: str) -> Dict:
+        """Ask Plaid what the login shares now, and keep a row for each account
+        not seen before (left unmapped, for the client to choose). Accounts
+        already known, mapped or not, are never touched. Returns what ``found``
+        does, so the client can choose at once."""
+        self.discover_new(client_id, connection_id)
+        self.db.commit()
+        return self.found(client_id, connection_id)
+
+    def discover_new(self, client_id: str, connection_id: str) -> int:
+        """How many accounts Plaid shares that had no row here; their rows are
+        added (not committed). Raises when the login cannot be read."""
+        from app.services.plaid_refresh_service import NEEDS_SIGN_IN
+
+        connection = self._connection(client_id, connection_id)
+        try:
+            token = self._access_token(connection)
+        except SecretBoxError:
+            raise PlaidLinkError(
+                503,
+                "The saved sign-in for this login cannot be opened on this server. "
+                "Ask the person who runs Achalara; signing in again may be needed.",
+            )
+        try:
+            shared = self.client.accounts(token).get("accounts", [])
+        except PlaidError as error:
+            if error.code in NEEDS_SIGN_IN:
+                raise PlaidLinkError(409, "This login needs you to sign in again first.")
+            raise PlaidLinkError(502, error.message)
+        known = {
+            ref
+            for (ref,) in self.db.query(BrokerageAccount.external_account_ref).filter(
+                BrokerageAccount.connection_id == connection.id
+            )
+        }
+        added = 0
+        for account in shared:
+            if account["account_id"] not in known:
+                self._upsert_link(connection, account)
+                added += 1
+        connection.status_checked_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return added
+
+    def discover_mine(self, client_id: str) -> Dict:
+        """``discover_new`` for each of the client's own logins that Plaid still
+        reads; one login that cannot be read never stops the rest."""
+        outcome = {"checked": 0, "new_accounts": 0, "needs_sign_in": 0, "failed": 0}
+        logins = (
+            self.db.query(BrokerageConnection)
+            .filter(BrokerageConnection.client_id == client_id, BrokerageConnection.source == SOURCE)
+            .all()
+        )
+        for login in logins:
+            if login.status != "active":
+                outcome["needs_sign_in"] += 1
+                continue
+            try:
+                outcome["new_accounts"] += self.discover_new(client_id, login.id)
+                outcome["checked"] += 1
+                self.db.commit()
+            except PlaidLinkError as error:
+                self.db.rollback()
+                outcome["needs_sign_in" if error.status_code == 409 else "failed"] += 1
+        return outcome
 
     def found(self, client_id: str, connection_id: str) -> Dict:
         """The login's accounts, each with what is proposed for it."""

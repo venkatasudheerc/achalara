@@ -157,7 +157,7 @@ def test_a_login_that_needs_signing_in_is_repaired_in_place(db, owner, plaid_key
     assert shown["needs_sign_in"] is True and shown["login_id"] == login.id
 
     class Asked(NextDay):
-        def link_token(self, client_user_id, redirect_uri="", webhook="", access_token=""):
+        def link_token(self, client_user_id, redirect_uri="", webhook="", access_token="", select_accounts=False):
             self.update_mode_for = access_token
             return {"link_token": "link-update", "expiration": "2026-11-17T20:00:00Z"}
 

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { PortalAccount, PortalConnection } from '@/api/types'
 import { usePortalConnections } from '@/hooks/usePortal'
-import { usePlaidRepair } from '@/hooks/usePlaid'
+import { usePlaidDiscover, usePlaidRepair } from '@/hooks/usePlaid'
 import { loadPlaid } from '@/lib/plaid'
 import { formatCurrency, formatDate, formatTime } from '@/lib/formatters'
 import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
-import { AddAccountDialog } from './AddAccountDialog'
+import { AddAccountDialog, type Review } from './AddAccountDialog'
 import { accountName, kindOf } from './selection'
 
 const first = (name: string | null) => (name ?? 'Its owner').split(' ')[0]
@@ -79,9 +79,10 @@ function useSignInAgain() {
   return { signIn, working, error }
 }
 
-function ConnectionCard({ connection, signIn }: {
+function ConnectionCard({ connection, signIn, onReview }: {
   connection: PortalConnection
   signIn: ReturnType<typeof useSignInAgain>
+  onReview: (r: Review) => void
 }) {
   const state = stateText(connection)
   const refreshed = connection.last_refreshed_at ?? connection.status_checked_at
@@ -128,6 +129,18 @@ function ConnectionCard({ connection, signIn }: {
         </ul>
       )}
 
+      {connection.own && (connection.waiting_accounts ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-[12px] rounded-[14px] bg-accent-soft px-[14px] py-[12px]">
+          <span className="text-[14px] font-medium flex-1 min-w-[180px]">
+            {connection.waiting_accounts === 1 ? '1 new account is' : `${connection.waiting_accounts} new accounts are`} waiting for you to add it.
+          </span>
+          <button type="button" onClick={() => onReview({ connectionId: connection.id, institution: connection.institution ?? '' })}
+            className="h-[44px] px-[18px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold">
+            Review
+          </button>
+        </div>
+      )}
+
       {connection.own && connection.state === 'needs_sign_in' && (
         <div className="flex flex-wrap items-center gap-[12px]">
           <button type="button" onClick={() => signIn.signIn(connection.id)} disabled={signIn.working !== null}
@@ -150,7 +163,13 @@ function ConnectionCard({ connection, signIn }: {
 export function ConnectionsPage() {
   const { data, isLoading, isError, refetch } = usePortalConnections()
   const signIn = useSignInAgain()
+  const discover = usePlaidDiscover()
   const [adding, setAdding] = useState(false)
+  const [reviewing, setReviewing] = useState<Review | null>(null)
+  const [checkError, setCheckError] = useState('')
+  const hasOwn = (data?.connections ?? []).some((c) => c.own)
+  const checkAll = () => { setCheckError(''); discover.all.mutate(undefined, { onError: (e) => setCheckError(e.message) }) }
+  const found = discover.all.data
 
   return (
     <main className="w-full max-w-[720px] mx-auto px-[20px] md:px-[24px] pt-[32px] pb-[72px] flex flex-col gap-[24px]">
@@ -167,8 +186,29 @@ export function ConnectionsPage() {
           <p className="text-[17px] leading-relaxed">{headline(data.connections, data.needs_sign_in)}</p>
           {data.connections.length > 0 && (
             <ul className="flex flex-col gap-[14px]">
-              {data.connections.map((c) => <ConnectionCard key={c.id} connection={c} signIn={signIn} />)}
+              {data.connections.map((c) => <ConnectionCard key={c.id} connection={c} signIn={signIn} onReview={setReviewing} />)}
             </ul>
+          )}
+          {hasOwn && (
+            <div className="flex flex-col gap-[8px]">
+              <div className="flex flex-wrap items-center gap-[12px]">
+                <button type="button" onClick={checkAll} disabled={discover.all.isPending}
+                  className="h-[44px] px-[18px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold disabled:opacity-60">
+                  {discover.all.isPending ? 'Checking…' : 'Check for new accounts'}
+                </button>
+                <span className="text-[14px] text-stone">Opened an account at one of these? This finds it. Nothing changes until you add it.</span>
+              </div>
+              {found && !discover.all.isPending && (
+                <p role="status" className="text-[14px]">
+                  {found.new_accounts > 0
+                    ? `${found.new_accounts} new account${found.new_accounts === 1 ? '' : 's'} found. Review ${found.new_accounts === 1 ? 'it' : 'them'} above.`
+                    : 'No new accounts. Everything these logins share is already here.'}
+                  {found.needs_sign_in > 0 && ` ${found.needs_sign_in === 1 ? 'One login needs' : `${found.needs_sign_in} logins need`} you to sign in again first.`}
+                  {found.failed > 0 && ` ${found.failed === 1 ? 'One login' : `${found.failed} logins`} could not be checked; try again in a moment.`}
+                </p>
+              )}
+              {checkError && <p role="alert" className="text-[14px] text-loss">{checkError}</p>}
+            </div>
           )}
           {signIn.error && <p role="alert" className="text-[14px] text-loss">{signIn.error}</p>}
           <div>
@@ -180,6 +220,7 @@ export function ConnectionsPage() {
         </>
       )}
       <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
+      <AddAccountDialog open={reviewing !== null} review={reviewing} onClose={() => setReviewing(null)} />
     </main>
   )
 }

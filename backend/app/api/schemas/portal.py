@@ -81,6 +81,9 @@ class PortalConnection(BaseModel):
     status_checked_at: Optional[datetime] = None  # its last morning check
     last_refreshed_at: Optional[datetime] = None  # its accounts' last sync
     accounts: List[PortalAccount] = []  # only the accounts in view it feeds
+    # Accounts the login shares that the owner has not yet added or left out
+    # (own logins only; 0 for another's).
+    waiting_accounts: int = 0
 
 
 class PortalConnectionsResponse(BaseModel):

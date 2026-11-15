@@ -531,6 +531,17 @@ its accounts are `brokerage_accounts` rows. Rules:
   again; if so it is `active` again and refreshed at once. Only the login's owner can repair it.
   `/portal/accounts` says which accounts wait on it (`needs_sign_in`, and `login_id` for the
   owner); the Dashboard asks the owner to sign in again and tells anyone else whose login it is.
+- **Checking a login for accounts not seen before** (`PlaidLinkService.discover_new` /
+  `discover` / `discover_mine`, routes `POST /portal/links/plaid/discover` for every one of the
+  viewer's own active logins and `POST /portal/links/plaid/{id}/discover` for one): the stored key
+  asks Plaid what the login shares now, and each account with no `brokerage_accounts` row gets one,
+  `unmapped`. **A known account is never touched** (name, status, account and sleeve stay as they
+  were), mapped or not, and repeating is safe. Nothing is added until the client confirms
+  (`confirm`, as after a link). `PortalConnection.waiting_accounts` counts a login's `unmapped`
+  rows (own logins only), so an abandoned link dialog shows up too. A login that is not `active`
+  is counted (`needs_sign_in`), not read; a key that does not open is a 503 in plain words. Plaid
+  shares only the accounts chosen when the login was made, so a new account at an institution may
+  need `POST …/repair?select_accounts=true` (update mode with `account_selection_enabled`) first.
 - Tests never reach Plaid: they pass a fake client to `PlaidLinkService` / `PlaidRefreshService`.
 
 ## How far a record can be trusted

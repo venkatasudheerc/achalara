@@ -43,6 +43,7 @@ from app.api.schemas.portal import (
     PortalTradesResponse,
 )
 from app.api.schemas.plaid import (
+    PlaidDiscovered,
     PlaidRefreshed,
     PlaidRepaired,
     PlaidConfirm,
@@ -743,15 +744,39 @@ def portal_plaid_refresh(
         return PlaidLinkService(db).refresh_mine(viewer.client_id)
 
 
-@router.post("/links/plaid/{connection_id}/repair", response_model=PlaidLinkStart)
-def portal_plaid_repair(
+@router.post("/links/plaid/discover", response_model=PlaidDiscovered)
+def portal_plaid_discover_all(
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Check each of the viewer's own logins for accounts not seen before. Known
+    accounts are never touched; new ones wait to be chosen."""
+    with _plaid_errors():
+        return PlaidLinkService(db).discover_mine(viewer.client_id)
+
+
+@router.post("/links/plaid/{connection_id}/discover", response_model=PlaidFound)
+def portal_plaid_discover(
     connection_id: str,
     viewer: PortalViewer = Depends(portal_viewer),
     db: Session = Depends(get_db),
 ):
-    """A token that opens Plaid Link to sign in again to one of the viewer's logins."""
+    """One login checked for accounts not seen before, with what is proposed for each."""
     with _plaid_errors():
-        return PlaidLinkService(db).repair_start(viewer.client_id, connection_id)
+        return PlaidLinkService(db).discover(viewer.client_id, connection_id)
+
+
+@router.post("/links/plaid/{connection_id}/repair", response_model=PlaidLinkStart)
+def portal_plaid_repair(
+    connection_id: str,
+    select_accounts: bool = False,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """A token that opens Plaid Link to sign in again to one of the viewer's
+    logins; with ``select_accounts``, also to share accounts it does not share yet."""
+    with _plaid_errors():
+        return PlaidLinkService(db).repair_start(viewer.client_id, connection_id, select_accounts)
 
 
 @router.post("/links/plaid/{connection_id}/repaired", response_model=PlaidRepaired)

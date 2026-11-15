@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AccountKind, PersonRow, PlaidChoice, PlaidConfirmed, PlaidFound, PlaidFoundAccount } from '@/api/types'
-import { usePlaidAvailability, usePlaidLink } from '@/hooks/usePlaid'
+import { usePlaidAvailability, usePlaidDiscover, usePlaidLink } from '@/hooks/usePlaid'
 import { usePortalAccounts, usePortalPeople } from '@/hooks/usePortal'
 import { formatCurrency } from '@/lib/formatters'
 import { loadPlaid } from '@/lib/plaid'
 import { INVESTED, KINDS } from './selection'
 
-type Step = 'choose' | 'found' | 'done'
+type Step = 'choose' | 'checking' | 'none' | 'found' | 'done'
+/** A login already linked, checked for accounts it did not have before. */
+export interface Review { connectionId: string; institution: string }
 interface Pick {
   action: 'link' | 'new' | 'skip'; accountId?: string; kind: AccountKind
   /** Whose it is: me, 'joint:<id>', 'for:<minorId>' (held for), or 'other:<id>' (theirs; I view it) */
@@ -151,13 +153,21 @@ function LinkError({ raw }: { raw: string }) {
 /**
  * Add an account: sign in to the institution through Plaid, then say which of
  * the accounts it found are which. Nothing is added until "Add these".
+ *
+ * With `review`, it instead checks a login already linked for accounts not seen
+ * before and offers only those; accounts already linked stay as they are.
  */
-export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: boolean; onClose: () => void; review?: Review | null }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const availability = usePlaidAvailability()
   const { data: peopleData } = usePortalPeople(open)
   const { data: portal } = usePortalAccounts()
   const { start, finish, confirm } = usePlaidLink()
+  const discover = usePlaidDiscover()
+  // Plaid's window closes this dialog and so clears the parent's choice; the login being checked is kept here.
+  const [kept, setKept] = useState<Review | null>(null)
+  const review = reviewProp ?? kept
+  useEffect(() => { if (reviewProp) setKept(reviewProp) }, [reviewProp])
   const [step, setStep] = useState<Step>('choose')
   const [found, setFound] = useState<PlaidFound | null>(null)
   const [picks, setPicks] = useState<Record<string, Pick>>({})
@@ -171,6 +181,48 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
     if (open && !d.open) d.showModal()
     if (!open && d.open) d.close()
   }, [open])
+
+  const check = (connectionId: string) => {
+    setError(''); setStep('checking')
+    discover.one.mutate(connectionId, {
+      onSuccess: (f) => {
+        const waiting = f.accounts.filter((a) => a.status !== 'mapped' && a.status !== 'matched')
+        setFound(f)
+        setPicks(Object.fromEntries(f.accounts.map((a) => [a.link_id, initialPick(a)])))
+        setStep(waiting.length ? 'found' : 'none')
+      },
+      onError: (e) => { setError(e.message); setStep('none') },
+    })
+  }
+
+  useEffect(() => {
+    if (open && reviewProp) check(reviewProp.connectionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, reviewProp?.connectionId])
+
+  /** Plaid Link in update mode, where the client may share accounts it did not share before. */
+  const shareMore = async () => {
+    if (!review) return
+    setError(''); setOpening(true)
+    try {
+      const [{ link_token }, Plaid] = await Promise.all([discover.select.mutateAsync(review.connectionId), loadPlaid()])
+      dialog.current?.close()
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: () => { dialog.current?.showModal(); handler.destroy(); check(review.connectionId) },
+        onExit: (err) => {
+          dialog.current?.showModal()
+          if (err) setError(err.display_message || err.error_message || 'Sharing more accounts did not finish.')
+          handler.destroy()
+        },
+      })
+      handler.open()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setOpening(false)
+    }
+  }
 
   const close = () => {
     setStep('choose'); setFound(null); setPicks({}); setResult(null); setError('')
@@ -246,7 +298,9 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
         <div className="flex items-start justify-between gap-[12px]">
           <div className="flex flex-col gap-[4px]">
             <h2 id="add-title" className="font-display text-[22px]">
-              {step === 'found' ? `What we found at ${found?.institution || 'your institution'}` : step === 'done' ? 'Accounts added' : 'Add an account'}
+              {step === 'found' ? `What we found at ${found?.institution || 'your institution'}`
+                : step === 'done' ? 'Accounts added'
+                : review ? `Check ${review.institution || 'your institution'} for new accounts` : 'Add an account'}
             </h2>
             {step === 'found' && (
               <p className="text-[14px] text-stone leading-relaxed">Check each one: link it to an account that’s already here, add it as new, or leave it out. Nobody else sees a new account unless you say so.</p>
@@ -256,7 +310,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
             className="w-[44px] h-[44px] rounded-full hover:bg-line flex items-center justify-center text-[22px]">×</button>
         </div>
 
-        {step === 'choose' && (
+        {step === 'choose' && !review && (
           <div className="flex flex-col gap-[12px]">
             <button type="button" onClick={link} disabled={!available || left <= 0 || opening || finish.isPending}
               className="text-left border border-stone/30 rounded-[16px] p-[18px] hover:bg-line disabled:opacity-60 flex flex-col gap-[4px]">
@@ -282,12 +336,40 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
 
         {step === 'found' && found && (
           <ul className="flex flex-col gap-[12px] max-h-[55vh] overflow-y-auto">
-            {found.accounts.map((a) => (
+            {found.accounts.filter((a) => !review || (a.status !== 'mapped' && a.status !== 'matched')).map((a) => (
               <FoundRow key={a.link_id} account={a} pick={picks[a.link_id]}
                 people={peopleData?.people ?? []} advisor={peopleData?.advisor ?? null}
                 onPick={(p) => setPicks((all) => ({ ...all, [a.link_id]: p }))} />
             ))}
           </ul>
+        )}
+
+        {step === 'found' && review && found && found.accounts.some((a) => a.status === 'mapped' || a.status === 'matched') && (
+          <p className="text-[14px] text-stone">
+            The {found.accounts.filter((a) => a.status === 'mapped' || a.status === 'matched').length} account(s) already linked here stay exactly as they are.
+          </p>
+        )}
+
+        {step === 'checking' && (
+          <p role="status" className="text-[15px] text-stone">Checking with {review?.institution || 'your institution'}…</p>
+        )}
+
+        {step === 'none' && review && (
+          <div className="flex flex-col gap-[12px]">
+            {!error && <p className="text-[15px] leading-relaxed">No new accounts at {review.institution || 'this institution'}. Everything it shares is already here.</p>}
+            <div className="border border-line rounded-[16px] p-[16px] flex flex-col gap-[8px]">
+              <span className="font-semibold text-[15px]">Opened an account there lately?</span>
+              <span className="text-[14px] text-stone leading-relaxed">
+                Some institutions share only the accounts you chose when you first connected. Open their window and tick the new one; nothing else changes.
+              </span>
+              <div>
+                <button type="button" onClick={shareMore} disabled={opening}
+                  className="h-[44px] px-[18px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line disabled:opacity-60">
+                  {opening ? 'Opening…' : `Share another account at ${review.institution || 'this institution'}`}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {step === 'done' && result && (
@@ -317,7 +399,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
             </>
           ) : (
             <button type="button" onClick={close} className={`${button} ${step === 'done' ? 'bg-pine text-on-dark' : 'border border-stone/40 hover:bg-line'}`}>
-              {step === 'done' ? 'Done' : 'Cancel'}
+              {step === 'done' ? 'Done' : step === 'none' ? 'Close' : 'Cancel'}
             </button>
           )}
         </div>

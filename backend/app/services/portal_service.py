@@ -483,6 +483,11 @@ class PortalService:
                     "status_checked_at": aware(login.status_checked_at),
                     "last_refreshed_at": max(synced) if synced else None,
                     "accounts": [in_view[link.account_id] for link in links],
+                    "waiting_accounts": sum(
+                        1 for link in login.brokerage_accounts if link.status == "unmapped"
+                    )
+                    if login.client_id == self.client_id
+                    else 0,
                 }
             )
         # The viewer's own first, then by institution.

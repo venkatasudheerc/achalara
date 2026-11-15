@@ -81,9 +81,12 @@ class PlaidClient:
         redirect_uri: str = "",
         webhook: str = "",
         access_token: str = "",
+        select_accounts: bool = False,
     ) -> Dict:
         """A token that opens Plaid Link for one client. With ``access_token`` it
-        opens Link in update mode, to repair a login that needs signing in again."""
+        opens Link in update mode, to repair a login that needs signing in again;
+        with ``select_accounts`` as well, the client may also share accounts the
+        institution did not share when the login was made."""
         body: Dict = {
             "user": {"client_user_id": client_user_id},
             "client_name": "Achalara",
@@ -92,6 +95,8 @@ class PlaidClient:
         }
         if access_token:
             body["access_token"] = access_token
+            if select_accounts:
+                body["update"] = {"account_selection_enabled": True}
         else:
             body["products"] = list(PRODUCTS)
             body["required_if_supported_products"] = list(IF_SUPPORTED)
