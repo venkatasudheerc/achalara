@@ -1,7 +1,7 @@
 # The Achalara backend: FastAPI, with the scheduler running inside the process.
 #
-# Run exactly one container of this image. The daily jobs (sheet sync,
-# brokerage sync, daily capture, index history) are started by the app itself,
+# Run exactly one container of this image. The daily jobs (Plaid refresh,
+# price history, ticker changes, index history) are started by the app itself,
 # so a second copy would run every job twice.
 FROM python:3.11-slim
 

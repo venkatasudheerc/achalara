@@ -20,7 +20,7 @@ from app.models.client import Client
 from app.models.index_bar import IndexBar
 from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.trade import Trade
-from app.services import alerts, run_log, scheduler
+from app.services import alerts, job_history, run_log, scheduler
 from app.services.auth_service import display_name
 from app.services.invitation_service import InvitationService
 from app.md import read as md_read
@@ -148,7 +148,10 @@ class StatusService:
         times = scheduler.job_times()
         jobs = []
         for job_id, label in JOBS:
-            run = run_log.last_run(job_id) or {}
+            # Since this start, else the last run on file from before it.
+            run = (
+                run_log.last_run(job_id) or job_history.last_run(self.db, job_id) or {}
+            )
             if run and not run["ok"]:
                 attention.append(f"{label} failed on its last run.")
             jobs.append(
@@ -306,7 +309,11 @@ class StatusService:
                     start = health["download_from"]
                     attention.append(
                         f"The record of {name} is incomplete: {' '.join(health['reasons'])}"
-                        + (f" Download its activity from {start.isoformat()}." if start else ""),
+                        + (
+                            f" Download its activity from {start.isoformat()}."
+                            if start
+                            else ""
+                        ),
                         alert="An account's record is incomplete: a transaction is missing.",
                     )
             accounts.append(
@@ -321,7 +328,9 @@ class StatusService:
                     "next_sync_allowed_at": None,
                     "transactions_synced_through": through,
                     "captured_through": captured.get(ba.account_id),
-                    **self._holdings(account, reconciliation if ba.reconciliation else None),
+                    **self._holdings(
+                        account, reconciliation if ba.reconciliation else None
+                    ),
                     "skipped_rows": sum(
                         (reconciliation.get("skipped_rows") or {}).values()
                     ),
@@ -336,7 +345,9 @@ class StatusService:
         record, the count from the last reconciliation with the feed."""
         from app.services.account_import_service import AccountImportService
 
-        check = AccountImportService(self.db).holdings_check(account) if account else None
+        check = (
+            AccountImportService(self.db).holdings_check(account) if account else None
+        )
         if check is None:
             return {
                 "holdings_differ": len(reconciliation.get("drifted") or [])

@@ -295,6 +295,14 @@ Google Sheets is no longer a source: the table that mapped a sheet to a sleeve f
 sheet sync was dropped with the Imports page and the sync job (migration `a3f8c1e6d2b9`; its
 downgrade recreates it empty). Trades keep `google_sheet_row_id`.
 
+### `job_runs`
+One row per finished run of a scheduled job: `job_id` (indexed), `started_at`, `finished_at`,
+`ok`, `error` (the first error it logged, at most 400 characters). Written by
+`run_log.tracked` through `job_history.record`; runs older than 90 days are dropped as new ones
+arrive. System status reads a job's last run from it after a restart, and the scheduler reads it
+at start-up to make up a run that fell while the server was down. It names jobs only, never a
+client or an account. (Migration `d4f6a8c1e3b7`.)
+
 ### `sync_logs`
 | Column | Type | Notes |
 |---|---|---|

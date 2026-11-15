@@ -123,7 +123,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/utils/webull_signing.py`           | Signing a Webull request, shared by the app's client and the market-data jobs            |
 | `app/services/status_service.py`        | The advisor's system status: jobs, brokerage accounts, data freshness, backup, warnings |
 | `app/services/run_log.py`               | In-memory record of job runs and recent warnings since the app started                  |
-| `app/services/scheduler.py`             | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`)                             |
+| `app/services/job_history.py`           | Job runs kept in `job_runs`; which run was missed while the server was down             |
+| `app/services/scheduler.py`             | APScheduler lifecycle, the one list of jobs (`_schedule`) and `catch_up`                |
 | `app/services/market_price.py`          | Position price updates / persistence                                                    |
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
 | `app/services/live_quotes.py`           | Batched, briefly cached live prices for the portal's holdings screen                    |
@@ -697,8 +698,13 @@ must never change anything. Two independent layers hold this; keep both.
 `GET /api/v1/admin/status` (`StatusService`) is what the advisor's System status page shows.
 Its `attention` list is the plain-language summary of what needs a person; add a new check
 there, not on the screen. A scheduled job must be wrapped in `run_log.tracked("<job id>")` and
-listed in `status_service.JOBS`, or the page cannot show it. The record of runs and warnings is
-in memory and starts empty at each restart. The backup's result comes from a file the server's
+listed in `status_service.JOBS`, or the page cannot show it. Each finished run is also kept in
+`job_runs` (`services/job_history.py`), so the page still knows a job's last run after a restart;
+recent warnings are in memory only and start empty at each restart. **A run missed while the
+server was down is made up at start-up** (`scheduler.catch_up`, two minutes after start): a job
+whose time passed with no run started since, within the grace `scheduler._schedule` gives it
+(Plaid refresh three hours, until the market opens; the others most of a day). Add a new job to
+`_schedule`, with its grace, never straight to the scheduler. The backup's result comes from a file the server's
 `deploy/backup.sh` writes into `STATUS_DIR`.
 
 **Alerts leave the app** (`services/alerts.py`, a Telegram bot when configured), so they carry
