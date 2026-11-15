@@ -54,6 +54,9 @@ python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 # The morning's Plaid refresh, now (every active login, or one client's); safe to repeat
 python -m app.cli plaid-refresh [--client "Pat Example"]
 
+# Read only: what Plaid calls each security a login holds, and whether the app reads it (a holding with no ticker is not read)
+python -m app.cli plaid-securities [--client "Pat Example"]
+
 # Read only: do a new Plaid login's trades match what another login's feed of the same account stored?
 python -m app.cli compare-feeds --client "Pat Example" [--days 90]
 
