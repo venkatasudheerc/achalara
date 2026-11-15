@@ -533,7 +533,12 @@ through Plaid (below), their earlier history from the custodian's own files.
   (Merger)" row is a trade noted `MERGER_NOTE`: shares taken for cash are a sale at the cash per
   share; a leg of an exchange for other shares is recorded at no price and
   `corporate_actions.carry_exchange_costs` carries the cost across (lot moves in
-  `PortfolioCalculationService._share_exchanges`). A merger row with no symbol takes the symbol
+  `PortfolioCalculationService._share_exchanges`). A split Vanguard entered and then took back a day
+  or so later (the position was sold before it took effect) keeps both rows: the split is dated by
+  the taking back, so a sale on the entry's day is read in the old shares
+  (`vanguard_report._undoes_a_split`, `record_splits`). A split of the same symbol within three days
+  of one on file is that split (`corporate_actions.split_on_file`), never a second one; a negative
+  split row with nothing to undo is set aside for a look. A merger row with no symbol takes the symbol
   another row of the report gives the same company. A merger leg on file matches its row whatever
   its price, since carrying the cost changed it. **Plaid's splits and mergers are not read yet**:
   none has been seen in real data; the account's health flags the difference until one is.

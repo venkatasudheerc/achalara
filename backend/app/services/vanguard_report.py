@@ -47,7 +47,7 @@ from app.models.cash_activity import MARGIN_INTEREST, CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.models.perf import CorporateAction
-from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE
+from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE, split_on_file
 from app.services.opening_position import NOT_OPENING
 from app.utils.symbols import app_symbol
 
@@ -352,6 +352,17 @@ def _symbol_by_name(name: str, rows: List[ReportRow]) -> str:
     return ""
 
 
+def _undoes_a_split(row: ReportRow, rows: List[ReportRow]) -> bool:
+    """A negative split row that takes back the shares an earlier one added."""
+    return any(
+        other.kind == SPLIT
+        and other.symbol == row.symbol
+        and other.quantity == -row.quantity
+        and timedelta(0) < row.traded - other.traded <= timedelta(days=7)
+        for other in rows
+    )
+
+
 def read_rows(rows: List[ReportRow]) -> Tuple[list, list, List[ReportRow], Counter, List[ReportRow]]:
     """Trades, cash rows and splits as the app holds them, with what was set aside."""
     trades: List[Tuple[ReportRow, NormalizedTrade]] = []
@@ -421,7 +432,14 @@ def read_rows(rows: List[ReportRow]) -> Tuple[list, list, List[ReportRow], Count
                 )
             )
         elif row.kind == SPLIT:
-            if not row.symbol or not row.quantity or row.quantity <= 0:
+            if not row.symbol or not row.quantity:
+                needs_a_look.append(row)
+                continue
+            # Vanguard enters a split and, when the position was sold before it
+            # took effect, takes the shares back a day or so later. The taking
+            # back is kept (it dates the split); one with nothing to undo is not
+            # understood, so it is set aside.
+            if row.quantity < 0 and not _undoes_a_split(row, rows):
                 needs_a_look.append(row)
                 continue
             splits.append(row)
@@ -537,7 +555,7 @@ class VanguardReportImport:
             for a in self.db.query(CorporateAction).filter(CorporateAction.action_type == "SPLIT")
         }
         for row in splits:
-            if (row.symbol, row.traded) in known:
+            if split_on_file(known, row.symbol, row.traded):
                 plan.held_splits += 1
             else:
                 plan.splits.append(row)
