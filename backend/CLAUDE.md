@@ -427,7 +427,11 @@ through Plaid (below), their earlier history from the custodian's own files.
   assignment matches its own contract only; cash matches on amount within 3 days. Sweeps and
   same-day transfer pairs between the account's cash and margin sides are not activity. Added
   rows are stored under ids starting `vanguard:` (`REPORT_ID_PREFIX`), and ingestion recognises a
-  Plaid trade or cash row that matches one, so a day is never counted twice. **One holdings
+  Plaid trade or cash row that matches one, so a day is never counted twice: a trade on side,
+  symbol and quantity with the price within a cent a share and the day within two weekdays (a
+  feed's day is worked back from settlement, which a bank holiday moves), cash on amount within
+  three days. The feed's row is then marked `connection_service.REPORT_TWIN` and keeps no cash,
+  so the report's row alone counts it. **One holdings
   check** (`AccountImportService.holdings_check`) compares every day the custodian recorded
   holdings with what the trades add up to and says which differ, when they last agreed and first
   differed, and where a report should start (`download_from`). Options and "~" names are not
@@ -488,6 +492,10 @@ its accounts are `brokerage_accounts` rows. Rules:
   pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
   `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
   and skipped until repaired; one failing login never stops the rest.
+- **Refresh now** (`PlaidLinkService.refresh_mine`, `POST /portal/links/plaid/refresh`): the
+  morning refresh for the viewer's own logins only, never a spouse's or a shared one; a login
+  checked in the last ten minutes (`REFRESH_AFTER`) or one that needs signing in again is left as
+  it is. Plaid updates investment accounts about once a day, so it often brings nothing newer.
 - **Repairing a login** (`PlaidLinkService.repair_start` / `repaired`, routes
   `/portal/links/plaid/{id}/repair` and `/repaired`): Plaid Link opens in update mode for the
   same login (a link token made with its access key), so no new place on the plan is used and its
@@ -502,7 +510,8 @@ its accounts are `brokerage_accounts` rows. Rules:
 `services/account_health.py` gives every account one state, on `/portal/accounts` as `health`:
 **complete**, **provisional** (a difference in the last `SETTLE_DAYS` that may clear as
 transactions post) or **incomplete** (a transaction is missing), with plain reasons and
-`download_from`. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
+`download_from`. A holdings difference is provisional only when holdings agreed before it and it
+began in the last `SETTLE_DAYS`; one there since the very first record is history missing. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
 written by `OpeningPositionService.refresh`), the holdings check, and `cash_check`, which compares
 each day the institution recorded cash with what the history works back to. The record is worked
 back from today, so the latest day always agrees and an earlier day that differs means a movement

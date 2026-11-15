@@ -139,6 +139,43 @@ class PlaidLinkService:
             "logins_left": self.logins_left(),
         }
 
+    # A login refreshed this recently is not asked again: Plaid updates
+    # investment accounts about once a day, and each call is counted.
+    REFRESH_AFTER = timedelta(minutes=10)
+
+    def refresh_mine(self, client_id: str, today: Optional[date] = None) -> Dict:
+        """The morning refresh now, for the client's own logins only (never a
+        spouse's or a shared one). A login checked in the last few minutes, or
+        one that needs signing in again, is left as it is."""
+        from app.services.plaid_refresh_service import PlaidRefreshService
+
+        now = datetime.now(timezone.utc)
+        outcome = {"refreshed": 0, "up_to_date": 0, "needs_sign_in": 0, "failed": 0}
+        logins = (
+            self.db.query(BrokerageConnection)
+            .filter(BrokerageConnection.client_id == client_id, BrokerageConnection.source == SOURCE)
+            .all()
+        )
+        refresher = PlaidRefreshService(self.db, self.client)
+        for login in logins:
+            if login.status != "active":
+                outcome["needs_sign_in"] += 1
+                continue
+            checked = login.status_checked_at
+            if checked is not None and checked.tzinfo is None:
+                checked = checked.replace(tzinfo=timezone.utc)
+            if checked is not None and now - checked < self.REFRESH_AFTER:
+                outcome["up_to_date"] += 1
+                continue
+            try:
+                result = refresher.refresh(login, today)
+            except Exception:  # noqa: BLE001 - one login never stops the rest
+                self.db.rollback()
+                outcome["failed"] += 1
+                continue
+            outcome["needs_sign_in" if result == "needs signing in" else "refreshed"] += 1
+        return {**outcome, "at": now}
+
     def repaired(self, client_id: str, connection_id: str, today: Optional[date] = None) -> Dict:
         """After the client signed in again: ask Plaid whether the login reads
         once more, and if so mark it active and bring its accounts up to date."""

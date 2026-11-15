@@ -88,7 +88,9 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   Each account's figure, and every total built from them (the rail, the Dashboard's headline and
   kind tiles, the Accounts view), is `account.value`: the account now, exactly as the Holdings
   view's tile adds it up, so the two never disagree. The Dashboard says both clocks: the live
-  prices' time (`priced_at`) and the day the custodian last reported holdings and cash (`as_of`).
+  prices' time (`priced_at`) and the day the custodian last reported holdings and cash (`as_of`),
+  with **Refresh** beside them when the viewer owns a linked account (`usePlaidRefresh`; it says
+  "Updated just now", "Already up to date" or "Sign in again first").
 - The selection and the open view live in the address, `?sel=all|owner:<id>|kind:<kind>|group:<id>|account:<id>&view=…`
   (`selection.ts`), and become `account_ids` on every portal request.
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;

@@ -54,18 +54,24 @@ class CashActivityService:
                 from_report.add((day, Decimal(str(amount))))
         imported = 0
         earliest: Optional[date] = None
+        twins: List[str] = []
         for activity in activities:
             if activity.external_id in existing:
                 continue
-            report_key = (
-                activity.occurred_at.date(),
-                Decimal(str(activity.amount)).quantize(Decimal("0.01")),
-            )
-            if not activity.external_id.startswith(REPORT_ID_PREFIX) and (
-                report_key in from_report
-            ):
-                from_report.discard(report_key)
-                continue
+            day = activity.occurred_at.date()
+            amount = Decimal(str(activity.amount)).quantize(Decimal("0.01"))
+            if not activity.external_id.startswith(REPORT_ID_PREFIX):
+                # The same amount within three days is the movement a
+                # custodian's report already added: its row counts the cash.
+                twin = next(
+                    (k for k in sorted(from_report, key=lambda k: abs((k[0] - day).days))
+                     if k[1] == amount and abs((k[0] - day).days) <= 3),
+                    None,
+                )
+                if twin is not None:
+                    from_report.discard(twin)
+                    twins.append(activity.external_id)
+                    continue
             existing.add(activity.external_id)
             activity_date = activity.occurred_at.date()
             self.db.add(
@@ -87,6 +93,7 @@ class CashActivityService:
             "imported": imported,
             "duplicates": len(activities) - imported,
             "earliest_activity_date": earliest,
+            "report_twins": twins,
         }
 
     def list_for_sleeves(self, sleeve_ids: List[str]) -> List[Dict]:

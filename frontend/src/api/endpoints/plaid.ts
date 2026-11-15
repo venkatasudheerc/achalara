@@ -1,11 +1,13 @@
 import { apiClient } from '../client'
-import type { PlaidChoice, PlaidConfirmed, PlaidFound, PlaidLinkAvailability, PlaidLinkStart, PlaidRepaired } from '../types'
+import type { PlaidChoice, PlaidConfirmed, PlaidFound, PlaidLinkAvailability, PlaidLinkStart, PlaidRefreshed, PlaidRepaired } from '../types'
 
 const base = '/api/v1/portal/links/plaid'
 /** An advisor previewing a client links for them, as the client would. */
 const params = (asClient?: string) => (asClient ? { as_client: asClient } : undefined)
 
 export const plaidApi = {
+  refreshMine: (asClient?: string) =>
+    apiClient.post<PlaidRefreshed>(`${base}/refresh`, null, { params: params(asClient) }).then((r) => r.data),
   availability: (asClient?: string) =>
     apiClient.get<PlaidLinkAvailability>(base, { params: params(asClient) }).then((r) => r.data),
   start: (asClient?: string) =>
