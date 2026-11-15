@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { AccountKind, PersonRow, PlaidChoice, PlaidConfirmed, PlaidFound, PlaidFoundAccount } from '@/api/types'
 import { usePlaidAvailability, usePlaidDiscover, usePlaidLink } from '@/hooks/usePlaid'
 import { usePortalAccounts, usePortalPeople } from '@/hooks/usePortal'
@@ -159,6 +159,7 @@ function LinkError({ raw }: { raw: string }) {
  */
 export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: boolean; onClose: () => void; review?: Review | null }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
   const availability = usePlaidAvailability()
   const { data: peopleData } = usePortalPeople(open)
   const { data: portal } = usePortalAccounts()
@@ -292,12 +293,12 @@ export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: 
   const left = availability.data?.logins_left ?? 0
 
   return (
-    <dialog ref={dialog} onClose={close} aria-labelledby="add-title"
+    <dialog ref={dialog} onClose={close} aria-labelledby={titleId}
       className="w-[min(640px,calc(100vw-32px))] max-h-[90vh] p-0 rounded-[20px] border border-stone/30 bg-paper text-summit-ink backdrop:bg-black/40">
       <div className="p-[24px] flex flex-col gap-[20px]">
         <div className="flex items-start justify-between gap-[12px]">
           <div className="flex flex-col gap-[4px]">
-            <h2 id="add-title" className="font-display text-[22px]">
+            <h2 id={titleId} className="font-display text-[22px]">
               {step === 'found' ? `What we found at ${found?.institution || 'your institution'}`
                 : step === 'done' ? 'Accounts added'
                 : review ? `Check ${review.institution || 'your institution'} for new accounts` : 'Add an account'}
