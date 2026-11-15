@@ -5229,6 +5229,15 @@ components:
               nullable: true
               allOf: [{$ref: "#/components/schemas/ImportCheck"}]
 
+    PlaidFedBy:
+      type: object
+      description: The login that already feeds an account, whose it is and where.
+      required: [institution, owner_name, own]
+      properties:
+        institution: {type: string}
+        owner_name: {type: string, nullable: true}
+        own: {type: boolean, description: The viewer's own login}
+
     PlaidCandidate:
       properties:
         account_id:
@@ -5262,6 +5271,11 @@ components:
         same_balance:
           type: boolean
           title: Same Balance
+        fed_by:
+          nullable: true
+          description: Another login already feeds it; linking this one to it would be refused.
+          allOf:
+          - $ref: '#/components/schemas/PlaidFedBy'
       type: object
       required:
       - account_id
@@ -5273,6 +5287,7 @@ components:
       - same_balance
       - last_four
       - same_holdings
+      - fed_by
       title: PlaidCandidate
       description: One of the client's accounts this one might be, and the evidence.
     PlaidChoice:
@@ -5428,6 +5443,11 @@ components:
           - type: string
           - type: 'null'
           title: Account Id
+        fed_by:
+          nullable: true
+          description: Set when it is an account another login already feeds (a spouse's login, say); nothing to add, it keeps updating through that login.
+          allOf:
+          - $ref: '#/components/schemas/PlaidFedBy'
         candidates:
           items:
             $ref: '#/components/schemas/PlaidCandidate'
@@ -5447,6 +5467,7 @@ components:
       - plaid_subtype
       - balance
       - account_id
+      - fed_by
       title: PlaidFoundAccount
     PlaidLinkAvailability:
       properties:

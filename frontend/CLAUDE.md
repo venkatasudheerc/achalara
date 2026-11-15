@@ -284,7 +284,11 @@ Each feature directory contains its page component(s). Implemented:
   (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
   Each new account also asks Whose is it (default Mine; jointly with the spouse; held for a minor;
   someone's, which the viewer sees), Who else sees it (default nobody) and, for an invested kind, its
-  cost basis. Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
+  cost basis. An account another login already feeds (a spouse's login pulling in an account the
+  viewer owns, `fed_by`) is not a choice: it is listed apart under "Already updated through
+  <Name>'s <Institution> login", defaults to Don't add, and the header says "N to add. M already
+  update through another login"; the button reads "Add N accounts" (or "Done" when none), so a
+  person links their own login and adds only what is new. Nothing is added until it is pressed. "Upload files" is shown as coming later. A refusal that is
   a setting on the server (linking not set up, a 503; Plaid refusing the OAuth redirect address)
   is said in plain words, to ask the person who runs Achalara, with Plaid's own text beneath
   under "Details" (`explainLinkError`). Hooks in

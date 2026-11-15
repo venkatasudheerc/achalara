@@ -22,7 +22,7 @@ function headline(list: PortalConnection[], needsYou: number): string {
   const waiting = list.reduce((t, c) => t + (c.own ? (c.waiting_accounts ?? 0) : 0), 0)
   const base = headlineBase(list, needsYou)
   if (waiting === 0 || needsYou > 0) return base
-  return `${base} ${waiting === 1 ? '1 new account is' : `${waiting} new accounts are`} waiting for you to add.`
+  return `${base} ${waiting === 1 ? '1 account is' : `${waiting} accounts are`} waiting for your review.`
 }
 
 function headlineBase(list: PortalConnection[], needsYou: number): string {
@@ -183,7 +183,7 @@ function ConnectionCard({ connection, signIn, onReview }: {
       {connection.own && (connection.waiting_accounts ?? 0) > 0 && (
         <div className="flex flex-wrap items-center gap-[12px] rounded-[14px] bg-accent-soft px-[14px] py-[12px]">
           <span className="text-[14px] font-medium flex-1 min-w-[180px]">
-            {connection.waiting_accounts === 1 ? '1 new account is' : `${connection.waiting_accounts} new accounts are`} waiting for you to add it.
+            {connection.waiting_accounts === 1 ? '1 account' : `${connection.waiting_accounts} accounts`} found. Review to add the new ones.
           </span>
           <button type="button" onClick={() => onReview({ connectionId: connection.id, institution: connection.institution ?? '' })}
             className="h-[44px] px-[18px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold">
