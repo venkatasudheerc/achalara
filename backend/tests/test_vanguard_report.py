@@ -331,3 +331,35 @@ def test_a_negative_split_row_with_nothing_to_undo_is_set_aside(db, account):
         _sheet(_row("7/20/2021", "QQQ", "QQQ CORP", "Stock split", "CASH", "-9.0000"))
     ))
     assert plan.splits == [] and len(plan.needs_a_look) == 1
+
+
+def test_a_split_recorded_twice_is_found_and_the_later_copy_removed(db, account):
+    from datetime import timedelta
+
+    from app.models.perf import CorporateAction
+    from app.services.corporate_actions import repair_duplicate_splits
+
+    _on_file(db, account, date(2021, 7, 6), "QQQ", "BUY", 3, 825)
+    _on_file(db, account, date(2021, 7, 19), "QQQ", "SELL", 3, 754)
+    first = CorporateAction(symbol="QQQ", effective_date=date(2021, 7, 20), action_type="SPLIT",
+                            ratio=D(4), source="brokerage")
+    db.add(first)
+    db.flush()
+    db.add(CorporateAction(symbol="QQQ", effective_date=date(2021, 7, 19), action_type="SPLIT",
+                           ratio=D(4), source="brokerage"))
+    # A different split of the same symbol, long after, is not a repeat.
+    db.add(CorporateAction(symbol="QQQ", effective_date=date(2021, 7, 20) + timedelta(days=900),
+                           action_type="SPLIT", ratio=D(10), source="brokerage"))
+    db.commit()
+    assert _shares_held(db, "QQQ") == 360  # 9 shares never held, times 4 and times 10
+
+    shown = repair_duplicate_splits(db)
+    assert shown["rebuilt"] == 0 and len(shown["duplicates"]) == 1
+    assert db.query(CorporateAction).count() == 3  # showing changes nothing
+
+    done = repair_duplicate_splits(db, apply=True)
+    assert [d["keep"][0] for d in done["duplicates"]] == [date(2021, 7, 20)]
+    kept = db.query(CorporateAction).filter(CorporateAction.symbol == "QQQ").order_by(CorporateAction.effective_date).all()
+    assert [a.effective_date for a in kept] == [date(2021, 7, 20), date(2021, 7, 20) + timedelta(days=900)]
+    assert _shares_held(db, "QQQ") == 0
+    assert repair_duplicate_splits(db)["duplicates"] == []  # safe to repeat

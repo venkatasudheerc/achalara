@@ -99,6 +99,28 @@ def add_ticker_change(old: str, new: str, on: str) -> int:
     return 0
 
 
+def repair_duplicate_splits(apply: bool) -> int:
+    """A split recorded twice (the same symbol within three days) makes shares
+    that were never held. Shows them; with --apply removes the later copies and
+    rebuilds the accounts that traded the symbol. Safe to repeat."""
+    from app.services.corporate_actions import repair_duplicate_splits as repair
+
+    db = SessionLocal()
+    try:
+        result = repair(db, apply)
+    finally:
+        db.close()
+    if not result["duplicates"]:
+        print("No split is recorded twice.")
+        return 0
+    for item in result["duplicates"]:
+        keep = item["keep"]
+        print(f"{item['symbol']}: keep {keep[0]} (x{keep[1]:g}); "
+              + ", ".join(f"{d} (x{r:g})" for d, r in item["remove"]) + (" removed" if apply else " would be removed"))
+    print(f"{result['rebuilt']} account(s) rebuilt." if apply else "Nothing changed. Add --apply to remove them and rebuild.")
+    return 0
+
+
 def plaid_refresh(client: Optional[str]) -> int:
     """The morning's Plaid refresh, now: every active login, or one client's.
     Safe to repeat (rows are matched by Plaid's ids; the cursor only moves
@@ -696,6 +718,11 @@ def main(argv=None) -> int:
     rename.add_argument("--from", dest="old", required=True)
     rename.add_argument("--to", dest="new", required=True)
     rename.add_argument("--date", required=True, help="the first day under the new ticker, YYYY-MM-DD")
+    dupes = commands.add_parser(
+        "repair-duplicate-splits",
+        help="a split recorded twice makes shares never held: show them (--apply removes the copies and rebuilds)",
+    )
+    dupes.add_argument("--apply", action="store_true")
     refresh = commands.add_parser(
         "plaid-refresh",
         help="the morning's Plaid refresh, now: every active login, or one client's",
@@ -727,6 +754,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command == "split-into-strategies":
         return split_into_strategies(args.account, args.apply)
+    if args.command == "repair-duplicate-splits":
+        return repair_duplicate_splits(args.apply)
     if args.command == "add-ticker-change":
         return add_ticker_change(args.old, args.new, args.date)
     if args.command == "plaid-refresh":

@@ -45,6 +45,9 @@ python -m app.cli import-vanguard-report --account 5678 --file customActivityRep
 # Sort accounts linked as one sleeve into Stocks, ETFs, Mutual funds, Options and Cash (shows only; --apply writes)
 python -m app.cli split-into-strategies [--account 5678] [--apply]
 
+# A split recorded twice (same symbol within three days) makes shares never held: shows them; --apply removes the later copies and rebuilds
+python -m app.cli repair-duplicate-splits [--apply]
+
 # A company now trades under a new ticker: read its earlier trades under it (rebuilds what traded it)
 python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 
