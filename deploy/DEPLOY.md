@@ -226,6 +226,8 @@ a day. System status keeps each job's last run across restarts. Ticker changes
 market data has seen are copied at 6:15 AM Eastern every day; one it has not seen is confirmed on
 System status ("Ticker changes to confirm") or entered with
 `docker compose exec backend python -m app.cli add-ticker-change --from OLD --to NEW --date YYYY-MM-DD`.
+The sector of each symbol held is copied from market data at 6:20 AM Eastern every day (the Analysis
+tab's "What the stocks are in" reads that copy); a failed run leaves the copy as it was.
 To run the Plaid refresh by hand: `docker compose exec backend python -m app.cli plaid-refresh`.
 
 **Market data (the `md` worker)**

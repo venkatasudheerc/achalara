@@ -122,6 +122,7 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   for bank and card accounts the balance's change. What accounts held when their history here
   begins is "Added to the record" (`summary.brought`), apart from deposits, there and on Performance.
   A record younger than a year says "since <date>".
+- Analysis opens with **What the stocks are in**: the 11 GICS sectors as bars of the whole (stocks by `sector`, from each position's `sector_group`), then a "Not in a sector" group for funds and ETFs (one row: not looked through), options, cash and stocks with no sector. Every row adds to the whole, and the card says how many holdings have no sector yet. Sector names wrap, never truncate.
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;
   Holdings, Transactions, Performance and Cost basis are the portal's own pages, rendered inside
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and

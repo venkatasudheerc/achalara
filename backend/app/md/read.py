@@ -22,6 +22,7 @@ from app.md.models import (
     SecurityClassification,
     SecuritySymbol,
     SecuritySymbolHist,
+    Sector,
     US_MARKET,
 )
 from app.md.status_report import build_status, unavailable
@@ -127,6 +128,38 @@ def stocks_without_sector(app_db: Session, symbols: Iterable[str]) -> int:
             )
             .scalar()
         )
+
+
+class SectorOf(NamedTuple):
+    kind: str
+    sector_code: Optional[str]
+    sector_name: Optional[str]
+
+
+def sectors_for(app_db: Session, symbols: Iterable[str]) -> Dict[str, SectorOf]:
+    """Each of these US symbols market data knows: its kind and, where it has
+    one, its GICS sector. A symbol market data does not know is left out."""
+    wanted = sorted({app_symbol(symbol) for symbol in symbols if symbol})
+    found: Dict[str, SectorOf] = {}
+    with _session(app_db) as db:
+        for start in range(0, len(wanted), 500):
+            rows = (
+                db.query(SecuritySymbol.symbol, Security.kind, Sector.code, Sector.name)
+                .join(Security, Security.id == SecuritySymbol.security_id)
+                .outerjoin(
+                    SecurityClassification,
+                    SecurityClassification.security_id == Security.id,
+                )
+                .outerjoin(Sector, Sector.code == SecurityClassification.sector_code)
+                .filter(
+                    SecuritySymbol.market_code == US_MARKET,
+                    SecuritySymbol.symbol.in_(wanted[start : start + 500]),
+                )
+                .all()
+            )
+            for symbol, kind, code, name in rows:
+                found[app_symbol(symbol)] = SectorOf(kind, code, name)
+    return found
 
 
 def _status(app_db: Session) -> Dict:

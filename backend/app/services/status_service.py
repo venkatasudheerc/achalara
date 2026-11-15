@@ -31,6 +31,7 @@ from app.services.performance_build_service import last_market_day
 JOBS = (
     ("plaid_refresh", "Plaid refresh"),
     ("ticker_changes", "Ticker changes"),
+    ("sector_copy", "Sector copy"),
     ("price_history", "Price history"),
     ("index_history", "Index history"),
 )
