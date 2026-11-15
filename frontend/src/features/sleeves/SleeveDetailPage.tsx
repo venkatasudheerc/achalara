@@ -313,7 +313,7 @@ export function SleeveDetailPage() {
               <DataTable
                 columns={openPosCols}
                 rows={portfolioData?.positions ?? []}
-                getKey={(r) => r.id}
+                getKey={(r) => r.symbol}
                 emptyMessage="No open positions."
               />
             </QueryState>

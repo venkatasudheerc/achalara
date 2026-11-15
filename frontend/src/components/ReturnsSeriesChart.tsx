@@ -4,8 +4,11 @@ import {
 import type { WeeklyReturnPoint } from '@/api/types'
 import { useChartColours } from '@/context/ThemeContext'
 
+/** A week's returns, with the benchmark's over the same window when the page has worked it out */
+export type ReturnsPoint = WeeklyReturnPoint & { benchmark_cumul?: number | null }
+
 interface Props {
-  data: WeeklyReturnPoint[]
+  data: ReturnsPoint[]
   benchmarkTicker?: string
 }
 
