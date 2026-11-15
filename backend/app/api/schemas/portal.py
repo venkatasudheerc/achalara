@@ -30,6 +30,23 @@ class AccountHealth(BaseModel):
     download_from: Optional[date] = None
 
 
+class CardDetails(BaseModel):
+    """A credit card's limits and what is due, as its institution last reported
+    them through Plaid. Any figure may be missing: institutions send different
+    things, and a card with nothing owed has no payment due."""
+
+    credit_limit: Optional[float] = None
+    available_credit: Optional[float] = None
+    cash_advance_limit: Optional[float] = None
+    minimum_payment: Optional[float] = None
+    next_payment_due_date: Optional[date] = None
+    last_payment_amount: Optional[float] = None
+    last_payment_date: Optional[date] = None
+    last_statement_balance: Optional[float] = None
+    is_overdue: Optional[bool] = None
+    as_of: datetime  # when the institution last reported them
+
+
 class PortalAccount(BaseModel):
     id: str
     client_id: str  # the owner; not the viewer when ``shared``
@@ -62,6 +79,7 @@ class PortalAccount(BaseModel):
     as_of: Optional[date] = None
     source: Optional[str] = None  # the institution the figures come from
     synced_at: Optional[datetime] = None  # its last transactions sync
+    card: Optional[CardDetails] = None  # a credit card's limits and what is due
     sleeves: List[PortalSleeve] = []
 
 

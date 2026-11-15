@@ -303,6 +303,17 @@ arrive. System status reads a job's last run from it after a restart, and the sc
 at start-up to make up a run that fell while the server was down. It names jobs only, never a
 client or an account. (Migration `d4f6a8c1e3b7`.)
 
+### `card_details`
+A credit card's limits and what is due, as its institution last reported them through Plaid: one
+row per card account (`account_id`, PK and FK to `accounts`, deleted with it). `credit_limit`,
+`available_credit` (from the account's balances), `cash_advance_limit`, `minimum_payment`,
+`next_payment_due_date`, `last_payment_amount`, `last_payment_date`, `last_statement_balance`,
+`is_overdue` (from Plaid's liabilities) and `refreshed_at`. Every figure may be empty: institutions
+send different things, and a card with nothing owed has no payment due. The card's balance is not
+here (it is the account's recorded value); nothing in `perf` reads this table. Replaced by the
+daily Plaid refresh (`services/card_details.py`) and when a card is first linked. It holds no
+account number and no credentials. (Migration `f3b8d6e0a2c5`.)
+
 ### `security_sectors`
 The sector of each symbol the app holds, copied from market data so that the portal never depends on
 market data being reachable. `symbol` (PK, the app's spelling), `kind` (market data's:

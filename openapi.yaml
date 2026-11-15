@@ -7396,6 +7396,22 @@ components:
           format: date
           nullable: true
           description: Where a download from the institution should start to repair it
+    CardDetails:
+      type: object
+      description: A credit card's limits and what is due, as its institution last reported them through Plaid. Any figure may be missing; a card with nothing owed has no payment due.
+      required: [credit_limit, available_credit, cash_advance_limit, minimum_payment, next_payment_due_date, last_payment_amount, last_payment_date, last_statement_balance, is_overdue, as_of]
+      properties:
+        credit_limit: {type: number, nullable: true}
+        available_credit: {type: number, nullable: true}
+        cash_advance_limit: {type: number, nullable: true}
+        minimum_payment: {type: number, nullable: true}
+        next_payment_due_date: {type: string, format: date, nullable: true}
+        last_payment_amount: {type: number, nullable: true}
+        last_payment_date: {type: string, format: date, nullable: true}
+        last_statement_balance: {type: number, nullable: true}
+        is_overdue: {type: boolean, nullable: true}
+        as_of: {type: string, format: date-time, description: When the institution last reported them}
+
     PortalAccount:
       properties:
         id:
@@ -7473,6 +7489,11 @@ components:
           type: string
           format: date-time
           nullable: true
+        card:
+          nullable: true
+          description: A credit card's limits and what is due, as its institution last reported them through Plaid (null for any other account, or before the first report)
+          allOf:
+          - $ref: '#/components/schemas/CardDetails'
         sleeves:
           items:
             $ref: '#/components/schemas/PortalSleeve'
@@ -7502,6 +7523,7 @@ components:
       - as_of
       - source
       - synced_at
+      - card
       - sleeves
     PortalAccountsResponse:
       properties:

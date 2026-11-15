@@ -31,6 +31,7 @@ from app.models.brokerage_connection import (
 )
 from app.models.cash_activity import CashActivity
 from app.models.sleeve import Sleeve
+from app.services import card_details
 from app.services.account_kind import OWED, kind_of
 from app.services.daily_capture_service import DailyCaptureService
 from app.services.performance_build_service import last_market_day
@@ -115,6 +116,11 @@ class PlaidRefreshService:
                 return "needs signing in"
             raise
         login.status_checked_at = datetime.now(timezone.utc)
+        cards = (
+            card_details.credit_liabilities(self.client, token)
+            if any(l.plaid_type == "credit" for l in links)
+            else {}
+        )
 
         for link in links:
             account = self.db.get(Account, link.account_id)
@@ -150,6 +156,11 @@ class PlaidRefreshService:
                 record_day = day
             link.cash_balance = figures.cash
             link.cash_balance_at = datetime.now(timezone.utc)
+            if link.plaid_type == "credit":
+                card_details.save(
+                    self.db, link.account_id,
+                    card_details.read(plaid, cards.get(link.external_account_ref)),
+                )
             self.db.commit()
             if batch.trades or batch.cash or batch.raw:
                 self.connections.ingest_batch(link, batch)

@@ -35,6 +35,7 @@ from app.models.account import Account
 from app.models.client import Client
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.perf import DailyHolding, DailyValuation
+from app.services import card_details
 from app.services.account_kind import KINDS, OWED, kind_from_plaid
 from app.services import sleeve_routing
 from app.services.sharing_service import SharingService
@@ -736,6 +737,12 @@ class PlaidLinkService:
 
         link.cash_balance = figures.cash
         link.cash_balance_at = datetime.now(timezone.utc)
+        if link.plaid_type == "credit":
+            liabilities = card_details.credit_liabilities(self.client, token)
+            card_details.save(
+                self.db, link.account_id,
+                card_details.read(plaid, liabilities.get(link.external_account_ref)),
+            )
         self.db.commit()
         result = self.connections.ingest_batch(link, batch) if (batch.trades or batch.cash or batch.raw) else {}
         # Plaid was asked for every transaction through today.

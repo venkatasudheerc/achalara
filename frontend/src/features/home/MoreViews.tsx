@@ -64,12 +64,89 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
           </tbody>
         </table>
       </div>
+      {accounts.some((a) => a.card) && (
+        <div className="flex flex-col gap-[12px]">
+          <h2 className="font-display text-[20px]">Credit cards</h2>
+          <ul className="grid md:grid-cols-2 xl:grid-cols-3 gap-[14px] items-start">
+            {accounts.filter((a) => a.card).map((a) => <CardTile key={a.id} account={a} />)}
+          </ul>
+        </div>
+      )}
       {accounts.some((a) => !a.shared) && (
         <p className="text-[13px] text-stone">
           Nobody sees an account until you share it. To change who sees one, choose it, or open Manage Access from the menu under your name.
         </p>
       )}
     </section>
+  )
+}
+
+/** Whole days from today to a date, for "due in 5 days". */
+function daysUntil(day: string): number {
+  const start = new Date(); start.setHours(0, 0, 0, 0)
+  return Math.round((new Date(`${day}T00:00:00`).getTime() - start.getTime()) / 86_400_000)
+}
+
+/** One credit card: how much of its limit is used, what is available and what is due. */
+function CardTile({ account }: { account: PortalAccount }) {
+  const card = account.card
+  if (!card) return null
+  const owed = Math.max(0, -(account.value ?? 0))
+  const used = card.credit_limit ? Math.min(owed / card.credit_limit, 1) : null
+  const due = card.next_payment_due_date
+  const days = due ? daysUntil(due) : null
+  const stat = 'flex flex-col gap-[2px] min-w-0'
+  const label = 'text-[13px] text-stone'
+  return (
+    <li className="border border-line rounded-[18px] p-[18px] bg-surface flex flex-col gap-[14px]">
+      <div className="flex items-start justify-between gap-[12px]">
+        <span className="font-semibold text-[16px] min-w-0">
+          {accountName(account)}{account.number_last4 ? <span className="text-stone font-normal"> ··{account.number_last4}</span> : null}
+        </span>
+        {card.is_overdue && <span className="text-[13px] font-semibold px-[10px] py-[2px] rounded-full bg-loss/15 text-loss">Overdue</span>}
+      </div>
+      <div className="flex flex-col gap-[6px]">
+        <div className="flex items-baseline justify-between gap-[12px]">
+          <span className="text-[15px]">Owed <strong className="tabular-nums">{formatCurrency(owed)}</strong>{card.credit_limit != null && <span className="text-stone"> of {formatCurrency(card.credit_limit)}</span>}</span>
+          {used != null && <span className="text-[14px] text-stone tabular-nums">{(used * 100).toFixed(0)}% used</span>}
+        </div>
+        {used != null && (
+          <div className="h-[10px] rounded-[5px] bg-line overflow-hidden" role="img" aria-label={`${(used * 100).toFixed(0)} percent of the limit used`}>
+            <div className={`h-full rounded-[5px] ${used > 0.5 ? 'bg-loss' : 'bg-pine'}`} style={{ width: `${used * 100}%` }} />
+          </div>
+        )}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-[16px] gap-y-[12px] text-[15px]">
+        <div className={stat}><dt className={label}>Available credit</dt><dd className="tabular-nums">{card.available_credit == null ? '—' : formatCurrency(card.available_credit)}</dd></div>
+        <div className={stat}><dt className={label}>Cash advance limit</dt><dd className="tabular-nums">{card.cash_advance_limit == null ? '—' : formatCurrency(card.cash_advance_limit)}</dd></div>
+        <div className={stat}>
+          <dt className={label}>Payment due</dt>
+          <dd>
+            {due ? (
+              <>
+                <span className={days != null && days <= 7 ? 'text-loss font-medium' : ''}>{formatDate(due)}</span>
+                <span className="block text-[13px] text-stone tabular-nums">
+                  {[
+                    days != null && days >= 0 ? (days === 0 ? 'today' : `in ${days} day${days === 1 ? '' : 's'}`) : null,
+                    card.minimum_payment != null ? `minimum ${formatCurrency(card.minimum_payment)}` : null,
+                  ].filter(Boolean).join(' · ')}
+                </span>
+              </>
+            ) : <span className="text-stone">Nothing due</span>}
+          </dd>
+        </div>
+        <div className={stat}>
+          <dt className={label}>Last payment</dt>
+          <dd className="tabular-nums">
+            {card.last_payment_amount == null ? '—' : formatCurrency(card.last_payment_amount)}
+            {card.last_payment_date && <span className="block text-[13px] text-stone">{formatDate(card.last_payment_date)}</span>}
+          </dd>
+        </div>
+      </dl>
+      <p className="text-[13px] text-stone">
+        As {account.institution ?? 'the institution'} reported on {formatDate(card.as_of)}. Figures it does not send are left blank.
+      </p>
+    </li>
   )
 }
 

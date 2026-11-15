@@ -576,6 +576,15 @@ its accounts are `brokerage_accounts` rows. Rules:
   again; if so it is `active` again and refreshed at once. Only the login's owner can repair it.
   `/portal/accounts` says which accounts wait on it (`needs_sign_in`, and `login_id` for the
   owner); the Dashboard asks the owner to sign in again and tells anyone else whose login it is.
+- **A credit card's limits and what is due** (`card_details`, `services/card_details.py`): the
+  daily refresh and a card's first pull read the limit and available credit from the account's
+  balances and, with one `/liabilities/get` per login, the cash advance limit, the payment due, the
+  minimum, the last payment and the overdue flag; each is `None` where the institution does not send
+  it and none is guessed. A refusal of liabilities (not offered, not ready) never fails a refresh:
+  the balance-based figures are kept. `PortalAccount.card` carries them for an account in view (so a
+  shared account's card is seen by exactly who sees the account); a card with nothing owed has no
+  due date. APRs and the statement date are not kept (the institution tested sends neither). Nothing
+  in `perf` reads it.
 - **Checking a login for accounts not seen before** (`PlaidLinkService.discover_new` /
   `discover` / `discover_mine`, routes `POST /portal/links/plaid/discover` for every one of the
   viewer's own active logins and `POST /portal/links/plaid/{id}/discover` for one): the stored key
