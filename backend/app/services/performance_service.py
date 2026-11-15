@@ -33,6 +33,11 @@ import logging
 _log = logging.getLogger(__name__)
 
 
+def _account_of(db, sleeve_id: str) -> Optional[str]:
+    row = db.query(Sleeve.account_id).filter(Sleeve.id == sleeve_id).first()
+    return row[0] if row else None
+
+
 class PerformanceService:
     """Builds multi-level performance payloads from sleeve sets."""
 
@@ -50,18 +55,23 @@ class PerformanceService:
         rows = self.db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
         return [r[0] for r in rows]
 
-    def account_ids_for_client(self, client_id: str) -> List[str]:
+    def account_ids_for_client(
+        self, client_id: str, only: Optional[set] = None
+    ) -> List[str]:
+        """The client's account ids; with ``only``, just those (an advisor sees
+        only what has been shared with them)."""
         rows = self.db.query(Account.id).filter(Account.client_id == client_id).all()
-        return [r[0] for r in rows]
+        return [r[0] for r in rows if only is None or r[0] in only]
 
-    def sleeve_ids_for_client(self, client_id: str) -> List[str]:
-        rows = (
+    def sleeve_ids_for_client(
+        self, client_id: str, only: Optional[set] = None
+    ) -> List[str]:
+        query = (
             self.db.query(Sleeve.id)
             .join(Account, Sleeve.account_id == Account.id)
             .filter(Account.client_id == client_id)
-            .all()
         )
-        return [r[0] for r in rows]
+        return [r[0] for r in query.all() if only is None or _account_of(self.db, r[0]) in only]
 
     # -- core -----------------------------------------------------------------
 

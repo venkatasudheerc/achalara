@@ -21,7 +21,12 @@ def _managed_sleeve_or_404(db: Session, user: User, sleeve_id: str) -> Sleeve:
     """The sleeve, if it belongs to a client the admin or advisor manages."""
     sleeve = db.query(Sleeve).filter(Sleeve.id == sleeve_id).first()
     account = db.get(Account, sleeve.account_id) if sleeve else None
-    if account is None or not AuthService(db).manages(user, account.client_id):
+    auth = AuthService(db)
+    if account is None or not auth.manages(user, account.client_id):
+        raise HTTPException(status_code=404, detail="Sleeve not found")
+    # An advisor needs a share like anyone else.
+    only = auth.staff_account_ids(user, account.client_id)
+    if only is not None and account.id not in only:
         raise HTTPException(status_code=404, detail="Sleeve not found")
     return sleeve
 

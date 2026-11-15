@@ -115,32 +115,43 @@ class AuthToken(BaseModel):
     user = relationship("User")
 
 
-class AccountAccess(BaseModel):
-    """A client allowed to view an account that belongs to another client.
+# What a share allows. Only viewing exists; transacting is to come, and is
+# stored in the same column so adding it needs no model change.
+LEVEL_VIEW = "view"
+LEVELS = (LEVEL_VIEW,)
 
-    The account's owner is ``accounts.client_id`` and needs no row here; this
-    table holds only the extra viewers (for example someone acting as agent on
-    a relative's account). Access is read-only.
-    """
+
+class AccountAccess(BaseModel):
+    """Someone an owner has shared an account with: a client, or the client's
+    advisor (a login, ``user_id``). Nobody else sees an account until it is
+    shared. The owners need no row here (``account_owners``)."""
 
     __tablename__ = "account_access"
     __table_args__ = (
         UniqueConstraint("client_id", "account_id", name="uq_account_access"),
+        UniqueConstraint("user_id", "account_id", name="uq_account_access_user"),
+        CheckConstraint(
+            "(client_id IS NULL) != (user_id IS NULL)", name="account_access_one_grantee"
+        ),
+        CheckConstraint("level IN ('view')", name="account_access_level"),
     )
 
     id = Column(String(36), primary_key=True, default=_uuid)
     client_id = Column(
-        String(36),
-        ForeignKey("clients.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        String(36), ForeignKey("clients.id", ondelete="CASCADE"), index=True
     )
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     account_id = Column(
         String(36),
         ForeignKey("accounts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
+    level = Column(String(10), nullable=False, default=LEVEL_VIEW, server_default=LEVEL_VIEW)
+    # Hidden from the grantee's own screens by them ("Stop seeing"); the owner
+    # is not told.
+    hidden = Column(Boolean, nullable=False, default=False, server_default="false")
 
     client = relationship("Client", foreign_keys=[client_id])
+    user = relationship("User", foreign_keys=[user_id])
     account = relationship("Account")

@@ -36,6 +36,7 @@ from app.models.brokerage_connection import BrokerageAccount, BrokerageConnectio
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.sleeve import Sleeve
 from app.services.account_kind import KINDS, OWED, kind_from_plaid
+from app.services.sharing_service import SharingService
 from app.services.auth_service import AuthService
 from app.services.connection_service import ConnectionService
 from app.services.daily_capture_service import DailyCaptureService
@@ -534,6 +535,7 @@ class PlaidLinkService:
                 )
                 self.db.add(account)
                 self.db.flush()
+                self._ownership(account, client_id, choice)
                 self._describe(account, connection, link, kind)
                 link.account_id = account.id
                 link.default_sleeve_id = self._sleeve(account)
@@ -546,6 +548,28 @@ class PlaidLinkService:
         for link in pulled:
             self.first_pull(link)
         return outcome
+
+    def _ownership(self, account: Account, client_id: str, choice: Dict) -> None:
+        """Whose a new account is, who else sees it and its cost basis, as chosen
+        while linking. The person linking controls it until its owner signs in.
+        Defaults: theirs, shared with nobody, first in first out."""
+        sharing = SharingService(self.db, client_id)
+        owners = choice.get("owner_ids") or [client_id]
+        if choice.get("cost_basis"):
+            account.cost_basis_method = choice["cost_basis"]
+        account.linked_by_id = client_id
+        self.db.flush()
+        if owners != [client_id] or choice.get("held_for") or choice.get("share_with") or choice.get("share_advisor"):
+            # The linker owns it as created, so the sharing rules apply to them;
+            # the real owners are set last, as the linker may not control it after.
+            if choice.get("held_for"):
+                sharing.hold_for(account.id, choice["held_for"])
+            for person_id in choice.get("share_with") or []:
+                sharing.share(account.id, person_id=person_id)
+            if choice.get("share_advisor"):
+                sharing.share(account.id, advisor=True)
+            if owners != [client_id]:
+                sharing.set_owners(account.id, owners, keep_view=False)
 
     @staticmethod
     def _describe(account: Account, connection: BrokerageConnection, link: BrokerageAccount, kind: str) -> None:

@@ -17,6 +17,8 @@ from app.services.account_import_service import (
     AccountImportService,
 )
 from app.services.auth_service import AuthService
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.api.schemas.imports import ImportCheck, ImportPreview, ImportResult
@@ -93,12 +95,15 @@ def list_accounts(
         description="Also list accounts of other clients this client may view, "
         "marked `shared`. False lists only the accounts the client owns.",
     ),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The accounts a client owns, then those shared with them (read-only)."""
+    """The accounts a client owns, then those shared with them (read-only).
+    An advisor sees only those shared with them."""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    only = AuthService(db).staff_account_ids(user, client_id)
 
     return [
         AccountResponse(
@@ -112,7 +117,8 @@ def list_accounts(
             owner_name=account.client.name,
         )
         for account, shared in AuthService(db).accounts_for_client(client_id)
-        if include_shared or not shared
+        if (include_shared or not shared)
+        and (only is None or account.id in only)
     ]
 
 

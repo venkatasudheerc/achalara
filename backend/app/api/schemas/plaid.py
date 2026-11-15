@@ -68,6 +68,14 @@ class PlaidChoice(BaseModel):
     action: Literal["link", "new", "skip"]
     account_id: Optional[str] = None  # with link
     kind: Optional[str] = None
+    # With new: whose it is (default: the person linking), who it is held for
+    # (a custodial account), who else sees it (default nobody; view only) and,
+    # for a brokerage account, the cost basis method.
+    owner_ids: Optional[List[str]] = None
+    held_for: Optional[str] = None
+    share_with: List[str] = []
+    share_advisor: bool = False
+    cost_basis: Optional[Literal["FIFO", "MIN_TAX"]] = None
 
 
 class PlaidConfirm(BaseModel):

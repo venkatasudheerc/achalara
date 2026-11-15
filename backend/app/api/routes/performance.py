@@ -19,6 +19,10 @@ from app.models.strategy import Strategy
 from app.services.performance_stats_service import GRAINS, PerformanceStatsService
 
 # Mounted at /api/v1; paths below carry their own resource prefix.
+from app.services.auth_service import AuthService
+from app.api.deps import get_current_user
+from app.models.user import User
+
 router = APIRouter()
 
 _GRAIN = Query("month", description="day | week | month | quarter | year")
@@ -91,12 +95,17 @@ def client_periods(
     end_date: Optional[date] = Query(None),
     benchmark: Optional[str] = _BENCHMARK,
     basis: str = _BASIS,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """A client's performance by period: all their accounts added together."""
+    """A client's performance by period: all their accounts added together
+    (for an advisor, the accounts shared with them)."""
     client = _client_or_404(db, client_id)
+    only = AuthService(db).staff_account_ids(user, client_id)
     account_ids: List[str] = [
-        row[0] for row in db.query(Account.id).filter(Account.client_id == client_id)
+        row[0]
+        for row in db.query(Account.id).filter(Account.client_id == client_id)
+        if only is None or row[0] in only
     ]
     return _periods(
         db,

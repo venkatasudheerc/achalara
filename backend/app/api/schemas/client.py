@@ -43,7 +43,7 @@ class RelativeCreate(BaseModel):
     """A new client who is this client's spouse or minor."""
 
     name: str = Field(..., min_length=1)
-    relation: str = Field(..., pattern="^(spouse|minor)$")
+    relation: str = Field(..., pattern="^(spouse|minor|child_grown|parent|friend|other)$")
     email: Optional[EmailStr] = None
 
 
@@ -57,7 +57,7 @@ class Relative(BaseModel):
     id: str
     name: str
     email: Optional[str] = None
-    relation: str  # spouse | minor
+    relation: str  # spouse | minor | child_grown | parent | friend | other
     has_login: bool
 
 

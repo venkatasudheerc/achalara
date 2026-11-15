@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.services import mailer
-from app.models.account import Account
-from app.models.client import Client
+from app.models.account import Account, AccountOwner
+from app.models.client import FAMILY_RELATIONS, RELATIONS, Client, PersonLink
 from app.models.user import (
     PURPOSE_INVITE,
     PURPOSE_RESET,
@@ -192,6 +192,27 @@ class AuthService:
 
     # -- spouses and minors --------------------------------------------
 
+    def link_person(self, client_id: str, person_id: str, relation: str) -> None:
+        """Record how ``client_id`` describes ``person_id``, replacing any earlier word."""
+        if relation not in RELATIONS:
+            raise AuthError(422, "Choose how you know them.")
+        link = (
+            self.db.query(PersonLink)
+            .filter(PersonLink.client_id == client_id, PersonLink.person_id == person_id)
+            .first()
+        )
+        if link is None:
+            self.db.add(PersonLink(client_id=client_id, person_id=person_id, relation=relation))
+        else:
+            link.relation = relation
+
+    def unlink_person(self, client_id: str, person_id: str, relation: str) -> None:
+        self.db.query(PersonLink).filter(
+            PersonLink.client_id == client_id,
+            PersonLink.person_id == person_id,
+            PersonLink.relation == relation,
+        ).delete()
+
     def set_spouse(self, client_id: str, spouse_id: Optional[str]) -> Client:
         """Make two clients each other's spouse, or end it (``spouse_id`` None).
         Neither may be a minor or already married to someone else."""
@@ -201,6 +222,8 @@ class AuthService:
                 other = self.db.get(Client, client.spouse_id)
                 if other is not None and other.spouse_id == client.id:
                     other.spouse_id = None
+                    self.unlink_person(other.id, client.id, "spouse")
+                self.unlink_person(client.id, client.spouse_id, "spouse")
             client.spouse_id = None
             self.db.commit()
             return client
@@ -213,6 +236,8 @@ class AuthService:
             if one.spouse_id and one.spouse_id != other.id:
                 raise AuthError(409, f"{one.name} already has a spouse.")
         client.spouse_id, spouse.spouse_id = spouse.id, client.id
+        self.link_person(client.id, spouse.id, "spouse")
+        self.link_person(spouse.id, client.id, "spouse")
         self.db.commit()
         return client
 
@@ -225,20 +250,25 @@ class AuthService:
                 raise AuthError(422, "A guardian must be another adult client.")
             if client.spouse_id:
                 raise AuthError(422, "A client with a spouse cannot be a minor.")
+        if client.guardian_id and client.guardian_id != guardian_id:
+            self.unlink_person(client.guardian_id, client.id, "minor")
         client.guardian_id = guardian_id
+        if guardian_id:
+            self.link_person(guardian_id, client.id, "minor")
         self.db.commit()
         return client
 
     def add_relative(
         self, client_id: str, name: str, relation: str, email: Optional[str] = None
     ) -> Client:
-        """A new client who is ``client_id``'s spouse or minor, with the same
+        """A new client the person describes as their ``relation`` (spouse,
+        minor, a grown-up child, parent, friend or other), with the same
         advisor. A client may add their own; an admin or advisor anyone's."""
         client = self._client(client_id)
         if client.is_minor:
-            raise AuthError(422, "A minor cannot add family members.")
-        if relation not in ("spouse", "minor"):
-            raise AuthError(422, "Add a spouse or a minor.")
+            raise AuthError(422, "A minor cannot add people.")
+        if relation not in RELATIONS:
+            raise AuthError(422, "Choose how you know them.")
         email = (email or "").strip().lower() or None
         if email and self.db.query(Client).filter(Client.email == email).first():
             raise AuthError(409, "A client with that email already exists.")
@@ -249,24 +279,36 @@ class AuthService:
         self.db.flush()
         if relation == "spouse":
             self.set_spouse(client.id, relative.id)
-        else:
+        elif relation == "minor":
             self.set_guardian(relative.id, client.id)
+        else:
+            self.link_person(client.id, relative.id, relation)
+            self.db.commit()
         return relative
 
     def relatives(self, client_id: str) -> List[Tuple[Client, str]]:
-        """The client's spouse and minors (theirs and their spouse's), as
-        ``(client, relation)``."""
+        """The people the client has added, as ``(client, relation)``: their
+        spouse, their minors (and their spouse's), and anyone else they named."""
         client = self._client(client_id)
         out: List[Tuple[Client, str]] = []
+        seen = set()
         if client.spouse_id:
             spouse = self.db.get(Client, client.spouse_id)
             if spouse is not None:
                 out.append((spouse, "spouse"))
+                seen.add(spouse.id)
         guardians = [client.id] + ([client.spouse_id] if client.spouse_id else [])
         for minor in (
             self.db.query(Client).filter(Client.guardian_id.in_(guardians)).order_by(Client.name)
         ):
             out.append((minor, "minor"))
+            seen.add(minor.id)
+        for link in self.db.query(PersonLink).filter(PersonLink.client_id == client_id):
+            if link.person_id not in seen:
+                person = self.db.get(Client, link.person_id)
+                if person is not None:
+                    out.append((person, link.relation))
+                    seen.add(person.id)
         return out
 
     def _client(self, client_id: str) -> Client:
@@ -490,6 +532,11 @@ class AuthService:
         return user, session_token
 
     # -- who may see what ----------------------------------------------
+    #
+    # Ownership and explicit shares decide it, and nothing else. Nobody sees an
+    # account until an owner shares it; being a spouse or a guardian changes
+    # nothing. An admin sees everything; an advisor sees what is shared with
+    # their login.
 
     def accessible_accounts(self, user: User) -> List[Tuple[Account, bool]]:
         """A client user's accounts as ``(account, shared)``; none for an admin or advisor."""
@@ -497,70 +544,94 @@ class AuthService:
             return []
         return self.accounts_for_client(user.client_id)
 
-    def accounts_for_client(self, client_id: str) -> List[Tuple[Account, bool]]:
-        """What a client may view, as ``(account, shared)``, by the guardrails:
+    def owner_ids(self, account: Account) -> List[str]:
+        return [
+            row[0]
+            for row in self.db.query(AccountOwner.client_id).filter(
+                AccountOwner.account_id == account.id
+            )
+        ]
 
-        1. their own accounts;
-        2. their spouse's, except those the spouse keeps private;
-        3. for a guardian and the guardian's spouse, every account of their
-           minors (a minor cannot keep one from them);
-        4. a minor sees only their own (and anything shared with them);
-        5. anything else only when shared with them (``account_access``).
+    def accounts_for_client(self, client_id: str) -> List[Tuple[Account, bool]]:
+        """What a client may view, as ``(account, shared)``:
+
+        1. the accounts they own, alone or jointly (``shared`` False);
+        2. accounts held for them as a minor, read-only;
+        3. accounts another owner has shared with them, unless they chose to
+           stop seeing them.
         """
         own = (
             self.db.query(Account)
-            .filter(Account.client_id == client_id)
+            .join(AccountOwner, AccountOwner.account_id == Account.id)
+            .filter(AccountOwner.client_id == client_id)
             .order_by(Account.name)
             .all()
         )
-        client = self.db.get(Client, client_id)
         seen = {a.id for a in own}
-        family: List[Account] = []
-        if client is not None and not client.is_minor:
-            if client.spouse_id:
-                family += (
-                    self.db.query(Account)
-                    .filter(Account.client_id == client.spouse_id, Account.is_private.is_(False))
-                    .order_by(Account.name)
-                    .all()
-                )
-            guardians = [client.id] + ([client.spouse_id] if client.spouse_id else [])
-            minors = [
-                row[0]
-                for row in self.db.query(Client.id).filter(Client.guardian_id.in_(guardians))
-            ]
-            if minors:
-                family += (
-                    self.db.query(Account)
-                    .filter(Account.client_id.in_(minors))
-                    .order_by(Account.name)
-                    .all()
-                )
-        family = [a for a in family if not (a.id in seen or seen.add(a.id))]
+        held_for = (
+            self.db.query(Account)
+            .filter(Account.beneficiary_id == client_id)
+            .order_by(Account.name)
+            .all()
+        )
         granted = (
             self.db.query(Account)
             .join(AccountAccess, AccountAccess.account_id == Account.id)
-            .filter(
-                AccountAccess.client_id == client_id,
-                Account.client_id != client_id,
-            )
+            .filter(AccountAccess.client_id == client_id, AccountAccess.hidden.is_(False))
             .order_by(Account.name)
             .all()
         )
-        granted = [a for a in granted if a.id not in seen]
-        return [(a, False) for a in own] + [(a, True) for a in family + granted]
+        others = [a for a in held_for + granted if not (a.id in seen or seen.add(a.id))]
+        return [(a, False) for a in own] + [(a, True) for a in others]
+
+    def shared_with_user(self, user: User) -> set:
+        """Ids of the accounts an owner has shared with this (advisor) login."""
+        return {
+            row[0]
+            for row in self.db.query(AccountAccess.account_id).filter(
+                AccountAccess.user_id == user.id
+            )
+        }
+
+    def staff_account_ids(self, user: User, client_id: str) -> Optional[set]:
+        """The ids of the client's accounts this user may see through staff
+        routes: None for no limit (an admin, or the client themselves), the
+        shared ones for an advisor."""
+        if user.role != ROLE_ADVISOR:
+            return None
+        shared = self.shared_with_user(user)
+        return {
+            a.id for a, _ in self.accounts_for_client(client_id) if a.id in shared
+        }
+
+    def can_control(self, client_id: str, account: Account) -> bool:
+        """Whether this client may change the account's owners and sharing: any
+        of its owners; and the client who linked it, until one of the owners
+        has a sign-in to take over."""
+        owners = self.owner_ids(account)
+        if client_id in owners:
+            return True
+        if account.linked_by_id != client_id:
+            return False
+        return not any(self.has_login(owner) for owner in owners)
+
+    def has_login(self, client_id: str) -> bool:
+        return (
+            self.db.query(User.id)
+            .filter(User.client_id == client_id, User.password_hash.isnot(None))
+            .first()
+            is not None
+        )
 
     def can_read_account(self, user: User, client_id: str, account_id: str) -> bool:
         """Whether ``user`` may read the account at ``/clients/{client_id}/accounts/{account_id}``."""
-        account = (
-            self.db.query(Account)
-            .filter(Account.id == account_id, Account.client_id == client_id)
-            .first()
-        )
-        if account is None:
+        account = self.db.get(Account, account_id)
+        if account is None or client_id not in self.owner_ids(account):
             return False
-        if user.role in (ROLE_ADMIN, ROLE_ADVISOR):
-            return self.manages(user, client_id)
+        if user.role == ROLE_ADMIN:
+            return True
+        if user.role == ROLE_ADVISOR:
+            return self.manages(user, client_id) and account_id in self.shared_with_user(user)
         return any(a.id == account_id for a, _ in self.accounts_for_client(user.client_id))
 
     def grants(self, client_id: str) -> List[AccountAccess]:
@@ -571,22 +642,22 @@ class AuthService:
         )
 
     def grant(self, client_id: str, account_id: str) -> AccountAccess:
-        if self.db.query(Client).filter(Client.id == client_id).first() is None:
+        """Staff's way to share an account with a client (view only)."""
+        if self.db.get(Client, client_id) is None:
             raise AuthError(404, "Client not found")
-        account = self.db.query(Account).filter(Account.id == account_id).first()
+        account = self.db.get(Account, account_id)
         if account is None:
             raise AuthError(404, "Account not found")
-        if account.client_id == client_id:
+        if client_id in self.owner_ids(account):
             raise AuthError(422, "The client already owns this account.")
         existing = (
             self.db.query(AccountAccess)
-            .filter(
-                AccountAccess.client_id == client_id,
-                AccountAccess.account_id == account_id,
-            )
+            .filter(AccountAccess.client_id == client_id, AccountAccess.account_id == account_id)
             .first()
         )
         if existing:
+            existing.hidden = False
+            self.db.commit()
             return existing
         access = AccountAccess(client_id=client_id, account_id=account_id)
         self.db.add(access)
@@ -596,10 +667,7 @@ class AuthService:
     def revoke(self, client_id: str, account_id: str) -> bool:
         removed = (
             self.db.query(AccountAccess)
-            .filter(
-                AccountAccess.client_id == client_id,
-                AccountAccess.account_id == account_id,
-            )
+            .filter(AccountAccess.client_id == client_id, AccountAccess.account_id == account_id)
             .delete()
         )
         self.db.commit()

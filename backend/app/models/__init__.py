@@ -1,7 +1,7 @@
 """SQLAlchemy models"""
 from app.models.base import Base
-from app.models.client import Client
-from app.models.account import Account
+from app.models.client import Client, PersonLink
+from app.models.account import Account, AccountOwner
 from app.models.account_group import AccountGroup, AccountGroupMember
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
@@ -31,6 +31,8 @@ __all__ = [
     "InvitationRequest",
     "Client",
     "Account",
+    "AccountOwner",
+    "PersonLink",
     "AccountGroup",
     "AccountGroupMember",
     "Strategy",
