@@ -358,7 +358,15 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   realised-gains screens do. Add a tax rule in `tax_lots.py`, never in a route or the portal.
 - **Which lots a sale closes** is the account's `cost_basis_method` (`FIFO` or `MIN_TAX`), set
   to match the brokerage. The source gives days, not times: a same-day purchase is read as
-  bought after the sale.
+  bought after the sale. Positions and the assignment rule read a day's trades in one order
+  (`corporate_actions.day_order`): buys before sells, and an option leaving at no price
+  (assigned, exercised, expired) after everything else that day, so it closes the contracts
+  the day opened.
+- **A rebuilt day's price is tied to the trades, but never to one far from the market:** a
+  trade more than 25% from that day's close does not reset a holding's price scale (a delivery
+  the source did not mark as one would revalue every share). When the price history stops short,
+  the last close is carried, not the last trade's price, and the day counts as unpriced. A
+  record's first written day never carries a return.
 - **A year-end price for an index option is entered by hand** (`set-price`, stored as a
   `manual` row in `perf.daily_price`); no feed prices options. Without one the lot is left
   unmarked and says so. Never estimate it.

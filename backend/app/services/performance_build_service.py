@@ -121,6 +121,11 @@ class _Series:
         # history has stopped (delisted) or does not reach this far.
         return close if (day - found).days <= 7 else None
 
+    def last_on(self, day: date) -> Optional[Decimal]:
+        """The latest close on or before ``day`` however old (after ``on``)."""
+        self.on(day)
+        return self._points[self._index][1] if self._index >= 0 else None
+
 
 class _Holding:
     __slots__ = ("quantity", "scale", "last_price", "longs", "shorts", "cost")
@@ -376,11 +381,21 @@ class PerformanceBuildService:
                 if holding.quantity == 0:
                     continue
                 close = series[symbol].on(day) if symbol in series else None
+                carried = (
+                    series[symbol].last_on(day)
+                    if close is None and symbol in series and holding.scale is not None
+                    else None
+                )
                 if close is not None and holding.scale is not None:
                     price = close * holding.scale
                 elif day == days[-1] and symbol in on_file:
                     # No history for it, but a current price is on file.
                     price = on_file[symbol]
+                elif carried is not None:
+                    # The price history stopped short: carry its last close,
+                    # not the last trade's price, and count the day unpriced.
+                    price = carried * holding.scale
+                    unpriced[sleeve_id] += abs(holding.quantity * price)
                 else:
                     price = holding.last_price
                     unpriced[sleeve_id] += abs(holding.quantity * price)
@@ -485,7 +500,7 @@ class PerformanceBuildService:
                 account_in,
                 account_out,
                 sum(unpriced.values(), ZERO),
-                None if day == opening.day else previous_account_total,
+                None if day in (opening.day, days[0]) else previous_account_total,
                 provisional,
                 now,
             )
@@ -586,7 +601,13 @@ class PerformanceBuildService:
         if not close:
             return None
         if at_market and traded_at > 0:
-            return traded_at / close
+            tied = traded_at / close
+            # Within one run of a holding the scale only drifts with dividends;
+            # a trade far from the day's close (a delivery the source did not
+            # mark as one) would revalue every share, so it is not taken.
+            if scale is not None and abs(tied / scale - 1) > Decimal("0.25"):
+                return scale
+            return tied
         return scale if scale is not None else Decimal(1)
 
     @staticmethod
