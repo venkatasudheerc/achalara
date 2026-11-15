@@ -46,7 +46,7 @@ test('a login that stopped sharing is a must-do: it stays, with its button, and 
 test('with nothing to say there are no Next best action or Insights sections', async ({ page, api }) => {
   signedIn(api)
   await page.goto('/home')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Everything you have is worth')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your net worth is')
   await expect(page.getByRole('heading', { name: 'Next best action' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Insights' })).toHaveCount(0)
 })
