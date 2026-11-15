@@ -1,27 +1,47 @@
+import { Suspense, lazy, type ComponentType } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
-import { PerformancePage } from '@/features/performance/PerformancePage'
-import { ClientsPage } from '@/features/clients/ClientsPage'
-import { ClientDetailPage } from '@/features/clients/ClientDetailPage'
-import { AccountDetailPage } from '@/features/accounts/AccountDetailPage'
-import { SleeveDetailPage } from '@/features/sleeves/SleeveDetailPage'
-import { StrategiesPage } from '@/features/strategies/StrategiesPage'
-import { SettingsPage } from '@/features/SettingsPage'
-import { StatusPage } from '@/features/status/StatusPage'
-import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
-import { ResearchPage } from '@/features/research/ResearchPage'
-import { RequestsPage } from '@/features/invitations/RequestsPage'
-import { HomePage } from '@/features/HomePage'
-import { RequestInvitationPage } from '@/features/invitations/RequestInvitationPage'
-import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
+import { SkeletonCard } from '@/components/Skeleton'
 import { LoginPage } from '@/features/auth/LoginPage'
-import { AcceptLinkPage } from '@/features/auth/AcceptLinkPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { HomeShell, MorePage } from '@/features/home/HomeShell'
-import { LandingPage } from '@/features/home/LandingPage'
 import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
-import { AccessPage } from '@/features/home/AccessPage'
-import { ConnectionsPage } from '@/features/home/ConnectionsPage'
+
+/**
+ * A page fetched when it is first opened, so signing in does not download every
+ * page of both apps. The frame (sign-in, the two shells) stays in the first
+ * file; while a page arrives its place shows a skeleton inside the frame.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- any page's own props
+function page<P extends Record<string, any>>(load: () => Promise<ComponentType<P>>) {
+  const Loaded = lazy(() => load().then((component) => ({ default: component }))) as unknown as ComponentType<P>
+  return function Page(props: P) {
+    return (
+      <Suspense fallback={<div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>}>
+        <Loaded {...props} />
+      </Suspense>
+    )
+  }
+}
+
+const PerformancePage = page(() => import('@/features/performance/PerformancePage').then((m) => m.PerformancePage))
+const ClientsPage = page(() => import('@/features/clients/ClientsPage').then((m) => m.ClientsPage))
+const ClientDetailPage = page(() => import('@/features/clients/ClientDetailPage').then((m) => m.ClientDetailPage))
+const AccountDetailPage = page(() => import('@/features/accounts/AccountDetailPage').then((m) => m.AccountDetailPage))
+const SleeveDetailPage = page(() => import('@/features/sleeves/SleeveDetailPage').then((m) => m.SleeveDetailPage))
+const StrategiesPage = page(() => import('@/features/strategies/StrategiesPage').then((m) => m.StrategiesPage))
+const SettingsPage = page(() => import('@/features/SettingsPage').then((m) => m.SettingsPage))
+const StatusPage = page(() => import('@/features/status/StatusPage').then((m) => m.StatusPage))
+const MarketDataPage = page(() => import('@/features/marketdata/MarketDataPage').then((m) => m.MarketDataPage))
+const ResearchPage = page(() => import('@/features/research/ResearchPage').then((m) => m.ResearchPage))
+const RequestsPage = page(() => import('@/features/invitations/RequestsPage').then((m) => m.RequestsPage))
+const HomePage = page(() => import('@/features/HomePage').then((m) => m.HomePage))
+const RequestInvitationPage = page(() => import('@/features/invitations/RequestInvitationPage').then((m) => m.RequestInvitationPage))
+const ConfirmInvitationPage = page(() => import('@/features/invitations/ConfirmInvitationPage').then((m) => m.ConfirmInvitationPage))
+const AcceptLinkPage = page(() => import('@/features/auth/AcceptLinkPage').then((m) => m.AcceptLinkPage))
+const LandingPage = page(() => import('@/features/home/LandingPage').then((m) => m.LandingPage))
+const AccessPage = page(() => import('@/features/home/AccessPage').then((m) => m.AccessPage))
+const ConnectionsPage = page(() => import('@/features/home/ConnectionsPage').then((m) => m.ConnectionsPage))
 
 /** Where each of the old portal's pages now lives in the new app. */
 const OLD_PORTAL: Record<string, string> = {

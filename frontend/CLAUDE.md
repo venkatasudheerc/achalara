@@ -46,6 +46,10 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 
 ### Routing
 
+**Pages load when first opened.** `src/routes.tsx` wraps each page in `page(() => import(…))`
+(`React.lazy` inside its own `Suspense`, a skeleton while it arrives); only sign-in and the two
+frames are in the first file. Add a new page the same way, never as a plain import there.
+
 There is no public front page: `/` (and any unknown address) opens `/login`, whose "Request an
 invitation" link is the way in for someone new. `/login`, `/request-invitation`,
 `/request-invitation/confirm/:token`, `/invite/:token` and `/reset/:token` are open, all in the
