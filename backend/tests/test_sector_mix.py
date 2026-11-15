@@ -51,6 +51,8 @@ def test_the_copy_holds_each_held_symbols_sector_and_what_market_data_does_not_k
     assert (rows["AAPL"].kind, rows["AAPL"].sector_code, rows["AAPL"].sector_name) == (
         "stock", "IT", "Information Technology"
     )
+    assert rows["AAPL"].name == "AAPL INC"
+    assert rows["VOO"].name == "VOO INC"
     assert (rows["VOO"].kind, rows["VOO"].sector_code) == ("etf", None)
     assert (rows["XYZ"].kind, rows["XYZ"].sector_code) == ("stock", None)
     # Never heard of: a row all the same, so "not classified" is on file.
@@ -91,6 +93,8 @@ def test_positions_say_where_each_holding_sits(maya, db, world, market):
     assert rows["VTI"]["sector_group"] == "fund"  # unknown to market data, but typed ETF
     option = next(p for p in rows.values() if p["security_type"] == "option")
     assert (option["sector_group"], option["sector"]) == (None, None)
+    # Each holding says what it is called; an option has no name of its own.
+    assert rows["AAPL"]["name"] == "AAPL INC" and option["name"] is None
 
 
 def test_a_stock_with_no_copy_row_is_unclassified_not_dropped(maya, world):
@@ -108,3 +112,11 @@ def test_a_client_sees_sectors_only_for_the_accounts_in_view(maya, db, world, ma
 def test_the_job_is_listed_on_system_status(client):
     ids = [j["id"] for j in client.get("/api/v1/admin/status").json()["jobs"]]
     assert "sector_copy" in ids
+
+
+def test_a_security_still_called_by_its_ticker_has_no_name_to_show(db, world, market):
+    market["XYZ"].name = "XYZ"
+    db.commit()
+    _held(db, world)
+    sector_copy.refresh(db)
+    assert db.get(SecuritySector, "XYZ").name is None

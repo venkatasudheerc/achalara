@@ -134,17 +134,19 @@ class SectorOf(NamedTuple):
     kind: str
     sector_code: Optional[str]
     sector_name: Optional[str]
+    # The company's or fund's name; empty while it is still called by its ticker.
+    name: Optional[str] = None
 
 
 def sectors_for(app_db: Session, symbols: Iterable[str]) -> Dict[str, SectorOf]:
     """Each of these US symbols market data knows: its kind and, where it has
-    one, its GICS sector. A symbol market data does not know is left out."""
+    one, its GICS sector and its name. A symbol market data does not know is left out."""
     wanted = sorted({app_symbol(symbol) for symbol in symbols if symbol})
     found: Dict[str, SectorOf] = {}
     with _session(app_db) as db:
         for start in range(0, len(wanted), 500):
             rows = (
-                db.query(SecuritySymbol.symbol, Security.kind, Sector.code, Sector.name)
+                db.query(SecuritySymbol.symbol, Security.kind, Sector.code, Sector.name, Security.name)
                 .join(Security, Security.id == SecuritySymbol.security_id)
                 .outerjoin(
                     SecurityClassification,
@@ -157,8 +159,10 @@ def sectors_for(app_db: Session, symbols: Iterable[str]) -> Dict[str, SectorOf]:
                 )
                 .all()
             )
-            for symbol, kind, code, name in rows:
-                found[app_symbol(symbol)] = SectorOf(kind, code, name)
+            for symbol, kind, code, sector_name, name in rows:
+                # A security still named by its ticker has no name worth showing.
+                named = name if name and name.strip().upper() != symbol.upper() else None
+                found[app_symbol(symbol)] = SectorOf(kind, code, sector_name, named)
     return found
 
 

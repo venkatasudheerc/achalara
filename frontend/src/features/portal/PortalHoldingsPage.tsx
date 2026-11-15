@@ -10,6 +10,7 @@ import {
 } from '@/features/portal/ui'
 import type { PortalHomeResponse, PortalPosition, SecurityGroup } from '@/api/types'
 import { INVESTED } from '@/features/home/selection'
+import { displayName } from '@/features/research/ui'
 
 const TYPES = [
   { value: '', label: 'All' }, { value: 'stock', label: 'Stocks' }, { value: 'etf', label: 'ETFs' },
@@ -105,7 +106,8 @@ function HoldingsTable({ rows }: { rows: PortalPosition[] }) {
               <td className={cell}>
                 <span className="font-semibold">{securityLabel(r.symbol)}</span><ShortBadge quantity={r.quantity} />
                 <div className="text-[14px] text-summit-ink/70">
-                  {TYPE_LABEL[r.security_type]}{r.price_source === 'custodian' && ' · custodian’s price'}
+                  {/* The name says more than the type, which the strategy and the filter already give. */}
+                  {r.name ? displayName(r.name) : TYPE_LABEL[r.security_type]}{r.price_source === 'custodian' && ' · custodian’s price'}
                 </div>
               </td>
               <td className={num}>

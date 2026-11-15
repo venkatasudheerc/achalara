@@ -190,7 +190,7 @@ spacing override below cannot change them. They read only `/api/v1/portal/*`
 `ScopeContext` / `DateRangeContext`, which belong to the advisor workspace. The realised-gains
 page shows each lot as the custodian reports it (`cost`, `proceeds`, `short_term_gain`,
 `long_term_gain`; `realized_gain` there is after any wash-sale loss, marked "W"); do not
-recompute gains from entry and exit prices on the client. The holdings page is on live prices: it
+recompute gains from entry and exit prices on the client. Under each symbol it shows what the holding is called (`name`, cleaned by `displayName`), the type (Stock, ETF) only while no name is known: the strategy and the Type filter already say the type. The holdings page is on live prices: it
 shows `live_prices_at`, refetches every minute while open, and marks a row "custodian's price"
 when `price_source` is `custodian`. An account's options are valued together at the custodian's
 figure (`account_balances`), on an **Options** line of their own in the account's tile, with cash

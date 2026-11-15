@@ -318,11 +318,12 @@ account number and no credentials. (Migration `f3b8d6e0a2c5`.)
 The sector of each symbol the app holds, copied from market data so that the portal never depends on
 market data being reachable. `symbol` (PK, the app's spelling), `kind` (market data's:
 stock, etf, adr, fund, preferred, other; empty when it does not know the symbol), `sector_code` and
-`sector_name` (one of the 11 GICS sectors; empty for a fund or a stock with none), `refreshed_at`.
+`sector_name` (one of the 11 GICS sectors; empty for a fund or a stock with none), `name` (the
+security's name as market data has it, SEC style; empty while it is only called by its ticker), `refreshed_at`.
 A symbol market data has no sector for keeps a row with the sector empty, so "not classified" is on
 file. Written daily by `services/sector_copy.refresh` (job `sector_copy`, 6:20 AM Eastern) from
 `md.read.sectors_for`; read by `PortalService._place_in_sectors`. Nothing in `perf` reads it. It names
-symbols only, never a client or an account. (Migration `e2a7c5d9b1f4`.)
+symbols only, never a client or an account. (Migrations `e2a7c5d9b1f4`; `b3d7f1a9c5e2` adds `name`.)
 
 ### `market_pattern_copies`
 The S&P 500's record for this week of the year and this calendar month, copied from market data so

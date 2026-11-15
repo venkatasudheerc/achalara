@@ -171,6 +171,9 @@ class RowPlace(BaseModel):
 class PortalPosition(RowPlace):
     symbol: str
     security_type: str  # stock | etf | option | other
+    # What the security is called, from the app's copy of market data's names;
+    # None for an option or while market data has no name for it.
+    name: Optional[str] = None
     quantity: float
     avg_cost: Optional[float] = None  # per share; None when the cost is not known
     multiplier: int = 1  # shares per unit of quantity: 100 for an option contract
