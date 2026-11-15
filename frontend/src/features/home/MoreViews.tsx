@@ -4,7 +4,7 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { accountName, kindOf } from './selection'
+import { accountName, kindOf, netWorth } from './selection'
 
 const th = 'px-[14px] py-[10px] text-[13px] font-semibold text-stone text-left whitespace-nowrap'
 const thNum = `${th} !text-right`
@@ -12,85 +12,129 @@ const td = 'px-[14px] py-[12px] text-[15px] border-t border-line'
 const tdNum = `${td} text-right tabular-nums whitespace-nowrap`
 const tone = (n: number | null | undefined) => (n == null ? '' : n < 0 ? 'text-loss' : 'text-gain')
 
-/** Every account chosen: what it holds, its cash, this year's return, and where the figures come from. */
+/** The accounts as a table: what each holds, its cash, this year's return, and where the figures come from. */
+function AccountsTable({ rows, ytd, seenBy }: {
+  rows: PortalAccount[]
+  ytd: Map<string, { twr_pct?: number | null }>
+  seenBy: Map<string, string[]>
+}) {
+  return (
+    <div className="border border-line rounded-[18px] overflow-x-auto">
+      <table className="w-full min-w-[860px]">
+        <thead><tr>
+          <th scope="col" className={th}>Account</th><th scope="col" className={th}>Owner</th><th scope="col" className={th}>Kind</th>
+          <th scope="col" className={thNum}>Value</th><th scope="col" className={thNum}>Cash</th>
+          <th scope="col" className={thNum}>This year</th><th scope="col" className={th}>Figures from</th>
+          <th scope="col" className={th}>Also seen by</th>
+        </tr></thead>
+        <tbody>
+          {rows.map((a) => {
+            const k = kindOf(a.kind)
+            const year = ytd.get(a.id)
+            return (
+              <tr key={a.id}>
+                <td className={td}>
+                  <span className="flex items-center gap-[10px]">
+                    <span aria-hidden="true" className={`w-[10px] h-[10px] rounded-full shrink-0 ${k.dot}`} />
+                    {accountName(a)}{a.number_last4 ? <span className="text-stone"> ··{a.number_last4}</span> : null}
+                  </span>
+                </td>
+                <td className={td}>
+                  {a.owners && a.owners.length > 1 ? a.owners.map((o) => o.name).join(' and ') : a.owner_name}
+                  {a.held_for ? <span className="block text-[13px] text-stone">held for {a.held_for}</span> : null}
+                </td>
+                <td className={td}>{k.label}</td>
+                <td className={tdNum}>{a.value == null ? '—' : formatCurrency(a.value)}</td>
+                <td className={tdNum}>{a.cash == null || a.owed ? '—' : formatCurrency(a.cash)}</td>
+                <td className={`${tdNum} ${tone(year?.twr_pct)}`}>{year?.twr_pct == null ? '—' : formatPercent(year.twr_pct)}</td>
+                <td className={`${td} text-[14px] text-stone`}>
+                  {a.source ?? '—'}{a.as_of ? `, ${formatDate(a.as_of)}` : ''}
+                </td>
+                <td className={`${td} text-[14px] ${seenBy.get(a.id)?.length ? 'text-summit-ink' : 'text-stone'}`}>
+                  {a.shared ? '—' : seenBy.get(a.id)?.join(', ') || 'Nobody'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** A section's name with its total beside it. */
+function SectionHead({ title, note }: { title: string; note: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-[12px]">
+      <h2 className="font-display text-[20px]">{title}</h2>
+      <span className="text-[14px] text-stone tabular-nums">{note}</span>
+    </div>
+  )
+}
+
+/**
+ * Every account chosen, as assets and liabilities. A credit card is a liability and
+ * is shown once, as a tile; other loans are rows. Where there is only one side, only
+ * that side is shown, without headings.
+ */
 export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount[]; accountIds?: string[] }) {
   const { data } = usePortalOverview({ account_ids: accountIds })
   const { data: people } = usePortalPeople()
   const seenBy = new Map((people?.your_accounts ?? []).map((a) => [a.id, a.seen_by]))
   const ytd = new Map((data?.accounts ?? []).map((a) => [a.id, a]))
-  const total = accounts.reduce((t, a) => t + (a.value ?? 0), 0)
-  // A credit card is shown once, as a tile; the table lists the other accounts.
-  const cards = accounts.filter((a) => a.card)
-  const rest = accounts.filter((a) => !a.card)
-  const owedTotal = cards.reduce((t, a) => t + Math.max(0, -(a.value ?? 0)), 0)
+  const worth = netWorth(accounts)
+  const assets = accounts.filter((a) => !a.owed)
+  const liabilities = accounts.filter((a) => a.owed)
+  const cards = liabilities.filter((a) => a.card)
+  const otherDebts = liabilities.filter((a) => !a.card)
   const limitTotal = cards.reduce((t, a) => t + (a.card?.credit_limit ?? 0), 0)
+  const both = assets.length > 0 && liabilities.length > 0
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
   return (
-    <section className="flex flex-col gap-[14px]">
+    <section className="flex flex-col gap-[18px]">
       <p className="text-[16px]">
-        {rest.length === 0 ? (
+        {both ? (
           <>
-            {cards.length} {cards.length === 1 ? 'credit card' : 'credit cards'}: <strong className="tabular-nums">{formatCurrency(owedTotal)}</strong> owed
+            Net worth of the accounts linked here <strong className="tabular-nums">{formatCurrency(worth.net)}</strong>:
+            assets <span className="tabular-nums">{formatCurrency(worth.assets)}</span> less <span className="tabular-nums">{formatCurrency(worth.owed)}</span> owed.
+          </>
+        ) : assets.length === 0 ? (
+          <>
+            {cards.length > 0 && otherDebts.length === 0 ? plural(cards.length, 'credit card', 'credit cards') : plural(liabilities.length, 'liability', 'liabilities')}:{' '}
+            <strong className="tabular-nums">{formatCurrency(worth.owed)}</strong> owed
             {limitTotal > 0 && <> of <span className="tabular-nums">{formatCurrency(limitTotal)}</span> in limits</>}.
           </>
         ) : (
           <>
-            {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}, together <strong className="tabular-nums">{formatCurrency(total)}</strong>.
+            {plural(assets.length, 'account', 'accounts')}, together <strong className="tabular-nums">{formatCurrency(worth.assets)}</strong>.
           </>
         )}
       </p>
-      {rest.length > 0 && (
-      <div className="border border-line rounded-[18px] overflow-x-auto">
-        <table className="w-full min-w-[860px]">
-          <thead><tr>
-            <th scope="col" className={th}>Account</th><th scope="col" className={th}>Owner</th><th scope="col" className={th}>Kind</th>
-            <th scope="col" className={thNum}>Value</th><th scope="col" className={thNum}>Cash</th>
-            <th scope="col" className={thNum}>This year</th><th scope="col" className={th}>Figures from</th>
-            <th scope="col" className={th}>Also seen by</th>
-          </tr></thead>
-          <tbody>
-            {rest.map((a) => {
-              const k = kindOf(a.kind)
-              const year = ytd.get(a.id)
-              return (
-                <tr key={a.id}>
-                  <td className={td}>
-                    <span className="flex items-center gap-[10px]">
-                      <span aria-hidden="true" className={`w-[10px] h-[10px] rounded-full shrink-0 ${k.dot}`} />
-                      {accountName(a)}{a.number_last4 ? <span className="text-stone"> ··{a.number_last4}</span> : null}
-                    </span>
-                  </td>
-                  <td className={td}>
-                    {a.owners && a.owners.length > 1 ? a.owners.map((o) => o.name).join(' and ') : a.owner_name}
-                    {a.held_for ? <span className="block text-[13px] text-stone">held for {a.held_for}</span> : null}
-                  </td>
-                  <td className={td}>{k.label}</td>
-                  <td className={tdNum}>{a.value == null ? '—' : formatCurrency(a.value)}</td>
-                  <td className={tdNum}>{a.cash == null || a.owed ? '—' : formatCurrency(a.cash)}</td>
-                  <td className={`${tdNum} ${tone(year?.twr_pct)}`}>{year?.twr_pct == null ? '—' : formatPercent(year.twr_pct)}</td>
-                  <td className={`${td} text-[14px] text-stone`}>
-                    {a.source ?? '—'}{a.as_of ? `, ${formatDate(a.as_of)}` : ''}
-                  </td>
-                  <td className={`${td} text-[14px] ${seenBy.get(a.id)?.length ? 'text-summit-ink' : 'text-stone'}`}>
-                    {a.shared ? '—' : seenBy.get(a.id)?.join(', ') || 'Nobody'}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      )}
-      {cards.length > 0 && (
+
+      {assets.length > 0 && (
         <div className="flex flex-col gap-[12px]">
-          {rest.length > 0 && <h2 className="font-display text-[20px]">Credit cards</h2>}
-          <ul className="grid md:grid-cols-2 xl:grid-cols-3 gap-[14px] items-start">
-            {[...cards].sort(byUrgency).map((a) => <CardTile key={a.id} account={a} />)}
-          </ul>
-          <p className="text-[13px] text-stone">
-            Figures as each institution last reported them, refreshed daily. A dash means it does not send that figure.
-          </p>
+          {both && <SectionHead title="Assets" note={`${plural(assets.length, 'account', 'accounts')} · ${formatCurrency(worth.assets)}`} />}
+          <AccountsTable rows={assets} ytd={ytd} seenBy={seenBy} />
         </div>
       )}
+
+      {liabilities.length > 0 && (
+        <div className="flex flex-col gap-[12px]">
+          {both && <SectionHead title="Liabilities" note={`${formatCurrency(worth.owed)} owed${limitTotal > 0 ? ` of ${formatCurrency(limitTotal)} in card limits` : ''}`} />}
+          {cards.length > 0 && (
+            <ul className="grid md:grid-cols-2 xl:grid-cols-3 gap-[14px] items-start">
+              {[...cards].sort(byUrgency).map((a) => <CardTile key={a.id} account={a} />)}
+            </ul>
+          )}
+          {otherDebts.length > 0 && <AccountsTable rows={otherDebts} ytd={ytd} seenBy={seenBy} />}
+          {cards.length > 0 && (
+            <p className="text-[13px] text-stone">
+              Figures as each institution last reported them, refreshed daily. A dash means it does not send that figure.
+            </p>
+          )}
+        </div>
+      )}
+
       {accounts.some((a) => !a.shared) && (
         <p className="text-[13px] text-stone">
           Nobody sees an account until you share it. To change who sees one, choose it, or open Manage Access from the menu under your name.

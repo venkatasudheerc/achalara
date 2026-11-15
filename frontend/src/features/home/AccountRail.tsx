@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { AccountGroup, PortalAccount } from '@/api/types'
 import { formatCurrency } from '@/lib/formatters'
-import { KINDS, accountName, kindOf, selectionKey, type GroupBy, type Selection } from './selection'
+import { KINDS, accountName, kindOf, netWorth, selectionKey, type GroupBy, type Selection } from './selection'
 
 interface Section { key: string; label: string; selection: Selection | null; accounts: PortalAccount[] }
 
@@ -62,6 +62,7 @@ export function AccountRail({
     return q ? accounts.filter((a) => `${a.name} ${a.number_last4 ?? ''} ${a.owner_name}`.toLowerCase().includes(q)) : accounts
   }, [accounts, search])
   const sections = sectionsFor(groupBy, matching, groups, viewerId)
+  const worth = netWorth(accounts)
 
   const options: { value: GroupBy; label: string }[] = [
     ...(showPerson ? [{ value: 'person' as const, label: 'Person' }] : []),
@@ -93,6 +94,9 @@ export function AccountRail({
         className={`${rowBase} flex-col !items-start gap-[2px] p-[12px] ${chosen === 'all' ? 'bg-accent-soft' : ''}`}>
         <span className={`text-[14px] ${chosen === 'all' ? 'font-bold' : ''}`}>All accounts</span>
         <span className="font-display text-[26px] tabular-nums">{formatCurrency(sum(accounts))}</span>
+        <span className="text-[12px] text-stone">
+          Net worth{worth.owed > 0 && ` · assets ${formatCurrency(worth.assets)}, owed ${formatCurrency(worth.owed)}`}
+        </span>
       </button>
 
       <div className="flex flex-col gap-[6px]">

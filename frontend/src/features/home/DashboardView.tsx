@@ -8,7 +8,7 @@ import { loadPlaid } from '@/lib/plaid'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
-import { INVESTED, KINDS, accountName, type Selection } from './selection'
+import { INVESTED, KINDS, accountName, netWorth, type Selection } from './selection'
 import { dateTicks } from '@/lib/chartTicks'
 import { SharingPanel } from './SharingPanel'
 import { AccountNameEditor } from './AccountNameEditor'
@@ -59,6 +59,9 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   })
   const one = selection.type === 'account' ? accounts[0] : undefined
   const total = accounts.reduce((t, a) => t + (a.value ?? 0), 0)
+  const worth = netWorth(accounts)
+  // Only cards and loans in view: say what is owed, not that they are "worth" a negative sum.
+  const onlyOwed = accounts.length > 0 && accounts.every((a) => a.owed)
   // Banks and cards as much as a cash account: nothing there is invested, so no "gain" or "return".
   const allCash = accounts.every((a) => !INVESTED.includes(a.kind))
   const latest = accounts.map((a) => a.as_of).filter(Boolean).sort().pop()
@@ -100,8 +103,13 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           {accounts.some((a) => !a.shared && a.source) && <RefreshNow />}
         </span>
         <h1 className="font-display text-[30px] md:text-[40px] leading-[1.15]">
-          {lead} <span className="text-pine tabular-nums">{formatCurrency(total)}</span>
+          {onlyOwed ? 'You owe' : lead} <span className="text-pine tabular-nums">{formatCurrency(onlyOwed ? -total : total)}</span>
         </h1>
+        {worth.owed > 0 && worth.assets > 0 && (
+          <p className="text-[15px] text-stone tabular-nums">
+            Assets {formatCurrency(worth.assets)}, less {formatCurrency(worth.owed)} owed. Net worth of the accounts linked here.
+          </p>
+        )}
         {change != null && (
           <p className="text-[16px]">
             <strong className={change >= 0 ? 'text-gain' : 'text-loss'}>
