@@ -34,8 +34,8 @@ from app.connectors.plaid_connector import PlaidClient, PlaidError, configured
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.perf import DailyHolding, DailyValuation
-from app.models.sleeve import Sleeve
 from app.services.account_kind import KINDS, OWED, kind_from_plaid
+from app.services import sleeve_routing
 from app.services.sharing_service import SharingService
 from app.services.auth_service import AuthService
 from app.services.connection_service import ConnectionService
@@ -592,7 +592,7 @@ class PlaidLinkService:
                     raise PlaidLinkError(409, "This account is already linked")
                 self._describe(account, connection, link, kind)
                 link.account_id = account.id
-                link.default_sleeve_id = self._sleeve(account)
+                link.default_sleeve_id, link.sleeve_routes = self._sleeves(account)
                 link.status = "mapped"
                 pulled.append(link)
                 outcome["linked"] += 1
@@ -607,7 +607,7 @@ class PlaidLinkService:
                 self._ownership(account, client_id, choice)
                 self._describe(account, connection, link, kind)
                 link.account_id = account.id
-                link.default_sleeve_id = self._sleeve(account)
+                link.default_sleeve_id, link.sleeve_routes = self._sleeves(account)
                 link.status = "mapped"
                 pulled.append(link)
                 outcome["added"] += 1
@@ -661,19 +661,16 @@ class PlaidLinkService:
             is not None
         )
 
-    def _sleeve(self, account: Account) -> str:
-        sleeve = self.db.query(Sleeve).filter(Sleeve.account_id == account.id).first()
-        if sleeve is None:
-            sleeve = Sleeve(
-                account_id=account.id, strategy_id=self.connections._default_strategy().id,
-            )
-            self.db.add(sleeve)
-        # A feed is real brokerage activity: sales take the oldest shares first.
-        # Round-trip matching (for strategy sheets) drops a sale of shares bought
-        # before the history and keeps every later buy open.
-        sleeve.accounting_method = "FIFO"
+    def _sleeves(self, account: Account):
+        """The account's sleeves, one per strategy (Stocks, ETFs, Mutual funds,
+        Options, Cash), with the default sleeve and the routes that send each
+        kind of security to its own. A bank, card or loan has only Cash.
+        Feed sleeves are real brokerage activity: sales take the oldest shares
+        first (round-trip pairing, meant for strategy sheets, drops a sale of
+        shares bought before the history and keeps every later buy open)."""
+        default, routes = sleeve_routing.set_up(self.db, account)
         self.db.flush()
-        return sleeve.id
+        return default, routes
 
     # ------------------------------------------------------------------
     # First pull

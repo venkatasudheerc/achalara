@@ -507,6 +507,55 @@ def import_vanguard_report(
         db.close()
 
 
+def split_into_strategies(account_key: Optional[str], apply: bool) -> int:
+    """Sort accounts linked as one sleeve into Stocks, ETFs, Mutual funds,
+    Options and Cash. Shows what it would do; --apply writes. Safe to repeat."""
+    from app.models.account import Account
+    from app.models.brokerage_connection import BrokerageAccount
+    from app.services import strategy_split
+
+    db = SessionLocal()
+    try:
+        if account_key:
+            one = _brokerage_account(db, account_key)
+            if one is None:
+                return 1
+            links = [one]
+        else:
+            links = (
+                db.query(BrokerageAccount)
+                .filter(BrokerageAccount.status == "mapped", BrokerageAccount.account_id.isnot(None))
+                .all()
+            )
+        for link in links:
+            account = db.get(Account, link.account_id)
+            label = f"{account.display_name or account.name}" + (
+                f" ··{link.number_last4}" if link.number_last4 else ""
+            )
+            plan = strategy_split.plan(db, link)
+            if plan.nothing_to_do:
+                print(f"{label}: nothing to do")
+                continue
+            print(f"{label}:")
+            if plan.becomes:
+                print(f"  its sleeve becomes {plan.becomes}")
+            for move in plan.moves:
+                shown = ", ".join(move.symbols[:6]) + (" …" if len(move.symbols) > 6 else "")
+                print(f"  to {move.to_strategy}: {len(move.symbols)} symbols, {move.trades} trades ({shown})")
+            if plan.unnamed_cash:
+                print(f"  to Cash: {plan.unnamed_cash} cash rows with no security")
+            if plan.untyped:
+                print(f"  no type known, stays in Stocks: {', '.join(plan.untyped)}")
+            if apply:
+                strategy_split.apply(db, link)
+                print("  done")
+        if not apply:
+            print("Nothing written. Run again with --apply to split.")
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -617,7 +666,15 @@ def main(argv=None) -> int:
     report.add_argument("--from", dest="start", help="first trade date to read, YYYY-MM-DD")
     report.add_argument("--to", dest="end", help="last trade date to read, YYYY-MM-DD")
     report.add_argument("--apply", action="store_true", help="write; without it, only show")
+    split = commands.add_parser(
+        "split-into-strategies",
+        help="sort accounts linked as one sleeve into Stocks, ETFs, Mutual funds, Options and Cash",
+    )
+    split.add_argument("--account", help="one brokerage account (id, or its number's last digits); all when left out")
+    split.add_argument("--apply", action="store_true", help="write; without it, only show")
     args = parser.parse_args(argv)
+    if args.command == "split-into-strategies":
+        return split_into_strategies(args.account, args.apply)
     if args.command == "add-ticker-change":
         return add_ticker_change(args.old, args.new, args.date)
     if args.command == "plaid-refresh":

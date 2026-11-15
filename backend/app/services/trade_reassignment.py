@@ -11,6 +11,7 @@ from typing import Dict, List
 from sqlalchemy.orm import Session
 
 from app.models.cash_activity import CashActivity
+from app.models.perf import DailyHolding
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -59,9 +60,21 @@ def reassign_symbols(
         .filter(CashActivity.sleeve_id == source.id, CashActivity.symbol.in_(wanted))
         .update({CashActivity.sleeve_id: target.id}, synchronize_session=False)
     )
+    # The custodian's recorded holdings carry the sleeve they were attributed to,
+    # and the portal lists holdings by it: they move with their trades, so a
+    # moved symbol is not shown in two places.
+    holdings_moved = (
+        db.query(DailyHolding)
+        .filter(
+            DailyHolding.account_id == source.account_id,
+            DailyHolding.sleeve_id == source.id,
+            DailyHolding.symbol.in_(wanted),
+        )
+        .update({DailyHolding.sleeve_id: target.id}, synchronize_session=False)
+    )
     db.commit()
 
-    if trades_moved or cash_moved:
+    if trades_moved or cash_moved or holdings_moved:
         positions = PortfolioCalculationService(db)
         for sleeve_id in (source.id, target.id):
             positions.persist_all_positions(sleeve_id)
@@ -72,3 +85,25 @@ def reassign_symbols(
         "trades_moved": trades_moved,
         "cash_activities_moved": cash_moved,
     }
+
+
+def reassign_unnamed_cash(db: Session, from_sleeve_id: str, to_sleeve_id: str) -> int:
+    """Move the cash activities that belong to no security (deposits, interest,
+    fees) from one sleeve of an account to another. Returns how many moved."""
+    if from_sleeve_id == to_sleeve_id:
+        return 0
+    source = db.query(Sleeve).filter(Sleeve.id == from_sleeve_id).first()
+    target = db.query(Sleeve).filter(Sleeve.id == to_sleeve_id).first()
+    if source is None or target is None:
+        raise LookupError("Sleeve not found")
+    if source.account_id != target.account_id:
+        raise ValueError("Cash can only move between sleeves of one account")
+    moved = (
+        db.query(CashActivity)
+        .filter(CashActivity.sleeve_id == source.id, CashActivity.symbol.is_(None))
+        .update({CashActivity.sleeve_id: target.id}, synchronize_session=False)
+    )
+    db.commit()
+    if moved:
+        rebuild_for_sleeves(db, [source.id, target.id])
+    return moved

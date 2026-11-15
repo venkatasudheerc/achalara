@@ -27,6 +27,7 @@ from app.services.ingestion_service import IngestionService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.corporate_actions import carry_exchange_costs, record_splits
 from app.services.performance_build_service import rebuild_for_sleeves
+from app.services.sleeve_routing import sleeve_for_cash, sleeve_for_type
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,8 @@ class ConnectionService:
         In order: the sleeve already holding that symbol in this account, so a
         symbol never straddles two sleeves and one that was moved by hand stays
         moved; then the sleeve routed for its security type; then the default.
+        Cash with no security goes to the Cash sleeve where the account has one
+        (``sleeve_routing``), else the default.
         A symbol's first placement in this batch holds for the rest of it.
         """
         placed: Dict[str, str] = {}
@@ -232,13 +235,11 @@ class ConnectionService:
         ):
             placed.setdefault(symbol, sleeve_id)
 
-        routes = ba.sleeve_routes or {}
-
         def sleeve_for(symbol: Optional[str], security_type: Optional[str]) -> str:
             if not symbol:
-                return ba.default_sleeve_id
+                return sleeve_for_cash(ba)
             if symbol not in placed:
-                placed[symbol] = routes.get(security_type or "", ba.default_sleeve_id)
+                placed[symbol] = sleeve_for_type(ba, security_type)
             return placed[symbol]
 
         trades_by_sleeve: Dict[str, list] = {}

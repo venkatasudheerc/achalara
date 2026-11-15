@@ -42,6 +42,9 @@ python -m app.cli set-price --symbol SPX271217P06000000 --date 2026-12-31 --clos
 # Add what a custodian's activity report holds that is not on file (shows only; --apply writes)
 python -m app.cli import-vanguard-report --account 5678 --file customActivityReport_12345678.xlsx
 
+# Sort accounts linked as one sleeve into Stocks, ETFs, Mutual funds, Options and Cash (shows only; --apply writes)
+python -m app.cli split-into-strategies [--account 5678] [--apply]
+
 # A company now trades under a new ticker: read its earlier trades under it (rebuilds what traded it)
 python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 
@@ -112,7 +115,9 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/report_service.py`        | The account performance report (HTML template → PDF)                                    |
 | `app/services/cash_ledger.py`           | Cash balance on any date, worked back from the brokerage's reported balance             |
 | `app/services/cash_activity_service.py` | Dividends/fees persistence + `income_flows` (which cash counts as returns)              |
-| `app/services/trade_reassignment.py`    | Move a symbol's history between sleeves of one account                                  |
+| `app/services/trade_reassignment.py`    | Move a symbol's history (trades, cash and recorded holdings) between sleeves of one account |
+| `app/services/sleeve_routing.py`        | One sleeve per strategy in a linked account, and which security type goes to which      |
+| `app/services/strategy_split.py`        | Sorts an account linked as one "Unallocated" sleeve into those sleeves (`plan`, `apply`) |
 | `app/services/vanguard_report.py`       | Reads Vanguard's activity report; plans and adds only the rows not on file               |
 | `app/services/account_import_service.py` | Upload and import: the template, preview, import and the holdings check, for every door |
 | `app/md/`                               | Market data (`md` schema): securities, index membership; its own worker (`app/md/worker.py`) |
@@ -433,11 +438,27 @@ through Plaid (below), their earlier history from the custodian's own files.
   kept verbatim in `brokerage_activities`, routed to the account's sleeves, deduplicated across
   them (`dedup_sleeve_ids`, since symbols can be moved between sleeves), then splits, positions
   and the daily record brought up to date.
-- A trade goes to the sleeve already holding its symbol, else the sleeve routed for its
-  `security_type` (`brokerage_accounts.sleeve_routes`), else `default_sleeve_id`. Do not place
-  one symbol in two sleeves of an account. Feed sleeves use `accounting_method = "FIFO"`
-  (`PlaidLinkService._sleeve` sets it; round-trip pairing, meant for strategy sheets, drops a
-  sale of shares bought before the history and keeps later buys open).
+- **One sleeve per strategy (`services/sleeve_routing.py`).** A linked investment account has a
+  sleeve for each of Stocks, ETFs, Mutual funds, Options and Cash, and `brokerage_accounts.sleeve_routes`
+  maps each security type to one: `STOCK`, `ADR` and `OTHER` to Stocks, `ETF` to ETFs, `MUTUAL_FUND` to
+  Mutual funds (what 401(k) and 529 plans hold), `OPTION` to Options, and `CASH` (a cash row with no
+  security: deposit, interest, fee) to Cash. `default_sleeve_id` is Stocks, which takes a type no
+  route names. A bank, card or loan has only a Cash sleeve. The strategy names are constants in
+  `sleeve_routing`; change a route there, never in a reader. A trade goes to the sleeve already
+  holding its symbol, else the sleeve routed for its `security_type`, else `default_sleeve_id`; a
+  dividend follows its security (the readers set `security_type` on a cash row that has a symbol).
+  Do not place one symbol in two sleeves of an account. Feed sleeves use `accounting_method = "FIFO"`
+  (`sleeve_routing.sleeve_in` sets it; round-trip pairing, meant for strategy sheets, drops a
+  sale of shares bought before the history and keeps later buys open). An account with no
+  `sleeve_routes` (set up by hand) keeps everything in its default sleeve.
+- **Accounts linked before this were one "Unallocated" sleeve.** `python -m app.cli
+  split-into-strategies` (shows the plan; `--apply` writes; safe to repeat) makes that sleeve the
+  Stocks sleeve (Cash for a bank), sets the routes, moves ETFs, funds and options out by symbol
+  with their recorded holdings, and moves cash with no security to Cash. The account's own daily
+  record does not change. Sleeve-level values the custodian's earlier days recorded stay as
+  recorded (observed days are never rewritten), so a sleeve's own history before the split still
+  shows the old grouping. Moving a symbol by hand (`trade_reassignment.reassign_symbols`) carries
+  its recorded holdings too: the portal lists holdings by the sleeve they were recorded under.
 - **A feed's trade it cannot name keeps its cash.** Plaid sends many of Vanguard's option
   trades with no symbol: the trade is set aside (`skipped:unreadable`, counted) but its source
   row keeps the cash it moved, so the ledger is right. When a custodian's file names the same
