@@ -168,6 +168,13 @@ class PortalPosition(RowPlace):
     unrealized_gain: Optional[float] = None
     unrealized_gain_pct: Optional[float] = None
     is_short: bool
+    # Where the holding sits in the 11 sectors, from the app's copy of market data's
+    # classification. sector: a stock with a sector (``sector`` and ``sector_code``
+    # name it); fund: an ETF or fund, which has none; unclassified: a stock market
+    # data has no sector for. None for an option.
+    sector_group: Optional[str] = None
+    sector: Optional[str] = None
+    sector_code: Optional[str] = None
 
 
 class OptionsCombined(BaseModel):

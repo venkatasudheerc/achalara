@@ -124,6 +124,12 @@ const share = (x: number) => `${x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(1
 
 const TYPE_NAMES: Record<string, string> = { stock: 'Stocks', etf: 'ETFs', option: 'Options', other: 'Other' }
 
+/** The 11 GICS sectors, as market data names them. */
+const SECTORS = [
+  'Information Technology', 'Health Care', 'Financials', 'Consumer Discretionary', 'Communication Services',
+  'Industrials', 'Consumer Staples', 'Energy', 'Utilities', 'Real Estate', 'Materials',
+]
+
 /** How the money is spread: by type of holding, the largest holdings, and how concentrated it is. */
 export function AnalysisView({ accountIds }: { accountIds?: string[] }) {
   const { data, isLoading, isError, error, refetch } = usePortalPositions({ account_ids: accountIds })
@@ -146,17 +152,41 @@ export function AnalysisView({ accountIds }: { accountIds?: string[] }) {
   const mix = [...byType].map(([type, value]) => ({ label: TYPE_NAMES[type] ?? type, value }))
   if (cash) mix.push({ label: 'Cash', value: cash })
   mix.sort((a, b) => b.value - a.value)
+  // Where the stocks sit in the 11 sectors. Funds are one row (what they hold is not looked
+  // through), options are the custodian's figure, and a stock with no sector is said so.
+  const bySector = new Map<string, number>(SECTORS.map((name) => [name, 0]))
+  let funds = 0
+  let unclassified = 0
+  let unclassifiedCount = 0
+  for (const p of data.positions) {
+    const v = p.market_value ?? 0
+    if (p.sector_group === 'sector' && p.sector) bySector.set(p.sector, (bySector.get(p.sector) ?? 0) + v)
+    else if (p.sector_group === 'fund') funds += v
+    else if (p.sector_group === 'unclassified') { unclassified += v; unclassifiedCount += 1 }
+  }
+  const optionsValue = data.options?.market_value ?? 0
+  const sectorRows = [...bySector].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
+  const stocksInSectors = sectorRows.reduce((t, r) => t + r.value, 0)
+  const sectorsHeld = sectorRows.filter((r) => r.value > 0).length
+  const otherRows = [
+    { label: 'Funds and ETFs', value: funds, muted: true },
+    { label: 'Options', value: optionsValue, muted: true },
+    { label: 'Cash', value: cash, muted: true },
+    { label: 'Not classified', value: unclassified, muted: true },
+  ].filter((r) => r.value !== 0)
+  const topSector = sectorRows[0]
+
   const largest = [...bySymbol].sort((a, b) => b[1] - a[1]).slice(0, 10)
   const topShare = largest[0] ? largest[0][1] / whole : 0
   const fiveShare = largest.slice(0, 5).reduce((t, [, v]) => t + v, 0) / whole
 
-  const Bars = ({ rows }: { rows: { label: string; value: number }[] }) => (
+  const Bars = ({ rows, wide }: { rows: { label: string; value: number; muted?: boolean }[]; wide?: boolean }) => (
     <div className="flex flex-col gap-[10px]">
       {rows.map((r) => (
-        <div key={r.label} className="grid grid-cols-[110px_1fr_70px] md:grid-cols-[140px_1fr_80px] items-center gap-[12px] text-[15px]">
-          <span className="truncate">{r.label}</span>
+        <div key={r.label} className={`grid ${wide ? 'grid-cols-[128px_1fr_58px] md:grid-cols-[196px_1fr_64px]' : 'grid-cols-[110px_1fr_70px] md:grid-cols-[140px_1fr_80px]'} items-center gap-[12px] text-[15px]`}>
+          <span className={wide ? 'leading-tight' : 'truncate'}>{r.label}</span>
           <div className="h-[12px] rounded-[6px] bg-line overflow-hidden">
-            <div className={`h-full rounded-[6px] ${r.value < 0 ? 'bg-loss' : 'bg-pine'}`} style={{ width: `${Math.min(Math.abs(r.value) / whole, 1) * 100}%` }} />
+            <div className={`h-full rounded-[6px] ${r.value < 0 ? 'bg-loss' : r.muted ? 'bg-stone/40' : 'bg-pine'}`} style={{ width: `${Math.min(Math.abs(r.value) / whole, 1) * 100}%` }} />
           </div>
           <span className="text-right tabular-nums">{share(r.value / whole)}</span>
         </div>
@@ -166,19 +196,47 @@ export function AnalysisView({ accountIds }: { accountIds?: string[] }) {
 
   return (
     <div className="grid lg:grid-cols-2 gap-[20px] items-start">
-      <section aria-labelledby="mix" className="border border-line rounded-[20px] p-[22px] flex flex-col gap-[16px]">
-        <h2 id="mix" className="font-display text-[20px]">What the money is in</h2>
-        <Bars rows={mix} />
-        <p className="text-[13px] text-stone">Holdings at today's prices; options at the custodian's last figure; cash as last reported{cash < 0 ? ' (negative: money borrowed)' : ''}.</p>
-      </section>
-      <section aria-labelledby="largest" className="border border-line rounded-[20px] p-[22px] flex flex-col gap-[16px]">
-        <h2 id="largest" className="font-display text-[20px]">The largest holdings</h2>
+      <section aria-labelledby="sectors" className="border border-line rounded-[20px] p-[22px] flex flex-col gap-[16px]">
+        <h2 id="sectors" className="font-display text-[20px]">What the stocks are in</h2>
         <p className="text-[15px] leading-relaxed">
-          The largest is <strong className="tabular-nums">{share(topShare)}</strong> of the whole; the largest five together are{' '}
-          <strong className="tabular-nums">{share(fiveShare)}</strong>.
+          {stocksInSectors > 0 && topSector ? (
+            <>
+              <strong>{topSector.label}</strong> is the largest sector at{' '}
+              <strong className="tabular-nums">{share(topSector.value / whole)}</strong> of the whole. Stocks with a sector
+              are <strong className="tabular-nums">{share(stocksInSectors / whole)}</strong> of it, spread over {sectorsHeld} of
+              the 11 sectors.
+            </>
+          ) : (
+            'None of these holdings is a stock with a sector yet.'
+          )}
         </p>
-        <Bars rows={largest.map(([label, value]) => ({ label, value }))} />
+        <Bars rows={sectorRows} wide />
+        {otherRows.length > 0 && (
+          <div className="flex flex-col gap-[10px] border-t border-line pt-[14px]">
+            <span className="text-[13px] text-stone">Not in a sector</span>
+            <Bars rows={otherRows} wide />
+          </div>
+        )}
+        <p className="text-[13px] text-stone leading-relaxed">
+          The 11 sectors are the GICS sectors, from market data. A fund is one row: what it holds is not looked through.
+          {unclassifiedCount > 0 && ` ${unclassifiedCount} holding${unclassifiedCount === 1 ? ' has' : 's have'} no sector on file yet.`}
+        </p>
       </section>
+      <div className="flex flex-col gap-[20px]">
+        <section aria-labelledby="mix" className="border border-line rounded-[20px] p-[22px] flex flex-col gap-[16px]">
+          <h2 id="mix" className="font-display text-[20px]">What the money is in</h2>
+          <Bars rows={mix} />
+          <p className="text-[13px] text-stone">Holdings at today's prices; options at the custodian's last figure; cash as last reported{cash < 0 ? ' (negative: money borrowed)' : ''}.</p>
+        </section>
+        <section aria-labelledby="largest" className="border border-line rounded-[20px] p-[22px] flex flex-col gap-[16px]">
+          <h2 id="largest" className="font-display text-[20px]">The largest holdings</h2>
+          <p className="text-[15px] leading-relaxed">
+            The largest is <strong className="tabular-nums">{share(topShare)}</strong> of the whole; the largest five together are{' '}
+            <strong className="tabular-nums">{share(fiveShare)}</strong>.
+          </p>
+          <Bars rows={largest.map(([label, value]) => ({ label, value }))} />
+        </section>
+      </div>
     </div>
   )
 }

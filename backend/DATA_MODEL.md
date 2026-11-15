@@ -303,6 +303,16 @@ arrive. System status reads a job's last run from it after a restart, and the sc
 at start-up to make up a run that fell while the server was down. It names jobs only, never a
 client or an account. (Migration `d4f6a8c1e3b7`.)
 
+### `security_sectors`
+The sector of each symbol the app holds, copied from market data so that the portal never depends on
+market data being reachable. `symbol` (PK, the app's spelling), `kind` (market data's:
+stock, etf, adr, fund, preferred, other; empty when it does not know the symbol), `sector_code` and
+`sector_name` (one of the 11 GICS sectors; empty for a fund or a stock with none), `refreshed_at`.
+A symbol market data has no sector for keeps a row with the sector empty, so "not classified" is on
+file. Written daily by `services/sector_copy.refresh` (job `sector_copy`, 6:20 AM Eastern) from
+`md.read.sectors_for`; read by `PortalService._place_in_sectors`. Nothing in `perf` reads it. It names
+symbols only, never a client or an account. (Migration `e2a7c5d9b1f4`.)
+
 ### `sync_logs`
 | Column | Type | Notes |
 |---|---|---|

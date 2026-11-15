@@ -124,6 +124,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/md/read.py`                        | What the app may ask market data: the one way in from outside the package                |
 | `app/md/insights.py`                    | Market insights and `TOOLS`, the registry the Research page and a future chatbot call     |
 | `app/services/held_symbols.py`          | The symbols held, handed to market data so it never reads client data                     |
+| `app/services/sector_copy.py`           | The daily copy of each held symbol's sector from market data (`security_sectors`)          |
 | `app/utils/symbols.py`                  | Every source's spelling of a ticker (`app_symbol`, `webull_symbol`, `figi_symbol`)        |
 | `app/utils/webull_signing.py`           | Signing a Webull request, shared by the app's client and the market-data jobs            |
 | `app/services/status_service.py`        | The advisor's system status: jobs, brokerage accounts, data freshness, backup, warnings |
@@ -297,6 +298,13 @@ Live tests must stay **read-only** and never loop a third-party API.
   and the request never fails or waits on the source. Do not fetch prices one symbol at a time,
   and do not feed live quotes into Home, Performance or the `perf` schema: returns stay tied
   to the custodian's daily record.
+- **Positions say where each holding sits in the 11 sectors** (`sector_group`, `sector`,
+  `sector_code`, set by `PortalService._place_in_sectors`) from `security_sectors`, the app's own
+  copy of market data's classification, filled daily by `services/sector_copy.py` (job `sector_copy`,
+  6:20 AM Eastern, through `md.read.sectors_for`). The portal never reads market data, and if market
+  data cannot be read the copy is left as it was. `sector`: a stock with a sector; `fund`: an ETF or
+  fund, which has none and is **not guessed at or looked through**; `unclassified`: a stock with no
+  sector on file; options carry none. Nothing in `perf` reads it.
 - **The portal's activity list (`PortalService.activity`) is trades and cash rows together.**
   The custodian's moves between the cash and margin sides of one account (`_is_bookkeeping`)
   are left out, and a cash row's description goes through `_cash_detail`, which drops trace

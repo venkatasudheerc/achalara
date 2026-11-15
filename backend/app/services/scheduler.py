@@ -16,6 +16,7 @@ from app.db.database import SessionLocal
 from app.services import alerts, job_history, run_log
 from app.services.index_history_service import IndexHistoryService
 from app.services.plaid_refresh_service import run_plaid_refresh
+from app.services.sector_copy import refresh as refresh_sectors
 from app.services.ticker_changes import run_ticker_changes
 from app.services.price_history_service import PriceHistoryService
 
@@ -69,6 +70,18 @@ def _ticker_changes_wrapper() -> None:
         run_ticker_changes(db)
     except Exception as exc:
         logger.error(f"Unhandled error in ticker changes job: {type(exc).__name__}")
+    finally:
+        db.close()
+
+
+@run_log.tracked("sector_copy")
+def _sector_copy_wrapper() -> None:
+    """Copy market data's sector for each held symbol into the app."""
+    db = SessionLocal()
+    try:
+        refresh_sectors(db)
+    except Exception as exc:
+        logger.error(f"Unhandled error in sector copy job: {type(exc).__name__}")
     finally:
         db.close()
 
@@ -135,6 +148,13 @@ def _schedule() -> list:
             "ticker_changes",
             _ticker_changes_wrapper,
             CronTrigger(hour=6, minute=15, timezone=MARKET_TIMEZONE),
+            timedelta(hours=12),
+        ),
+        # After market data's classification run (10:30 PM the evening before).
+        (
+            "sector_copy",
+            _sector_copy_wrapper,
+            CronTrigger(hour=6, minute=20, timezone=MARKET_TIMEZONE),
             timedelta(hours=12),
         ),
         (

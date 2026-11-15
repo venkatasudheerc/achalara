@@ -8049,6 +8049,19 @@ components:
           nullable: true
         is_short:
           type: boolean
+        sector_group:
+          type: string
+          nullable: true
+          enum: [sector, fund, unclassified]
+          description: 'Where the holding sits in the 11 sectors, from the app''s copy of market data''s classification. sector: a stock with a sector (see sector and sector_code); fund: an ETF or fund, which has none; unclassified: a stock with no sector on file. Null for an option.'
+        sector:
+          type: string
+          nullable: true
+          description: The GICS sector's name, for a stock with a sector
+        sector_code:
+          type: string
+          nullable: true
+          description: The GICS sector's code (IT, HC, FIN, ...), for a stock with a sector
       type: object
       required:
       - account_id
@@ -8071,6 +8084,9 @@ components:
       - market_value
       - unrealized_gain
       - unrealized_gain_pct
+      - sector_group
+      - sector
+      - sector_code
     PortalPositionsResponse:
       properties:
         as_of:

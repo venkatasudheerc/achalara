@@ -21,6 +21,7 @@ from app.models.user import AccountAccess
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
+from app.models.security_sector import SecuritySector
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services import benchmarks
@@ -729,6 +730,33 @@ class PortalService:
                     )
         return rows
 
+    FUND_KINDS = ("etf", "fund")
+
+    def _place_in_sectors(self, rows: List[Dict]) -> None:
+        """Say where each holding sits in the 11 sectors, from the app's copy of
+        market data's classification (never market data itself). A fund has no
+        sector and is not guessed at; a stock with none is "unclassified"."""
+        symbols = {r["symbol"] for r in rows if r["security_type"] != "option"}
+        copy: Dict[str, SecuritySector] = {}
+        wanted = sorted(symbols)
+        for start in range(0, len(wanted), 500):
+            for row in self.db.query(SecuritySector).filter(
+                SecuritySector.symbol.in_(wanted[start : start + 500])
+            ):
+                copy[row.symbol] = row
+        for r in rows:
+            r["sector_group"] = r["sector"] = r["sector_code"] = None
+            if r["security_type"] == "option":
+                continue
+            known = copy.get(r["symbol"])
+            if r["security_type"] == "etf" or (known and known.kind in self.FUND_KINDS):
+                r["sector_group"] = "fund"
+            elif known and known.sector_code:
+                r["sector_group"] = "sector"
+                r["sector"], r["sector_code"] = known.sector_name, known.sector_code
+            else:
+                r["sector_group"] = "unclassified"
+
     def positions(
         self,
         account_id: Optional[str] = None,
@@ -768,6 +796,7 @@ class PortalService:
                 if not _matches(symbol, query):
                     continue
                 rows.append({**position, "security_type": group})
+        self._place_in_sectors(rows)
         live_prices_at = self._at_live_prices(rows) if live else None
         rows.sort(key=lambda r: (r["market_value"] is None, -(r["market_value"] or 0)))
 

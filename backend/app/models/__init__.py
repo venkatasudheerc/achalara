@@ -18,6 +18,7 @@ from app.models.user import AccountAccess, AuthToken, User, UserSession
 from app.models.index_bar import IndexBar
 from app.models.invitation_request import InvitationRequest
 from app.models.job_run import JobRun
+from app.models.security_sector import SecuritySector
 
 from app.models.perf import (
     CorporateAction,
@@ -31,6 +32,7 @@ __all__ = [
     "IndexBar",
     "InvitationRequest",
     "JobRun",
+    "SecuritySector",
     "Client",
     "Account",
     "AccountOwner",
