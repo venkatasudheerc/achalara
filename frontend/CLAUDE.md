@@ -110,6 +110,10 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   (`account.health`) carries a clay "!" beside its figure, and the same slot says which to repair
   and from when (an owner's own account: download from that date and use Update from a file; a
   shared one: its owner repairs it).
+  Both say why on request: `RecordGaps` ("Show what is missing", on the Next best action card for a record to repair
+  and on the Performance tab's "Not shown" page) fetches `/portal/accounts/{id}/record-gaps` only when
+  opened and shows just the parts that apply (shares that differ, cash that differs, the start of the
+  history), with "Update from a file" for the owner and "<Name> can repair it" for a shared account.
   Each account's figure, and every total built from them (the rail, the Dashboard's headline and
   kind tiles, the Accounts view), is `account.value`: the account now, exactly as the Holdings
   view's tile adds it up, so the two never disagree. The Dashboard says both clocks: the live

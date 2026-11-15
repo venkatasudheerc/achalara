@@ -4,7 +4,7 @@ import type {
   PeopleResponse,
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
-  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse, InsightsResponse,
+  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse, InsightsResponse, RecordGaps,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -59,6 +59,12 @@ export const portalApi = {
   /** What is worth a look: next best actions and insights for the accounts in view. */
   insights: (params: PortalScope) =>
     apiClient.get<InsightsResponse>(`${base}/insights`, { params: clean(params) }).then((r) => r.data),
+
+  /** What is behind an account's record health: holdings and cash that differ from the institution's. */
+  recordGaps: (accountId: string, asClient?: string) =>
+    apiClient
+      .get<RecordGaps>(`${base}/accounts/${accountId}/record-gaps`, { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
 
   home: (params: PortalScope) =>
     apiClient.get<PortalHomeResponse>(`${base}/home`, { params: clean(params) }).then((r) => r.data),

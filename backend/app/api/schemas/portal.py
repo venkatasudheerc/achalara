@@ -4,6 +4,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.imports import ImportDifference
+
 
 class PortalViewerResponse(BaseModel):
     client_id: str
@@ -28,6 +30,31 @@ class AccountHealth(BaseModel):
     reasons: List[str] = []
     # Where a download from the institution should start to repair it.
     download_from: Optional[date] = None
+
+
+class CashGap(BaseModel):
+    """The last day the institution's cash and the history's disagreed."""
+
+    last_differed: date
+    custodian_cash: float
+    our_cash: float
+    # The institution's less ours: what a missing movement would have to add up to.
+    difference: float
+
+
+class RecordGaps(BaseModel):
+    """What is behind an account's health, asked for from the screen on request."""
+
+    account_id: str
+    holdings_as_of: Optional[date] = None
+    # Holdings that differ on the latest recorded day (shares the institution
+    # holds against what the trades add up to).
+    holdings: List[ImportDifference] = []
+    first_differed: Optional[date] = None
+    last_agreed: Optional[date] = None
+    cash: Optional[CashGap] = None
+    # What the start of the history could not be worked back from.
+    opening: List[str] = []
 
 
 class CardDetails(BaseModel):

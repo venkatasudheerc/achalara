@@ -14,6 +14,7 @@ import {
 import type { MonthFigure, PortalGrain, PortalPeriod } from '@/api/types'
 import { dateTicks } from '@/lib/chartTicks'
 import { accountName } from '@/features/home/selection'
+import { RecordGaps } from '@/features/home/RecordGaps'
 
 const PERIODS = [
   { value: '1M', label: '1M' }, { value: '3M', label: '3M' }, { value: 'YTD', label: 'YTD' },
@@ -92,10 +93,18 @@ export function PortalPerformancePage() {
       <>
         <PageHeader title="Performance" sub="Not shown while a record is incomplete" />
         <p className="text-[15px] leading-relaxed max-w-[640px]">
-          {incomplete.map((a) => `${accountName(a)}${a.number_last4 ? ` ··${a.number_last4}` : ''}`).join(', ')}{' '}
-          {incomplete.length === 1 ? 'is' : 'are'} missing a transaction, so returns over time would count a gain or a loss that
-          never happened. Bring {incomplete.length === 1 ? 'it' : 'them'} up to date from the Dashboard, or choose other accounts.
+          {incomplete.length === 1 ? 'This account is' : 'These accounts are'} missing a transaction, so returns over time
+          would count a gain or a loss that never happened. Open the details to see what differs, or choose other accounts.
         </p>
+        <div className="flex flex-col gap-[18px] max-w-[640px]">
+          {incomplete.map((a) => (
+            <section key={a.id} aria-label={accountName(a)} className="flex flex-col gap-[8px]">
+              <p className="text-[15px] font-semibold">{accountName(a)}{a.number_last4 ? ` ··${a.number_last4}` : ''}</p>
+              {a.health?.reasons.length ? <p className="text-[14px] text-stone leading-relaxed">{a.health.reasons.join(' ')}</p> : null}
+              <RecordGaps account={a} />
+            </section>
+          ))}
+        </div>
       </>
     )
   }

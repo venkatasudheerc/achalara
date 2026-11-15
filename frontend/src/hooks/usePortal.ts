@@ -46,6 +46,16 @@ export function usePortalInsights(filters: PortalScope) {
   })
 }
 
+/** What is behind an account's record health. Asked for only when the viewer opens the details. */
+export function useRecordGaps(accountId: string, enabled: boolean) {
+  const asClient = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'record-gaps', accountId, asClient],
+    queryFn: () => portalApi.recordGaps(accountId, asClient),
+    enabled,
+  })
+}
+
 export function usePortalHome(filters: PortalScope) {
   const as_client = usePreviewClient()
   return useQuery({

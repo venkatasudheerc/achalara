@@ -281,3 +281,25 @@ def test_a_feed_trade_a_day_off_from_the_reports_is_the_same_trade_and_its_cash_
     assert db.query(Trade).count() == before
     row = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:t1").one()
     assert (row.outcome, row.cash_amount) == (REPORT_TWIN, D("0"))
+
+
+def test_record_gaps_name_the_holdings_that_differ(client, db, account):  # noqa: F811
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+
+    acct = db.get(Account, account.account_id)
+    db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
+                        quantity=D(4), price=D(50), market_value=D(200)))
+    db.commit()
+    got = client.get(f"/api/v1/portal/accounts/{acct.id}/record-gaps",
+                     params={"as_client": acct.client_id})
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["holdings"] == [{"symbol": "AAA", "custodian_quantity": 4.0, "our_quantity": 0.0}]
+    assert body["first_differed"] == "2026-10-09" and body["last_agreed"] is None
+    assert body["cash"] is None
+    # An account that is not in view is a 404, as everywhere in the portal.
+    assert client.get("/api/v1/portal/accounts/nope/record-gaps",
+                      params={"as_client": acct.client_id}).status_code == 404
