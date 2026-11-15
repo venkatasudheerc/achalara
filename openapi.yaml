@@ -6095,6 +6095,18 @@ components:
         account_number:
           type: string
           nullable: true
+        institution:
+          type: string
+          nullable: true
+          description: The institution holding the account.
+        last_four:
+          type: string
+          nullable: true
+          description: The last four digits of the account's number at its institution.
+        display_name:
+          type: string
+          nullable: true
+          description: The name its owner gave the account, if any.
         cost_basis_method:
           $ref: "#/components/schemas/CostBasisMethod"
         shared:
@@ -7860,6 +7872,10 @@ components:
         flow_out:
           type: number
           default: 0
+        brought:
+          type: number
+          default: 0
+          description: What accounts joining the record brought with them. Inside net_flow, so never a gain, but not a deposit.
         gain:
           type: number
         twr_pct:
@@ -8222,6 +8238,10 @@ components:
         flow_out:
           type: number
           default: 0
+        brought:
+          type: number
+          default: 0
+          description: What accounts joining the record brought with them. Inside net_flow, so never a gain, but not a deposit.
         gain:
           type: number
         twr_pct:

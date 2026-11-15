@@ -68,6 +68,13 @@ class Day:
         return self.flow_in - self.flow_out + (getattr(self, "brought", None) or 0)
 
 
+def _brought(days) -> Decimal:
+    """What accounts joining the set brought with them over these days: part
+    of ``net_flow`` (so never a gain), but not money anyone deposited, and so
+    stated on its own."""
+    return sum(((getattr(d, "brought", None) or ZERO) for d in days), ZERO)
+
+
 def _annualise(
     period_return: Optional[float], start: date, end: date
 ) -> Optional[float]:
@@ -321,6 +328,7 @@ class PerformanceStatsService:
                         "net_flow": float(net_flow),
                         "flow_in": float(sum((d.flow_in for d in group), ZERO)),
                         "flow_out": float(sum((d.flow_out for d in group), ZERO)),
+                        "brought": float(_brought(group)),
                         "gain": float(closing - opening - net_flow),
                         "twr_pct": twr,
                         "mwr_pct": self._mwr(opening, group),
@@ -446,6 +454,7 @@ class PerformanceStatsService:
             "net_flow": float(net_flow),
             "flow_in": float(sum((d.flow_in for d in days), ZERO)),
             "flow_out": float(sum((d.flow_out for d in days), ZERO)),
+            "brought": float(_brought(days)),
             "gain": float(closing - opening - net_flow),
             "twr_pct": twr,
             "mwr_pct": self._mwr(opening, days),

@@ -103,3 +103,31 @@ def test_list_accounts_includes_those_shared_with_the_client(client):
     assert [
         a["shared"] for a in client.get(f"/api/v1/clients/{relative}/accounts").json()
     ] == [False]
+
+
+def test_list_accounts_says_what_tells_two_same_named_accounts_apart(client, db):
+    """A feed can name several accounts alike ("INDIVIDUAL"): the list carries
+    the institution, the last four and the owner's own name for each."""
+    from app.models.account import Account
+
+    client_id = client.post(
+        "/api/v1/clients/", json={"name": "Twin Client", "email": "twin@example.com"}
+    ).json()["id"]
+    for last_four, display in (("1111", None), ("2222", "House fund")):
+        db.add(
+            Account(
+                client_id=client_id,
+                name="INDIVIDUAL",
+                institution="Example Brokerage",
+                last_four=last_four,
+                display_name=display,
+            )
+        )
+    db.commit()
+
+    rows = client.get(f"/api/v1/clients/{client_id}/accounts").json()
+
+    assert {(r["institution"], r["last_four"], r["display_name"]) for r in rows} == {
+        ("Example Brokerage", "1111", None),
+        ("Example Brokerage", "2222", "House fund"),
+    }

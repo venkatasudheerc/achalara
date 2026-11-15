@@ -106,5 +106,22 @@ export function securityLabel(symbol: string): string {
 export function shortAccountName(name: string): string {
   const parts = name.split(/\s+[—–-]\s+/)
   const rest = parts.length > 1 ? parts.slice(1).join(' — ') : name
-  return rest.replace(/\s+Account$/i, '') || name
+  return readableName(rest.replace(/\s+Account$/i, '') || name)
+}
+
+/** Short forms that stay in capitals when a feed's label is put into words. */
+const KEPT_IN_CAPITALS = new Set(['IRA', 'UTMA', 'UGMA', 'HSA', 'SEP', 'ESA', 'CD', 'TOD', 'JTWROS', 'LLC', 'II', 'III'])
+
+/**
+ * A feed's label in words: some sources name an account by a code in capitals
+ * ("INDIVIDUAL", "ROTH_IRA"), which reads "Individual", "Roth IRA". A name that
+ * already has small letters is the institution's own wording and is kept.
+ */
+function readableName(name: string): string {
+  if (/[a-z]/.test(name) || !/[A-Z]/.test(name)) return name
+  return name
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => (KEPT_IN_CAPITALS.has(w) || /\d/.test(w) ? w : w[0] + w.slice(1).toLowerCase()))
+    .join(' ')
 }

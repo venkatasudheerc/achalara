@@ -194,7 +194,7 @@ export function PortalRealizedPage() {
           <span className="text-[15px] font-medium text-summit-ink/70">Jump to</span>
           {[
             { id: 'gains-by-period', label: grain === 'quarter' ? 'By Quarter' : 'By Month' },
-            { id: 'gains-by-account', label: 'By Account and Sleeve' },
+            { id: 'gains-by-account', label: 'By account and strategy' },
             { id: 'gains-by-position', label: 'By Position' },
           ].map((link) => (
             <a key={link.id} href={`#${link.id}`}
@@ -296,7 +296,7 @@ export function PortalRealizedPage() {
         )}
       </Section>
 
-      <Section id="gains-by-account" title="By account and sleeve">
+      <Section id="gains-by-account" title="By account and strategy">
         {data.accounts.length === 0 ? (
           <div className="py-[32px] px-[20px] text-center text-summit-ink/70 border-t border-stone/20">Nothing closed and no income in these dates.</div>
         ) : (
@@ -318,7 +318,7 @@ export function PortalRealizedPage() {
                           <span>
                             {accountName(a.account_id, a.account_name)}
                             <span className="block font-normal text-[15px] text-summit-ink/70">
-                              {formatNumber(a.count, 0)} closed · {a.sleeves.length} {a.sleeves.length === 1 ? 'strategy' : 'strategies'}{a.shared && ' · shared'}
+                              {formatNumber(a.count, 0)} closed{a.sleeves.length > 1 && ` · ${a.sleeves.length} strategies`}{a.shared && ' · shared'}
                             </span>
                           </span>
                         </button>

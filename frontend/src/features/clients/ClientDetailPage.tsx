@@ -10,7 +10,7 @@ import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { QueryState } from '@/components/QueryState'
-import { formatCurrency, formatDate, formatStoredPrice } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatStoredPrice, shortAccountName } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
 import { ClientLoginSection } from '@/features/auth/ClientLoginSection'
@@ -30,7 +30,7 @@ export function ClientDetailPage() {
   const sharedAccounts = sharedQuery.data
   const positionsQuery = useClientPositions(clientId!)
   const positions = positionsQuery.data
-  const tradesQuery = useClientTrades(clientId!, 0, 100)
+  const tradesQuery = useClientTrades(clientId!, 0, 15)
   const updateClient = useUpdateClient()
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -189,9 +189,14 @@ export function ClientDetailPage() {
             {(accounts ?? []).map((acc) => (
               <div key={acc.id} className="flex items-center justify-between py-3">
                 <div>
-                  <p className="text-sm font-medium text-summit-ink">{acc.name}</p>
-                  {acc.account_number && (
-                    <p className="text-xs text-stone font-mono"># {acc.account_number}</p>
+                  <p className="text-sm font-medium text-summit-ink">
+                    {acc.display_name || shortAccountName(acc.name)}
+                    {acc.last_four && <span className="text-stone font-normal"> ··{acc.last_four}</span>}
+                  </p>
+                  {(acc.institution || acc.account_number) && (
+                    <p className="text-xs text-stone">
+                      {[acc.institution, acc.display_name ? shortAccountName(acc.name) : null, acc.account_number ? `# ${acc.account_number}` : null].filter(Boolean).join(' · ')}
+                    </p>
                   )}
                 </div>
                 <Link
@@ -206,7 +211,7 @@ export function ClientDetailPage() {
               <div key={acc.account_id} className="flex items-center justify-between py-3">
                 <div>
                   <p className="text-sm font-medium text-summit-ink">
-                    {acc.account_name}
+                    {shortAccountName(acc.account_name)}
                     <span className="ml-2 px-1.5 py-0.5 rounded bg-mist text-summit-ink text-[11px] font-semibold align-middle">Shared</span>
                   </p>
                   <p className="text-xs text-stone">Owned by {acc.owner_name}; viewing only</p>

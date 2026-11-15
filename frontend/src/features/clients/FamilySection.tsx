@@ -46,8 +46,9 @@ export function FamilySection({ client }: { client: ClientResponse }) {
     <section className="border border-stone/20 rounded-card p-6">
       <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Family</h2>
       <p className="text-sm text-stone mb-16">
-        Spouses see each other's accounts except private ones. A minor's guardians, and their spouse, see the
-        minor's accounts; a minor sees only their own. Anything else is shared below, account by account.
+        Who is related to whom. A relation shows nobody an account: each account is seen only by its owners and
+        by the people an owner shares it with (Manage Access, in their own view). A minor does not own an
+        account; a custodial account is owned by its custodian and held for the minor.
       </p>
 
       {isLoading && <p className="text-sm text-stone">Loading…</p>}

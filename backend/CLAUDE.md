@@ -546,7 +546,9 @@ that is not complete.**
 
 **Accounts added together keep their whole record.** An account joining a set on a later day
 brings what it held (`Day.brought`, part of `net_flow`): money in for the set, never a gain or a
-loss, in the returns and the summary's gain alike (`PerformanceStatsService.daily`).
+loss, in the returns and the summary's gain alike (`PerformanceStatsService.daily`). The summary
+and each period state it on its own (`brought`, inside `net_flow`), so a screen shows it as "Added
+to the record" and never as a deposit.
 
 **Options the custodian values on an account's first recorded day that no trade on file holds
 open** (opened before the history, or sent without a symbol) cannot be valued on any earlier
