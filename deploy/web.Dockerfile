@@ -4,6 +4,8 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# The API contract: the build generates the app's types from it (npm run gen:api).
+COPY openapi.yaml /src/openapi.yaml
 # Empty on purpose: the app calls the API on its own address, so there is one
 # site, one certificate and no cross-site cookie to configure.
 ENV VITE_API_BASE_URL=""

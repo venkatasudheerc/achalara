@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ComponentType } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { PageBoundary } from '@/components/PageBoundary'
 import { SkeletonCard } from '@/components/Skeleton'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
@@ -10,16 +11,19 @@ import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
 /**
  * A page fetched when it is first opened, so signing in does not download every
  * page of both apps. The frame (sign-in, the two shells) stays in the first
- * file; while a page arrives its place shows a skeleton inside the frame.
+ * file; while a page arrives its place shows a skeleton inside the frame, and a
+ * page that fails to arrive or to draw says so there (`PageBoundary`).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- any page's own props
 function page<P extends Record<string, any>>(load: () => Promise<ComponentType<P>>) {
   const Loaded = lazy(() => load().then((component) => ({ default: component }))) as unknown as ComponentType<P>
   return function Page(props: P) {
     return (
-      <Suspense fallback={<div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>}>
-        <Loaded {...props} />
-      </Suspense>
+      <PageBoundary>
+        <Suspense fallback={<div className="p-[24px] grid gap-[20px]"><SkeletonCard /><SkeletonCard /></div>}>
+          <Loaded {...props} />
+        </Suspense>
+      </PageBoundary>
     )
   }
 }

@@ -149,7 +149,11 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 - **Config via `.env`** through `config.py` — no hardcoded secrets/connection strings/API keys.
 - **Schema changes go through Alembic** (`alembic revision --autogenerate`) — never edit tables directly.
 - **Update `../openapi.yaml`** whenever an endpoint is added or its contract changes. `tests/test_openapi_contract.py`
-  fails when the routes and the spec list different operations.
+  fails when the routes and the spec list different operations, when a documented response differs
+  from its response model (a field on one side only, or a field the model always sends that the
+  spec does not list under `required`), or when the spec keeps a schema no route uses. The
+  frontend's types are generated from the spec, so it must be exact. A route that returns a plain
+  dictionary has no model to compare with: give a new route a `response_model`.
 
 ## Offline vs Live Tests
 

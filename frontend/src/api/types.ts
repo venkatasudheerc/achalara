@@ -1,941 +1,183 @@
-// Hand-typed from openapi.yaml — regenerate with `npm run gen:api` once backend is running
+/**
+ * The API's shapes, by the names the app uses.
+ *
+ * Nothing here is written by hand: every type is taken from `schema.d.ts`, which
+ * `npm run gen:api` generates from `../openapi.yaml`. A shape that is wrong is
+ * corrected in `openapi.yaml`, never here.
+ */
+import type { components, operations } from './schema'
 
-export type TradeAction = 'BUY' | 'SELL'
+type S = components['schemas']
 
-/** admin: the platform's super user. advisor: the clients assigned to them. client: their own accounts
- * and what the guardrails let them see (a spouse's, a minor's). */
-export type UserRole = 'admin' | 'advisor' | 'client'
-export interface LoginRequest { email: string; password: string }
-/** An account a client user may view; never carries a full account number */
-export interface VisibleAccount {
-  id: string
-  /** The owner, which is not the viewer when `shared` */
-  client_id: string
-  name: string; number_last4: string | null; shared: boolean
-}
-export interface MeResponse {
-  id: string; email: string; name: string; role: UserRole
-  client_id: string | null
-  /** Empty for an admin or advisor, who reach accounts through their clients */
-  accounts: VisibleAccount[]
-}
-export interface UserResponse {
-  id: string; email: string; name: string; role: UserRole
-  client_id: string | null; is_active: boolean
-  /** False until the person has accepted their invite */
-  has_password: boolean
-  last_login_at: string | null
-}
-export interface LinkResponse {
-  /** Shown once; only a digest is stored */
-  token: string
-  /** Frontend route that accepts the link */
-  path: string
-  purpose: 'invite' | 'reset'; email: string; expires_at: string
-  /** Whether the app can email the link itself */
-  can_email?: boolean
-}
-export interface EmailLinkResponse { sent: boolean; email: string }
-export interface LinkPreview {
-  purpose: 'invite' | 'reset'; email: string; name: string
-  accounts: VisibleAccount[]
-}
-export interface AccountAccessResponse {
-  client_id: string; account_id: string; account_name: string
-  owner_client_id: string; owner_name: string
-}
-/** `email` may be left out (a minor may have none); `advisor_id` counts only from an admin.
- * An advisor's new client is theirs. */
-export interface ClientCreate { name: string; email?: string | null; advisor_id?: string | null }
-/** Only what is changing; `email` is the contact email, not the sign-in one.
- * `advisor_id` is an admin's alone to send; null leaves the client with no advisor. */
-export interface ClientUpdate { name?: string; email?: string; advisor_id?: string | null }
-/** A client's spouse, or a minor in their (or their spouse's) care */
-export type Relation = 'spouse' | 'minor' | 'child_grown' | 'parent' | 'friend' | 'other'
-export interface Relative {
-  id: string; name: string; email: string | null; relation: Relation
-  /** Whether they have a login (invited or signed in) */
-  has_login: boolean
-}
-export interface RelativeCreate { name: string; relation: Relation; email?: string | null }
-export type InvitationStatus = 'new' | 'contacted' | 'dismissed'
-/** What the public page's form sends; `website` is the hidden field a person leaves empty */
-export interface InvitationRequestCreate {
-  name: string; email: string; phone: string; note: string; website?: string
-}
-export interface InvitationRequest {
-  id: string; name: string; email: string; phone: string
-  /** Why they are interested and how they heard of Achalara */
-  note: string
-  status: InvitationStatus; created_at: string; handled_at: string | null
-}
-export interface ClientResponse {
-  id: string; name: string; email: string | null
-  /** The advisor login managing this client, if any */
-  advisor_id: string | null
-  spouse_id: string | null
-  /** Set for a minor: the adult client responsible for them */
-  guardian_id: string | null
-  created_at: string; updated_at: string
-}
-
-export interface AccountCreate { name: string; description?: string; account_number?: string | null }
-/** Which lots a sale closes first, as set at the brokerage */
-export type CostBasisMethod = 'FIFO' | 'MIN_TAX'
-export interface AccountResponse {
-  id: string; client_id: string; name: string
-  description: string; account_number: string | null
-  /** What tells same-named accounts apart: where it is held, its last four there, the owner's own name for it */
-  institution: string | null; last_four: string | null; display_name: string | null
-  cost_basis_method: CostBasisMethod
-  /** True for an account another client owns that this client may view; client_id is always the owner */
-  shared: boolean; owner_name: string | null
-}
-
-export interface SleeveCreate { strategy_id: string }
-export interface SleeveResponse {
-  id: string; account_id: string; strategy_id: string; strategy_name: string | null
-}
-
-export interface StrategyCreate { name: string; description?: string }
-export interface StrategyResponse { id: string; name: string; description: string | null }
-
-export interface TradeCreate {
-  sleeve_id: string; trade_date: string; symbol: string
-  action: TradeAction; quantity: number; price: number
-  commission?: number; notes?: string
-}
-export interface TradeResponse extends TradeCreate { id: string; created_at: string }
-export interface TradeSummary {
-  id: string; sleeve_id: string; trade_date: string; symbol: string
-  action: TradeAction; quantity: number; price: number
-  commission: number; notes: string
-  /** ETF, STOCK, ADR… as the source reported it; null for CSV/Sheets/manual trades */
-  security_type?: string | null
-}
-
-export interface PerformanceSummary {
-  mwr_pct: number | null; twr_pct: number | null; twr_note: string | null
-  total_return_pct: number | null
-  total_cost_basis: number; total_market_value: number; total_unrealized_gain: number
-  /** Cash held now; set for whole-account views, where returns include cash */
-  cash_balance?: number | null
-  /** Whole-account value now; the last point of the value chart */
-  total_value?: number | null
-  /** Securities the brokerage holds that our trades don't show yet, at current prices */
-  holdings_adjustment?: number | null
-  total_invested: number; total_proceeds: number; total_realized_gain: number
-  /** Dividends and interest received less fees and tax withheld */
-  total_income?: number
-  closed_positions_count: number; trades_count: number
-}
-export interface PerformanceChild {
-  level: string; id: string; name: string | null; summary: PerformanceSummary
-  /** Populated only when level=sleeve and parent is a strategy — use for drill-down links */
-  account_id?: string | null
-  client_id?: string | null
-}
-export interface TimeseriesPoint {
-  date: string; value: number; cost_basis: number | null
-  net_contributions?: number | null
-  cash?: number | null
-  /** Net money put in since the previous point (negative if taken out) */
-  net_flow?: number
-}
-export interface LevelPerformance {
-  level: string; id: string; name: string
-  start_date: string | null; end_date: string | null
-  summary: PerformanceSummary
-  timeseries: TimeseriesPoint[]
-  children: PerformanceChild[]
-}
-
-export interface MonthlyReturn {
-  year: number; month: number; month_label: string
-  start_value: number; end_value: number
-  cash_in: number; cash_out: number; net_cash_flow: number
-  realized_gain: number; return_pct: number | null
-  /** Latest month only: also carries all unrealised gain on open positions */
-  includes_unrealized?: boolean
-}
-export interface MonthlyReturnsResponse {
-  months: MonthlyReturn[]
-  cumulative_return_pct: number | null
-}
-
-export interface AggregatedPosition {
-  symbol: string; quantity: number; cost_basis: number; avg_cost: number
-  current_price: number | null; market_value: number | null
-  unrealized_gain: number | null; unrealized_gain_pct: number | null
-  trades_count: number
-}
-export interface ClientPositionsResponse {
-  client_id: string; total_cost_basis: number; total_market_value: number
-  total_unrealized_gain: number; positions_count: number
-  positions: AggregatedPosition[]
-}
-export interface AccountPositionsResponse {
-  account_id: string; total_cost_basis: number; total_market_value: number
-  total_unrealized_gain: number; positions_count: number
-  positions: AggregatedPosition[]
-}
-
-export interface PositionResponse {
-  id: string; sleeve_id: string; symbol: string; quantity: number
-  avg_cost: number; cost_basis: number; current_price: number | null
-  market_value: number | null; unrealized_gain: number | null
-  unrealized_gain_pct: number | null
-}
-export interface PortfolioSummary {
-  total_cost_basis: number; total_market_value: number | null
-  total_unrealized_gain: number | null
-}
-export interface PortfolioValueResponse {
-  sleeve_id: string; summary: PortfolioSummary; positions: PositionResponse[]
-}
-
-export interface ClosedPosition {
-  symbol: string; status: string
-  matched_quantity: number | null; entry_price: number | null; exit_price: number | null
-  realized_gain: number; realized_gain_pct: number
-  opened_at: string | null; closed_at: string | null; trades_count: number
-  /** As the brokerage reports the lot; null where the sleeve is not matched by lots */
-  cost: number | null; proceeds: number | null
-  disallowed_loss: number | null; reported_gain: number | null
-  short_term_gain: number | null; long_term_gain: number | null
-  term: 'short' | 'long' | 'mixed' | null
-  adjustments: LotAdjustment[]
-}
-export interface ClosedPositionsResponse {
-  sleeve_id: string; total_realized_gain: number
-  total_reported_gain: number | null; total_disallowed_loss: number | null
-  positions: ClosedPosition[]
-}
-
-export interface ClientTradesResponse {
-  client_id: string; total: number; skip: number; limit: number; trades: TradeSummary[]
-}
-export interface SleeveTradesResponse {
-  sleeve_id: string; total: number; trades: TradeSummary[]
-}
-
-export interface MarketPriceUpdate { prices: Record<string, number> }
-
-export interface FetchMarketPricesResponse {
-  status: string; updated: number; failed: string[]
-}
-
-export interface WeeklyReturnPoint {
-  date: string          // ISO date (Monday)
-  twr_cumul: number | null
-  mwr_cumul: number | null
-  benchmark_cumul?: number | null
-}
-export interface ReturnsSeriesResponse {
-  level: 'client' | 'account' | 'sleeve' | 'strategy'
-  id: string
-  series: WeeklyReturnPoint[]
-}
-
-export interface BenchmarkPoint { date: string; close: number }
-export interface BenchmarkResponse {
-  ticker: string
-  timeseries: BenchmarkPoint[]
-  warning: string | null
-}
-
-// ── Brokerage connections ──
-
-export type ConnectionStatus = 'active' | 'broken' | 'deleted'
-export type BrokerageAccountStatus = 'unmapped' | 'mapped' | 'ignored'
-
-export interface ReconciliationDrift {
-  symbol: string; brokerage_quantity: number; derived_quantity: number
-  difference: number; awaiting_transactions: boolean
-}
-export interface Reconciliation {
-  matched: number; drifted: ReconciliationDrift[]
-  unmatched_sells: number; skipped_rows: Record<string, number>
-}
-
-/** The account already in Achalara that a discovered one appears to be */
-export interface DuplicateAccount {
-  /** same: full number agrees, cannot be added. likely: last four agree, needs confirming */
-  certainty: 'same' | 'likely'
-  account_id: string; account_name: string
-  client_id: string; client_name: string
-}
-export interface BrokerageAccount {
-  id: string; connection_id: string; name: string; number_last4: string | null
-  status: BrokerageAccountStatus
-  account_id: string | null; default_sleeve_id: string | null
-  /** Client who owns the mapped account; may differ from the connection's client */
-  owner_client_id: string | null
-  sleeve_routes: Record<string, string> | null
-  sync_start_date: string | null
-  initial_sync_completed: boolean
-  transactions_synced_through: string | null
-  last_synced_at: string | null; last_reconciled_at: string | null
-  reconciliation: Reconciliation | null
-  duplicate_of?: DuplicateAccount | null
-}
-export interface Connection {
-  id: string; client_id: string; source: string; institution: string
-  status: ConnectionStatus; brokerage_accounts: BrokerageAccount[]
-}
-
-export interface BrokerageAccountUpdate {
-  status: 'mapped' | 'ignored'
-  account_id?: string | null; strategy_id?: string | null
-  /** Owner of the account when it is not the client whose login reaches it */
-  client_id?: string | null
-  /** Security type → strategy id; other types use strategy_id */
-  strategy_routes?: Record<string, string> | null
-  history_start?: string | null
-  /** Shares a brokerage and last four with an account already here, and is a different one */
-  confirmed_distinct?: boolean
-}
-export interface BrokerageSyncResult {
-  status: 'synced' | 'skipped'
-  reason: 'synced_recently' | 'initial_sync_pending' | 'rate_limited' | null
-  imported: number; duplicates: number; cash_imported: number
-  skipped_rows: Record<string, number>
-  next_sync_allowed_at: string | null
-  transactions_synced_through: string | null
-}
-
-export type CashActivityType =
-  | 'DIVIDEND' | 'INTEREST' | 'FEE' | 'WITHHOLDING'
-  | 'CONTRIBUTION' | 'WITHDRAWAL' | 'TRANSFER' | 'OTHER'
-export interface CashActivity {
-  id: string; sleeve_id: string; activity_date: string; type: CashActivityType
-  symbol: string | null; amount: number; notes: string | null
-  counts_toward_returns: boolean
-}
-
-export interface ReassignRequest { from_sleeve_id: string; to_sleeve_id: string; symbols: string[] }
-export interface ReassignResult { symbols: string[]; trades_moved: number; cash_activities_moved: number }
-
-// ── Performance periods (read from the daily valuation record) ──
-
-export type PeriodGrain = 'day' | 'week' | 'month' | 'quarter' | 'year'
-
-export interface PeriodPerformance {
-  period_start: string; period_end: string
-  opening_value: number; closing_value: number; cash_value: number | null
-  /** Money put in less money taken out during the period */
-  net_flow: number
-  /** closing − opening − net_flow */
-  gain: number
-  /** Decimal fractions (0.05 = 5%); null when no capital was at work */
-  twr_pct: number | null; mwr_pct: number | null
-  twr_cumulative_pct: number | null; twr_ytd_pct: number | null
-  benchmark_return_pct: number | null; excess_return_pct: number | null
-  unpriced_pct: number
-  /** Captured from the brokerage on the day, rebuilt from trades and prices, or both */
-  basis: 'observed' | 'reconstructed' | 'mixed'
-  is_provisional: boolean
-}
-export interface PeriodsResponse {
-  level: string; id: string; name: string | null
-  grain: PeriodGrain; benchmark: string | null
-  /** market: holdings at each day's prices. realized: at cost, unrealised gains left out */
-  basis: 'market' | 'realized'
-  periods: PeriodPerformance[]
-}
-
-// ── Client portal ─────────────────────────────────────────────────────────
-// All percentages in the portal are decimal fractions (0.05 = 5%).
-
-export type SecurityGroup = 'stock' | 'etf' | 'option' | 'other'
-
-export interface PortalSleeve { sleeve_id: string; strategy_id: string; strategy_name: string }
-/** What kind of account it is, read from the brokerage's name for it */
-export type AccountKind =
-  | 'taxable' | 'retirement' | 'kids' | 'cash' | 'checking' | 'savings'
-  | 'credit_card' | 'mortgage' | 'car_loan' | 'loan'
-/** complete; provisional: recent transactions still posting; incomplete: one is missing */
-export interface AccountHealth {
-  state: 'complete' | 'provisional' | 'incomplete'
-  reasons: string[]
-  /** Where a download from the institution should start to repair it */
-  download_from?: string | null
-}
-export interface PortalAccount extends VisibleAccount {
-  owner_name: string
-  kind: AccountKind
-  /** A card or loan: its value is what is owed, negative */
-  owed: boolean; institution: string | null
-  /** Its Plaid login needs the owner to sign in again; `login_id` is set only for the owner */
-  needs_sign_in?: boolean
-  login_id?: string | null
-  /** How far its record can be trusted; figures on an incomplete account are not */
-  health?: AccountHealth | null
-  /** The account now: holdings at live prices, options and cash as last reported;
-   * what the Holdings view's account tile shows. `priced_at` is when prices were fetched. */
-  value: number | null; priced_at: string | null
-  /** The custodian's last reported day (`as_of`): its total, and cash */
-  recorded_value: number | null; cash: number | null; as_of: string | null
-  /** The institution the figures come from, and its last transactions sync */
-  source: string | null; synced_at: string | null
-  sleeves: PortalSleeve[]
-  /** Every owner (a joint account has several), and the minor a custodial account is held for */
-  owners?: { id: string; name: string }[]
-  held_for?: string | null
-  /** The owner's own name for it, shown in place of `name` (the custodian's) when set */
-  display_name?: string | null
-}
-/** A Plaid login's state: `consent_ending` is a consent that runs out within 30 days */
-export type ConnectionState = 'sharing' | 'needs_sign_in' | 'consent_ending' | 'stopped'
-/** One Plaid login feeding accounts in view; another's (`own` false) is read-only */
-export interface PortalConnection {
-  id: string; institution: string | null; state: ConnectionState
-  own: boolean; owner_name: string | null
-  consent_expires_at: string | null; disabled_at: string | null
-  /** Its last morning check, and when its accounts were last synced */
-  status_checked_at: string | null; last_refreshed_at: string | null
-  /** Only the accounts in view it feeds */
-  accounts: PortalAccount[]
-}
-export interface PortalConnectionsResponse {
-  connections: PortalConnection[]
-  /** How many of the viewer's own logins wait on them to sign in again */
-  needs_sign_in: number
-}
-/** What an account's owner may change, as the server now holds it */
-export interface PortalAccountSettings { display_name: string | null }
-
-// ── Who owns an account, and who sees it ──
-export interface SharingPerson { kind: 'person' | 'advisor'; id: string; name: string; level: 'view' }
-export interface AccountSharing {
-  account_id: string; name: string
-  /** The viewer may share it and change its owners */
-  can_manage: boolean
-  owners: { id: string; name: string; has_login: boolean }[]
-  held_for: { id: string; name: string } | null
-  shared_with: SharingPerson[]
-  /** The viewer's own advisor, who can be shared with like anyone else */
-  advisor: { id: string; name: string } | null
-}
-export interface PersonRow {
-  id: string; name: string; relation: Relation; group: 'family' | 'others'
-  has_login: boolean; is_minor: boolean
-  you_share: number; shares_with_you: number; own_together: number; you_hold_for: number
-}
-export interface PeopleResponse {
-  people: PersonRow[]
-  advisor: { id: string; name: string; you_share: number; not_shared: number } | null
-  /** True once, after earlier visibility became explicit shares */
-  notice: boolean
-  your_accounts: {
-    id: string; name: string; owners: string[]; owner_ids: string[]
-    seen_by: string[]; seen_by_ids: string[]; advisor_sees: boolean
-  }[]
-  shared_with_you: { id: string; name: string; owner: string; level: string }[]
-}
-/** One of the client's own named groups of accounts */
-export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
-export interface PortalAccountsResponse {
-  /** `preview` is true when an admin or advisor is looking at this client's portal.
-   * A minor (`is_minor`) sees only their own accounts and cannot add family. */
-  viewer: {
-    client_id: string; name: string; preview: boolean; is_minor: boolean
-    /** An advisor's preview only: the client's accounts not shared with the advisor (a count) */
-    not_shared_with_you?: number
-  }
-  accounts: PortalAccount[]
-}
-
-/** Where a row sits: its account, and the strategy it is held under */
-export interface RowPlace {
-  account_id: string; account_name: string; shared: boolean
-  sleeve_id: string; strategy_id: string; strategy_name: string
-}
-
-export interface PortalPosition extends RowPlace {
-  symbol: string; security_type: SecurityGroup; quantity: number
-  /** Per share; null when the cost is not known */
-  avg_cost: number | null; cost_basis: number | null
-  /** Shares per unit of quantity: 100 for an option contract, else 1 */
-  multiplier: number
-  /** null when there is no price (options) */
-  price: number | null; market_value: number | null
-  /** live = the market's current price; custodian = its last reported price, kept where there is no live quote */
-  price_source: 'live' | 'custodian' | null
-  /** Since the previous close, when the price is live */
-  day_change?: number | null; day_change_pct?: number | null
-  unrealized_gain: number | null; unrealized_gain_pct: number | null
-  is_short: boolean
-}
-export interface PortalPositionsResponse {
-  /** The custodian's holdings: quantity and cost */
-  as_of: string | null; count: number
-  /** When the live prices shown were fetched; null when none are live */
-  live_prices_at: string | null
-  /** Listed without a price of their own */
-  unpriced_count: number
-  /** The custodian's combined value for the unpriced options; counted in the totals when present */
-  options: { count: number; market_value: number; cost_basis: number; unrealized_gain: number } | null
-  total_market_value: number; total_cost_basis: number
-  total_unrealized_gain: number; total_unrealized_gain_pct: number | null
-  /** Cash (negative when borrowed) and the custodian's combined options value by account, as last reported */
-  account_balances: { account_id: string; as_of: string; cash_value: number | null; options_value: number | null; options_cost: number | null }[]
-  positions: PortalPosition[]
-}
-
-export interface PortalTrade extends RowPlace {
-  id: string; trade_date: string; symbol: string; action: TradeAction
-  /** Set when the row is an option ending without a trade */
-  event: 'assigned' | 'expired' | null
-  security_type: SecurityGroup; quantity: number
-  /** Per share, also for an option; `multiplier` is shares per unit of quantity (100 for a contract) */
-  price: number; multiplier: number
-  amount: number; commission: number
-}
-export interface PortalTradesResponse {
-  total: number; skip: number; limit: number
-  /** Totals for everything the filters match, not just the page */
-  bought: number; sold: number; net_invested: number
-  /** Each account with a matching trade and its totals, whatever page `trades` is on */
-  accounts: { account_id: string; account_name: string; shared: boolean; total: number; bought: number; sold: number }[]
-  trades: PortalTrade[]
-}
-
-export type ActivityKind =
-  | 'trade' | 'deposit' | 'withdrawal' | 'transfer' | 'dividend' | 'interest'
-  | 'margin_interest' | 'fee' | 'withholding' | 'other'
-/** One thing that happened: a trade, or cash that moved */
-export interface ActivityRow extends RowPlace {
-  id: string; date: string; kind: ActivityKind
-  /** The row in a word or two: Bought, Deposit, Transfer in */
-  label: string
-  /** The custodian's description, tidied; null on a trade */
-  detail: string | null
-  symbol: string | null
-  /** The trade fields are null on a cash row */
-  action: TradeAction | null; event: 'assigned' | 'expired' | null
-  security_type: SecurityGroup | null; quantity: number | null
-  price: number | null; multiplier: number | null
-  /** A trade's value, unsigned. A cash row's amount, signed: money arriving is positive */
-  amount: number
-}
-export interface ActivityFigures {
-  total: number; trades: number; bought: number; sold: number
-  /** Deposits and transfers in; withdrawals and transfers out (positive) */
-  money_in: number; money_out: number
-  /** Dividends and interest; margin interest, fees and tax withheld (positive) */
-  income: number; charges: number
-}
-export interface PortalActivityResponse extends ActivityFigures {
-  skip: number; limit: number; net_invested: number
-  /** Each account with a matching row and its totals, whatever page `rows` is on */
-  accounts: (ActivityFigures & { account_id: string; account_name: string; shared: boolean })[]
-  rows: ActivityRow[]
-}
-
-/** The portal's home page. Value and the day's change are at live prices; the year's figures run through `record_through` */
-export interface PortalHomeHolding {
-  symbol: string; value: number
-  /** Today's move in dollars, and as a fraction */
-  day_change: number | null; day_change_pct: number | null; share: number | null
-}
-export interface PortalExpiringOption {
-  symbol: string; account_name: string; underlying: string; kind: 'put' | 'call'
-  strike: number; expiry: string; days: number; contracts: number; written: boolean
-  underlying_price: number | null
-  /** Positive when the shares are above the strike; null with no live price */
-  above_strike_pct: number | null
-}
-export interface PortalHomeResponse {
-  as_of: string | null; live_prices_at: string | null; record_through: string | null
-  is_provisional: boolean
-  total_value: number; day_change: number | null; day_change_pct: number | null
-  ytd_twr_pct: number | null; benchmark: string
-  benchmark_ytd_pct: number | null; excess_ytd_pct: number | null
-  /** Over the whole record, which starts on `first_date`; the fall is a negative fraction */
-  first_date: string | null; since_start_twr_pct: number | null; max_drawdown_pct: number | null
-  allocation: { kind: SecurityGroup | 'cash'; value: number; share: number | null }[]
-  cash_value: number | null
-  /** Dividends and interest */
-  income_ytd: number
-  realized_ytd: number; realized_short_ytd: number; realized_long_ytd: number
-  /** Deposits less withdrawals */
-  added_ytd: number | null
-  holdings_count: number
-  top_holdings: PortalHomeHolding[]
-  /** The holdings that moved the total most today, in dollars; up to three each */
-  movers_up: PortalHomeHolding[]; movers_down: PortalHomeHolding[]
-  expiring_options: PortalExpiringOption[]
-  /** Wash-sale losses in the cost of shares still held */
-  carried_losses: number
-  turning_long_term: { symbol: string; date: string }[]
-  concentrated: PortalHomeHolding[]
-}
-
-export interface PortalClosedLot extends RowPlace {
-  symbol: string; security_type: SecurityGroup
-  /** An assigned option shows no gain: its premium is carried by the shares that changed hands */
-  event: 'assigned' | 'expired' | 'marked' | null
-  opened_at: string | null; closed_at: string; days_held: number | null
-  /** short = held a year or less; mixed = an index option, 60% long-term and 40% short-term */
-  term: 'short' | 'long' | 'mixed'
-  quantity: number | null
-  /** Shares per unit of quantity: 100 for an option contract */
-  multiplier: number
-  /** Per share */
-  entry_price: number | null; exit_price: number | null
-  /** As the custodian reports the lot; cost includes any earlier wash-sale loss carried into it */
-  cost: number; proceeds: number
-  /** The part of this lot's loss a wash sale carried into the shares that replaced it */
-  disallowed_loss: number
-  short_term_gain: number; long_term_gain: number
-  /** Proceeds less cost, plus the disallowed loss */
-  realized_gain: number; realized_gain_pct: number | null
-  adjustments: LotAdjustment[]
-}
-export type LotAdjustment = 'wash' | 'mark' | 'unmarked' | 'index_option' | 'written_option'
-/** Capital gains and the income received over one slice; `realized` is short plus long term, income is never in it */
-export interface PortalGainFigures {
-  count: number; short_term: number; long_term: number; realized: number
-  disallowed_loss: number; dividends: number; interest: number
-  /** Interest paid on money borrowed; negative */
-  margin_interest: number
-}
-export interface PortalGainPeriod extends PortalGainFigures { period_start: string; period_end: string }
-export interface PortalGainSleeve extends PortalGainFigures { sleeve_id: string; strategy_id: string; strategy_name: string }
-export interface PortalGainAccount extends PortalGainFigures {
-  account_id: string; account_name: string; shared: boolean; sleeves: PortalGainSleeve[]
-}
-export interface PortalRealizedResponse {
-  count: number; net_realized: number; short_term: number; long_term: number
-  gains: number; losses: number; years: number[]
-  cost: number; proceeds: number; disallowed_loss: number
-  /** Received over the same dates; follows the dates, account and strategy only, and is not part of net_realized */
-  dividends: number; interest: number
-  /** Interest paid on money borrowed over the same dates; negative */
-  margin_interest: number
-  /** By month or quarter, newest first */
-  periods: PortalGainPeriod[]
-  accounts: PortalGainAccount[]
-  positions: PortalClosedLot[]
-}
-
-export interface MonthFigure { year: number; month: number; twr_pct: number | null }
-export interface PortalSummary {
-  start: string; end: string
-  opening_value: number; closing_value: number; cash_value: number | null
-  net_flow: number; gain: number
-  /** Money added and taken out in the window */
-  flow_in: number; flow_out: number
-  /** What accounts joining the record brought with them: inside net_flow, so never a gain, but not a deposit */
-  brought: number
-  twr_pct: number | null
-  /** null for a single strategy: deposits are made to the account */
-  mwr_pct: number | null
-  benchmark_return_pct: number | null; excess_return_pct: number | null
-  /** Set when the benchmark's price history starts after the window: its return runs from this date */
-  benchmark_from: string | null
-  is_provisional: boolean
-  best_month: MonthFigure | null; worst_month: MonthFigure | null
-  months_up: number; months_total: number
-}
-/** `value` is what it was worth that day; the others are cumulative returns from the start of the window */
-export interface CumulativePoint { date: string; twr: number | null; mwr: number | null; benchmark: number | null; value: number | null }
-export interface PortalMonth extends MonthFigure { is_provisional: boolean }
-export interface PortalYear { year: number; twr_pct: number | null; is_provisional: boolean }
-export interface PortalPeriod {
-  period_start: string; period_end: string
-  opening_value: number; closing_value: number; net_flow: number; gain: number
-  flow_in: number; flow_out: number
-  /** Accounts joining the record in this period: inside net_flow, not a deposit */
-  brought: number
-  twr_pct: number | null; twr_ytd_pct: number | null
-  benchmark_return_pct: number | null; excess_return_pct: number | null
-  is_provisional: boolean
-}
-export type PortalGrain = 'day' | 'week' | 'month' | 'quarter'
-/** A fund includes its dividends; an index level leaves them out */
-export interface BenchmarkChoice { code: string; name: string; includes_dividends: boolean }
-export interface PortalPerformanceResponse {
-  first_date: string | null; as_of: string | null
-  includes_cash: boolean; benchmark: string; grain: string
-  /** What the return may be compared with; `benchmark` is the code of the one in use */
-  benchmarks: BenchmarkChoice[]
-  summary: PortalSummary | null
-  series: CumulativePoint[]; months: PortalMonth[]; years: PortalYear[]; periods: PortalPeriod[]
-}
-
-export interface OverviewSleeve extends PortalSleeve { value: number | null; twr_pct: number | null; gain: number | null }
-export interface OverviewAccount extends VisibleAccount {
-  value: number | null; cash: number | null
-  /** Year to date */
-  twr_pct: number | null; gain: number | null
-  sleeves: OverviewSleeve[]
-}
-export interface ActivityItem {
-  date: string
-  /** BUY | SELL | DIVIDEND | INTEREST | FEE | WITHHOLDING */
-  kind: string
-  symbol: string | null; quantity: number | null; amount: number; account_name: string
-}
-export interface PortalOverviewResponse {
-  as_of: string | null; includes_cash: boolean
-  total_value: number | null; cash_value: number | null
-  ytd_twr_pct: number | null; ytd_gain: number | null; ytd_realized: number
-  is_provisional: boolean
-  accounts: OverviewAccount[]
-  timeseries: { date: string; value: number }[]
-  recent: ActivityItem[]
-}
-
-/** The advisor's market data page */
-export interface MdJobStatus {
-  id: string; label: string
-  /** ok, failed, skipped or running; null if the job has never run */
-  outcome: string | null
-  started_at: string | null; finished_at: string | null
-  requests: number | null; rows_written: number | null
-  note: string | null; next_run_at: string | null
-}
-export interface MdIndexStatus {
-  code: string; name: string; members: number
-  expected_min: number | null; expected_max: number | null; in_range: boolean
-  source: string | null; latest_file: string | null
-}
-export interface MdCoverageMeasure { label: string; count: number; of: number; of_label: string }
-export interface MdNamedCount { name: string; count: number }
-export interface MdCoverage {
-  securities: number; companies: number
-  measures: MdCoverageMeasure[]; by_kind: MdNamedCount[]; by_market: MdNamedCount[]; sector_sources: MdNamedCount[]
-}
-export interface MdTableStatus { name: string; kind: string; rows: number; size_bytes: number | null }
-export interface MdNotBuilt { name: string; phase: string }
-export interface MarketDataStatusResponse {
-  generated_at: string
-  /** False when market data's own database cannot be read */
-  available: boolean
-  own_database: boolean
-  attention: string[]
-  jobs: MdJobStatus[]; indices: MdIndexStatus[]
-  coverage: MdCoverage | null
-  tables: MdTableStatus[]; not_built: MdNotBuilt[]
-}
-
-/** The advisor's system status page */
-export interface StatusJob {
-  id: string; label: string; next_run_at: string | null
-  /** The last run since the app started; null until the job has run once */
-  last_started_at: string | null; last_finished_at: string | null
-  last_ok: boolean | null; last_error: string | null; last_skipped?: string | null
-}
-export interface StatusBrokerageAccount {
-  id: string; name: string; number_last4: string | null; owner: string | null
-  status: string; connection_status: string
-  last_synced_at: string | null; next_sync_allowed_at: string | null
-  transactions_synced_through: string | null
-  /** The latest day with the brokerage's own holdings and total on record */
-  captured_through: string | null
-  holdings_differ: number | null; skipped_rows: number
-  /** The first recorded day holdings differed, and where a report should start */
-  holdings_differ_since: string | null; download_from: string | null
-}
-/** One brokerage login, and whether the source is still sharing it */
-export interface StatusBrokerageLink {
-  id: string; institution: string; source: string; status: string
-  /** When the source was last asked; since when it stopped sharing, if it has */
-  checked_at: string | null; disabled_at: string | null
-  /** The client whose page the link is managed from */
-  client_id: string; client: string | null
-  accounts: number
-}
-export interface SystemStatusResponse {
-  generated_at: string
-  /** What needs a person to look, in plain words; empty when all is well */
-  attention: string[]
-  /** Whether a Telegram bot is configured to receive alerts */
-  alerts: { telegram: boolean }
-  app: { environment: string; started_at: string; scheduler_enabled: boolean }
-  database: { ok: boolean; size_bytes: number | null; migration: string | null }
-  disk: { total_bytes: number; free_bytes: number }
-  jobs: StatusJob[]
-  brokerage_links: StatusBrokerageLink[]
-  brokerage_accounts: StatusBrokerageAccount[]
-  capture: { market_day: string; accounts: number; missing: string[] }
-  data: {
-    clients: number; accounts: number; trades: number; latest_trade_date: string | null
-    priced_symbols: number; latest_price_date: string | null
-    indices: { symbol: string; latest_date: string | null; days: number }[]
-  }
-  backup: { known: boolean; at: string | null; file: string | null; size_bytes: number | null }
-  /** Events the brokerage source has sent since the app started, newest first */
-  webhooks: { at: string; event: string; outcome: string }[]
-  recent_log: { at: string; level: string; source: string; message: string }[]
-}
-
-/** Market insights (/api/v1/research): shared with every signed-in user.
- *  Every return is a decimal fraction (0.05 = 5%). `basis` is 'total' (dividends in)
- *  or 'price' (an index level). */
-export interface RsStats {
-  count: number; mean: number; median: number; share_up: number; best: number; worst: number
-  first_year?: number | null; last_year?: number | null
-}
-export interface RsReturnRow { symbol: string; label: string; basis: string; ret: number }
-export interface RsMover { symbol: string; ret: number }
-export interface RsWeek {
-  as_of: string; period: string; start: string; end: string
-  /** The week has trading days left: its returns so far, to the latest close */
-  running: boolean
-  indices: RsReturnRow[]; funds: RsReturnRow[]; sectors: RsReturnRow[]
-  best: RsMover[]; worst: RsMover[]; notes: string[]
-}
-export interface RsMonthRow {
-  symbol: string; label: string; kind: string; basis: string
-  month_to_date: number | null; record: RsStats | null
-}
-export interface RsMonth { as_of: string | null; month: string; month_name: string; rows: RsMonthRow[]; notes: string[] }
-export interface RsBenchmark { symbol: string; basis: string; universe?: string | null }
-export interface RsPerformer {
-  symbol: string; name: string | null; sector: string | null; industry: string | null
-  years: number; median_excess: number; worst_excess: number; median_return: number
-}
-export interface RsTopPerformers {
-  month: number; month_name: string; universe: string; benchmark: RsBenchmark; min_years: number
-  eligible: number; found: number; expected_by_luck: number; rows: RsPerformer[]; notes: string[]
-}
-export interface RsSectorResult { stocks: number; observations: number; beat_share: number; median_excess: number; median_return: number }
-export interface RsSectors {
-  month: number; month_name: string; universes: string[]; benchmarks: RsBenchmark[]
-  sectors: { sector_code: string; sector: string; results: Record<string, RsSectorResult> }[]
-  notes: string[]
-}
-export interface RsOutlook {
-  month: number; month_name: string
-  indices: { symbol: string; label: string; basis: string; record: RsStats }[]
-  sectors: RsSectors; steadiest: RsTopPerformers; notes: string[]
-}
-export interface RsCell { month: number; day: number; value: number; mean: number; median: number; days: number }
-export interface RsCalendar {
-  symbol: string; kind: string; basis: string; stat: 'mean' | 'median'
-  available?: { first: number; last: number } | null
-  years: { first: number; last: number; count: number }
-  cells: RsCell[]; best: RsCell[]; worst: RsCell[]; notes: string[]
-}
-export interface RsSearch {
-  query: string
-  results: { symbol: string; name: string | null; kind: string; sector: string | null; indices: string[] }[]
-}
-export interface RsBucket {
-  bucket: string; order: number | string; count: number; mean: number; median: number
-  share_up: number; stdev: number; best: number; worst: number
-}
-export interface RsPattern {
-  subject: string; by: string; month?: number | null; kind: string; basis: string
-  members?: number | null; survivorship: boolean
-  years?: { first: number; last: number; count: number } | null
-  buckets: RsBucket[]; month_to_date?: { trading_day: number; years: number; mean: number }[] | null
-}
-export interface RsProfile {
-  symbol: string; name: string | null; sector: string | null; industry: string | null
-  kind: string; basis: string; indices: string[]; first_day: string; last_day: string
-  last_12_months: { period: string; ret: number }[]
-  month_of_year: RsPattern; month: number; month_name: string
-  month_by_trading_day: RsPattern; month_path: RsMonthPath; sector_month_of_year: RsPattern | null; notes: string[]
-}
-export interface RsMonthPath {
-  typical: { day: number; mean: number; median: number; years: number }[]; years: number
-  current: { year: number; through: string; days: { day: number; ret: number }[] } | null
-}
-export interface RsMonthSummary {
-  count: number; mean: number; median: number; share_up: number; share_down: number
-  best: number; worst: number; abs_mean: number; abs_best: number; abs_worst: number
-}
-export interface RsGridYear { year: number; months: Record<string, number>; running_month: number | null; ret: number; complete: boolean }
-export interface RsNamedMonth { year: number; month: number; ret: number }
-export interface RsMonthGrid {
-  symbol: string; kind: string; basis: string
-  available: { first: number; last: number }; years: { first: number; last: number; count: number }
-  rows: RsGridYear[]; summary: Record<string, RsMonthSummary | null>; year_summary: RsMonthSummary | null
-  best: RsNamedMonth | null; worst: RsNamedMonth | null; notes: string[]
-}
-export interface RsIndex {
-  code: string; display: string; name: string; country: string; currency: string
-  group: string; volatility: boolean; first_day: string | null; last_day: string | null
-}
-export interface RsIndices { indices: RsIndex[]; notes: string[] }
-
-// ── Upload and import ─────────────────────────────────────────────────────
-// A custodian's file read against one account: what it would add, then what it did.
-
-/** `SPLIT` is a stock split, as the shares it added (`quantity`); its ratio is worked out on import */
-export interface ImportTrade { action: TradeAction | 'SPLIT'; symbol: string; quantity: number; price: number }
-/** `amount` is positive for money received */
-export interface ImportCash { type: string; symbol: string | null; amount: number }
-export interface ImportDay { date: string; trades: ImportTrade[]; cash: ImportCash[] }
-/** The account's holdings against the custodian's record, and what to download */
-export interface HoldingsCheck {
-  as_of: string; matched: number
-  differences: { symbol: string; custodian_quantity: number; our_quantity: number }[]
-  /** The last recorded day holdings agreed, and the first they differed after it (null while they agree) */
-  last_agreed: string | null; first_differed: string | null
-  /** Where a report should start to cover what is missing; null while they agree */
-  download_from: string | null
-}
-export interface ImportPreview {
-  account_id: string
-  file_kind: 'vanguard_activity' | 'template'
-  rows: number; first_date: string | null; last_date: string | null
-  /** The first day of the account's history here before this file */
-  history_starts?: string | null
-  on_file_trades: number; on_file_cash: number
-  /** Recognised although dated a trading day later (option expiries and assignments) */
-  on_file_a_day_later: number
-  /** Recognised under another spelling of the symbol (delisted or renamed) */
-  on_file_other_symbol: number
-  /** Rows that are not activity (sweeps, transfers within the account), by reason */
-  set_aside: Record<string, number>
-  to_add_trades: number; to_add_cash: number
-  days: ImportDay[]
-  /** Splits and mergers, which the feed records */
-  not_read: { line: number; date: string; type: string; symbol: string }[]
-}
-export interface ImportResult extends ImportPreview {
-  added_trades: number; added_cash: number
-  /** Our holdings against the custodian's last recorded ones; null when none are on file */
-  check: HoldingsCheck | null
-}
-
-// ── Linking with Plaid ────────────────────────────────────────────────────
-
-export interface PlaidLinkAvailability { available: boolean; logins_left: number }
-export interface PlaidLinkStart { link_token: string; expiration: string | null; logins_left: number }
-export interface PlaidCandidate {
-  account_id: string; name: string; last_four: string | null; shared: boolean
-  relinked: boolean; same_last_four: boolean; same_institution: boolean
-  /** null: no holdings on one side to compare */
-  same_holdings: boolean | null; same_balance: boolean
-}
-export interface PlaidFoundAccount {
-  link_id: string; name: string; mask: string | null
-  plaid_type: string | null; plaid_subtype: string | null
-  kind: AccountKind; owed: boolean; balance: number | null
-  status: 'unmapped' | 'mapped' | 'matched' | 'ignored'
-  proposal: 'same' | 'choose' | 'new'; account_id: string | null
-  candidates: PlaidCandidate[]
-}
-export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
-export interface PlaidChoice {
-  link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind
-  /** With new: whose it is (default the person linking), the minor it is held for, who else sees it (view only), cost basis */
-  owner_ids?: string[]; held_for?: string; share_with?: string[]; share_advisor?: boolean
-  cost_basis?: 'FIFO' | 'MIN_TAX'
-}
+export type TradeAction = S['TradeAction']
+export type LoginRequest = S['LoginRequest']
+export type VisibleAccount = S['VisibleAccount']
+export type MeResponse = S['MeResponse']
+export type UserResponse = S['UserResponse']
+export type LinkResponse = S['OneTimeLink']
+export type EmailLinkResponse = S['EmailLinkResponse']
+export type LinkPreview = S['LinkPreview']
+export type AccountAccessResponse = S['AccountAccessResponse']
+export type ClientCreate = S['ClientCreate']
+export type ClientUpdate = S['ClientUpdate']
+export type Relative = S['Relative']
+export type RelativeCreate = S['RelativeCreate']
+export type InvitationRequestCreate = S['InvitationRequestCreate']
+export type InvitationRequest = S['InvitationRequest']
+export type ClientResponse = S['ClientResponse']
+export type AccountCreate = S['AccountCreate']
+export type CostBasisMethod = S['CostBasisMethod']
+export type AccountResponse = S['AccountResponse']
+export type SleeveCreate = S['SleeveCreate']
+export type SleeveResponse = S['SleeveResponse']
+export type StrategyCreate = S['StrategyCreate']
+export type StrategyResponse = S['StrategyResponse']
+export type TradeCreate = S['TradeCreate']
+export type TradeResponse = S['TradeResponse']
+export type TradeSummary = S['TradeSummary']
+export type PerformanceSummary = S['PerformanceSummary']
+export type PerformanceChild = S['ChildPerformance']
+export type TimeseriesPoint = S['PerformancePoint']
+export type LevelPerformance = S['LevelPerformance']
+export type MonthlyReturn = S['MonthlyReturn']
+export type MonthlyReturnsResponse = S['MonthlyReturnsResponse']
+export type AggregatedPosition = S['AggregatedPosition']
+export type ClientPositionsResponse = S['ClientPositionsResponse']
+export type AccountPositionsResponse = S['AccountPositionsResponse']
+export type PositionResponse = S['PositionResponse']
+export type PortfolioSummary = S['PortfolioSummary']
+export type PortfolioValueResponse = S['PortfolioValueResponse']
+export type ClosedPosition = S['ClosedPositionResponse']
+export type ClosedPositionsResponse = S['ClosedPositionsResponse']
+export type ClientTradesResponse = S['ClientTradesResponse']
+export type SleeveTradesResponse = S['SleeveTradesResponse']
+export type MarketPriceUpdate = S['MarketPriceUpdate']
+export type FetchMarketPricesResponse = S['FetchMarketPricesResponse']
+export type WeeklyReturnPoint = S['WeeklyReturnPoint']
+export type ReturnsSeriesResponse = S['ReturnsSeriesResponse']
+export type BenchmarkPoint = S['BenchmarkPoint']
+export type BenchmarkResponse = S['BenchmarkResponse']
+export type CashActivity = S['CashActivity']
+export type ReassignRequest = S['ReassignRequest']
+export type ReassignResult = S['ReassignResult']
+export type PeriodPerformance = S['PeriodPerformance']
+export type PeriodsResponse = S['PeriodsResponse']
+export type PortalSleeve = S['PortalSleeve']
+export type AccountHealth = S['AccountHealth']
+export type PortalAccount = S['PortalAccount']
+export type PortalConnection = S['PortalConnection']
+export type PortalConnectionsResponse = S['PortalConnectionsResponse']
+export type PortalAccountSettings = S['PortalAccountSettings']
+export type SharingPerson = S['SharingPerson']
+export type AccountSharing = S['AccountSharing']
+export type PersonRow = S['PersonRow']
+export type PeopleResponse = S['PeopleResponse']
+export type AccountGroup = S['AccountGroupResponse']
+export type PortalAccountsResponse = S['PortalAccountsResponse']
+export type PortalPosition = S['PortalPosition']
+export type PortalPositionsResponse = S['PortalPositionsResponse']
+export type PortalTrade = S['PortalTrade']
+export type PortalTradesResponse = S['PortalTradesResponse']
+export type ActivityRow = S['ActivityRow']
+export type PortalActivityResponse = S['PortalActivityResponse']
+export type PortalHomeHolding = S['HomeHolding']
+export type PortalExpiringOption = S['ExpiringOption']
+export type PortalHomeResponse = S['PortalHomeResponse']
+export type PortalClosedLot = S['PortalClosedLot']
+export type PortalGainPeriod = S['GainPeriod']
+export type PortalGainSleeve = S['GainSleeve']
+export type PortalGainAccount = S['GainAccount']
+export type PortalRealizedResponse = S['PortalRealizedResponse']
+export type MonthFigure = S['MonthFigure']
+export type PortalSummary = S['PortalSummary']
+export type CumulativePoint = S['CumulativePoint']
+export type PortalMonth = S['PortalMonth']
+export type PortalYear = S['PortalYear']
+export type PortalPeriod = S['PortalPeriod']
+export type BenchmarkChoice = S['BenchmarkChoice']
+export type PortalPerformanceResponse = S['PortalPerformanceResponse']
+export type OverviewSleeve = S['OverviewSleeve']
+export type OverviewAccount = S['OverviewAccount']
+export type ActivityItem = S['ActivityItem']
+export type PortalOverviewResponse = S['PortalOverviewResponse']
+export type MdJobStatus = S['MdJobStatus']
+export type MdIndexStatus = S['MdIndexStatus']
+export type MdCoverageMeasure = S['MdCoverageMeasure']
+export type MdNamedCount = S['MdNamedCount']
+export type MdCoverage = S['MdCoverage']
+export type MdTableStatus = S['MdTableStatus']
+export type MdNotBuilt = S['MdNotBuilt']
+export type MarketDataStatusResponse = S['MarketDataStatusResponse']
+export type StatusJob = S['StatusJob']
+export type StatusBrokerageAccount = S['StatusBrokerageAccount']
+export type StatusBrokerageLink = S['StatusBrokerageLink']
+export type SystemStatusResponse = S['SystemStatusResponse']
+export type RsStats = S['RsStats']
+export type RsReturnRow = S['RsReturnRow']
+export type RsMover = S['RsMover']
+export type RsWeek = S['RsWeekResponse']
+export type RsMonthRow = S['RsMonthRow']
+export type RsMonth = S['RsMonthResponse']
+export type RsBenchmark = S['RsBenchmark']
+export type RsPerformer = S['RsPerformerRow']
+export type RsTopPerformers = S['RsTopPerformersResponse']
+export type RsSectorResult = S['RsSectorResult']
+export type RsSectors = S['RsSectorsResponse']
+export type RsOutlook = S['RsOutlookResponse']
+export type RsCell = S['RsCell']
+export type RsCalendar = S['RsCalendarResponse']
+export type RsSearch = S['RsSearchResponse']
+export type RsBucket = S['RsBucket']
+export type RsPattern = S['RsPattern']
+export type RsProfile = S['RsProfileResponse']
+export type RsMonthPath = S['RsMonthPath']
+export type RsMonthSummary = S['RsMonthSummary']
+export type RsGridYear = S['RsGridYear']
+export type RsNamedMonth = S['RsNamedMonth']
+export type RsMonthGrid = S['RsMonthGridResponse']
+export type RsIndex = S['RsIndex']
+export type RsIndices = S['RsIndicesResponse']
+export type ImportTrade = S['ImportTrade']
+export type ImportCash = S['ImportCash']
+export type ImportDay = S['ImportDay']
+export type HoldingsCheck = S['ImportCheck']
+export type ImportPreview = S['ImportPreview']
+export type ImportResult = S['ImportResult']
+export type PlaidLinkAvailability = S['PlaidLinkAvailability']
+export type PlaidLinkStart = S['PlaidLinkStart']
+export type PlaidCandidate = S['PlaidCandidate']
+export type PlaidFoundAccount = S['PlaidFoundAccount']
+export type PlaidFound = S['PlaidFound']
+export type PlaidChoice = S['PlaidChoice']
+export type PlaidRefreshed = S['PlaidRefreshed']
+export type PlaidConfirmed = S['PlaidConfirmed']
+export type PlaidRepaired = S['PlaidRepaired']
+// ── Names for parts of a schema ──
+export type UserRole = S['MeResponse']['role']
+export type Relation = S['Relative']['relation']
+export type InvitationStatus = S['InvitationRequest']['status']
+export type PeriodGrain = S['PeriodsResponse']['grain']
+export type SecurityGroup = S['PortalPosition']['security_type']
+export type AccountKind = S['PortalAccount']['kind']
+export type ConnectionState = S['PortalConnection']['state']
+export type ActivityKind = S['ActivityRow']['kind']
+export type CashActivityType = S['CashActivity']['type']
+export type LotAdjustment = S['PortalClosedLot']['adjustments'][number]
+/** The grains the portal's performance view offers */
+export type PortalGrain = Exclude<PeriodGrain, 'year'>
 /** A likely ticker change seen in the accounts' own records, waiting for a person */
-export interface TickerChangeProposal { old: string; new: string; on: string; company: string; accounts: number }
-
-/** How the viewer's own logins fared when refreshed now */
-export interface PlaidRefreshed { refreshed: number; up_to_date: number; needs_sign_in: number; failed: number; at: string }
-
-export interface PlaidConfirmed { linked: number; added: number; skipped: number; waiting: number }
-
-/** After signing in again: `active` once Plaid reads the login again */
-export interface PlaidRepaired { status: 'active' | 'needs signing in' }
+export type TickerChangeProposal =
+  operations['ticker_change_proposals_api_v1_admin_ticker_changes_get']['responses'][200]['content']['application/json'][number]
+/** Where a row sits: its account, and the strategy it is held under */
+export type RowPlace = Pick<
+  S['PortalPosition'],
+  'account_id' | 'account_name' | 'shared' | 'sleeve_id' | 'strategy_id' | 'strategy_name'
+>
+export type ActivityFigures = Pick<
+  S['PortalActivityResponse'],
+  'total' | 'trades' | 'bought' | 'sold' | 'money_in' | 'money_out' | 'income' | 'charges'
+>
+export type PortalGainFigures = Pick<
+  S['GainPeriod'],
+  'count' | 'short_term' | 'long_term' | 'realized' | 'disallowed_loss' | 'dividends' | 'interest' | 'margin_interest'
+>

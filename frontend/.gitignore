@@ -4,3 +4,5 @@ dist
 openapi.yaml
 src/api/schema.d.ts
 *.tsbuildinfo
+test-results
+playwright-report

@@ -34,7 +34,7 @@ function loadScope(): Scope {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as Scope
-  } catch {}
+  } catch { /* unreadable or blocked storage: start empty */ }
   return empty
 }
 

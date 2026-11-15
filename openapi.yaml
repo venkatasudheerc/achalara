@@ -31,7 +31,7 @@ tags:
   - name: auth
     description: >-
       Sign-in, one-time invite and reset links, and sharing an account with another client.
-      Every route outside this tag (and the health check and the SnapTrade webhook) needs a
+      Every route outside this tag (and the health check) needs a
       session. An advisor may call anything. A client user may only read: their own client's
       roll-ups, any account they own or have been granted and everything beneath it, and benchmarks.
   - name: clients
@@ -2657,7 +2657,7 @@ paths:
         "422":
           description: Invalid ticker symbol
 
-  # ─── Brokerage connections ──────────────────────────────────────────────────
+  # ─── Cash movements and moving symbols ─────────────────────────────────────
 
   /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/cash-activities:
     get:
@@ -4636,7 +4636,7 @@ paths:
           description: The link to pass on
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/LinkResponse'}
+              schema: {$ref: '#/components/schemas/OneTimeLink'}
         '403': {description: Not an admin}
         '409': {description: Another login already uses the email}
   /api/v1/clients/{client_id}/spouse:
@@ -4924,7 +4924,7 @@ paths:
           description: The link to pass on
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/LinkResponse'}
+              schema: {$ref: '#/components/schemas/OneTimeLink'}
         '404': {description: Not the viewer's spouse or minor}
         '409': {description: Already has a login, or the email is in use}
   /api/v1/portal/relatives:
@@ -5104,7 +5104,7 @@ components:
 
     ImportCash:
       type: object
-      required: [type, amount]
+      required: [type, amount, symbol]
       properties:
         type: {type: string}
         symbol: {type: string, nullable: true}
@@ -5138,7 +5138,7 @@ components:
     ImportCheck:
       type: object
       description: Our holdings against the custodian's last recorded ones
-      required: [as_of, matched, differences]
+      required: [as_of, matched, differences, last_agreed, first_differed, download_from]
       properties:
         as_of: {type: string, format: date}
         matched: {type: integer}
@@ -5150,7 +5150,22 @@ components:
     ImportPreview:
       type: object
       description: What the file holds and what of it is not on file yet. Nothing is written.
-      required: [account_id, file_kind, rows, on_file_trades, on_file_cash, on_file_a_day_later, on_file_other_symbol, set_aside, to_add_trades, to_add_cash, days, not_read]
+      required:
+        - account_id
+        - file_kind
+        - rows
+        - on_file_trades
+        - on_file_cash
+        - on_file_a_day_later
+        - on_file_other_symbol
+        - set_aside
+        - to_add_trades
+        - to_add_cash
+        - days
+        - not_read
+        - first_date
+        - last_date
+        - history_starts
       properties:
         account_id: {type: string}
         file_kind: {type: string, enum: [vanguard_activity, template]}
@@ -5172,7 +5187,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ImportPreview"
         - type: object
-          required: [added_trades, added_cash]
+          required: [added_trades, added_cash, check]
           properties:
             added_trades: {type: integer}
             added_cash: {type: integer}
@@ -5222,6 +5237,8 @@ components:
       - same_last_four
       - same_institution
       - same_balance
+      - last_four
+      - same_holdings
       title: PlaidCandidate
       description: One of the client's accounts this one might be, and the evidence.
     PlaidChoice:
@@ -5391,6 +5408,11 @@ components:
       - status
       - proposal
       - candidates
+      - mask
+      - plaid_type
+      - plaid_subtype
+      - balance
+      - account_id
       title: PlaidFoundAccount
     PlaidLinkAvailability:
       properties:
@@ -5435,6 +5457,7 @@ components:
       required:
       - link_token
       - logins_left
+      - expiration
       title: PlaidLinkStart
 
     # ── Clients ──────────────────────────────────────────────────────────────
@@ -5496,7 +5519,7 @@ components:
     VisibleAccount:
       type: object
       description: An account a client user may view. Never carries a full account number.
-      required: [id, client_id, name, shared]
+      required: [id, client_id, name, shared, number_last4]
       properties:
         id:
           type: string
@@ -5513,7 +5536,7 @@ components:
 
     MeResponse:
       type: object
-      required: [id, email, name, role, accounts]
+      required: [id, email, name, role, accounts, client_id]
       properties:
         id:
           type: string
@@ -5536,7 +5559,7 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, name, role, is_active, has_password]
+      required: [id, email, name, role, is_active, has_password, client_id, last_login_at]
       properties:
         id:
           type: string
@@ -5563,7 +5586,7 @@ components:
 
     OneTimeLink:
       type: object
-      required: [token, path, purpose, email, expires_at]
+      required: [token, path, purpose, email, expires_at, can_email]
       properties:
         token:
           type: string
@@ -5701,7 +5724,7 @@ components:
 
     Relative:
       type: object
-      required: [id, name, relation, has_login]
+      required: [id, name, relation, has_login, email]
       properties:
         id:
           type: string
@@ -5754,7 +5777,17 @@ components:
 
     PortalConnection:
       type: object
-      required: [id, state, own, accounts]
+      required:
+        - id
+        - state
+        - own
+        - accounts
+        - institution
+        - owner_name
+        - consent_expires_at
+        - disabled_at
+        - status_checked_at
+        - last_refreshed_at
       description: One Plaid login feeding accounts in view. Never carries its access key.
       properties:
         id:
@@ -5818,6 +5851,7 @@ components:
 
     PortalAccountSettings:
       type: object
+      required: [display_name]
       properties:
         display_name:
           type: string
@@ -5832,7 +5866,7 @@ components:
 
     SharingPerson:
       type: object
-      required: [kind, id, name]
+      required: [kind, id, name, level]
       properties:
         kind: {type: string, enum: [person, advisor]}
         id: {type: string}
@@ -5849,7 +5883,7 @@ components:
 
     AccountSharing:
       type: object
-      required: [account_id, name, can_manage, owners, shared_with]
+      required: [account_id, name, can_manage, owners, shared_with, held_for, advisor]
       properties:
         account_id: {type: string}
         name: {type: string}
@@ -5947,7 +5981,7 @@ components:
 
     PeopleResponse:
       type: object
-      required: [people, notice, your_accounts, shared_with_you]
+      required: [people, notice, your_accounts, shared_with_you, advisor]
       properties:
         people:
           type: array
@@ -5965,6 +5999,7 @@ components:
 
     ClientResponse:
       type: object
+      required: [id, name, email, advisor_id, spouse_id, guardian_id, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5993,6 +6028,7 @@ components:
 
     ClientPositionsResponse:
       type: object
+      required: [client_id, total_cost_basis, total_market_value, total_unrealized_gain, positions_count, positions]
       properties:
         client_id:
           type: string
@@ -6014,6 +6050,8 @@ components:
 
     AggregatedPosition:
       type: object
+      required: [symbol, quantity, cost_basis, avg_cost, current_price, market_value,
+                 unrealized_gain, unrealized_gain_pct, trades_count]
       properties:
         symbol:
           type: string
@@ -6040,6 +6078,7 @@ components:
 
     ClientTradesResponse:
       type: object
+      required: [client_id, total, skip, limit, trades]
       properties:
         client_id:
           type: string
@@ -6056,11 +6095,13 @@ components:
 
     TradeSummary:
       type: object
+      required: [id, trade_date, symbol, action, quantity, price, commission, notes, security_type]
       properties:
         id:
           type: string
         sleeve_id:
           type: string
+          description: Given in a client's list; left out of one sleeve's own list
         trade_date:
           type: string
           format: date
@@ -6076,6 +6117,7 @@ components:
           type: number
         notes:
           type: string
+          nullable: true
         security_type:
           type: string
           nullable: true
@@ -6099,6 +6141,18 @@ components:
 
     AccountResponse:
       type: object
+      required:
+        - id
+        - client_id
+        - name
+        - description
+        - account_number
+        - institution
+        - last_four
+        - display_name
+        - cost_basis_method
+        - shared
+        - owner_name
       properties:
         id:
           type: string
@@ -6150,6 +6204,7 @@ components:
 
     AccountPositionsResponse:
       type: object
+      required: [account_id, total_cost_basis, total_market_value, total_unrealized_gain, positions_count, positions]
       properties:
         account_id:
           type: string
@@ -6178,6 +6233,7 @@ components:
 
     SleeveResponse:
       type: object
+      required: [id, account_id, strategy_id, strategy_name]
       properties:
         id:
           type: string
@@ -6191,6 +6247,7 @@ components:
 
     SleeveTradesResponse:
       type: object
+      required: [sleeve_id, total, trades]
       properties:
         sleeve_id:
           type: string
@@ -6216,6 +6273,7 @@ components:
 
     StrategyResponse:
       type: object
+      required: [id, name, description]
       properties:
         id:
           type: string
@@ -6264,6 +6322,7 @@ components:
 
     TradeResponse:
       type: object
+      required: [id, sleeve_id, trade_date, symbol, action, quantity, price, commission, notes, created_at]
       properties:
         id:
           type: string
@@ -6292,13 +6351,25 @@ components:
 
     PositionResponse:
       type: object
+      required:
+        - symbol
+        - quantity
+        - avg_cost
+        - cost_basis
+        - current_price
+        - market_value
+        - unrealized_gain
+        - unrealized_gain_pct
+        - status
+        - trades_count
       properties:
-        id:
-          type: string
-        sleeve_id:
-          type: string
         symbol:
           type: string
+        status:
+          type: string
+          description: Always OPEN here
+        trades_count:
+          type: integer
         quantity:
           type: number
         avg_cost:
@@ -6320,6 +6391,25 @@ components:
 
     ClosedPositionResponse:
       type: object
+      required:
+        - symbol
+        - status
+        - matched_quantity
+        - entry_price
+        - exit_price
+        - realized_gain
+        - realized_gain_pct
+        - opened_at
+        - closed_at
+        - trades_count
+        - cost
+        - proceeds
+        - disallowed_loss
+        - reported_gain
+        - short_term_gain
+        - long_term_gain
+        - term
+        - adjustments
       properties:
         symbol:
           type: string
@@ -6381,6 +6471,14 @@ components:
 
     PortfolioSummary:
       type: object
+      required:
+        - total_cost_basis
+        - total_market_value
+        - total_unrealized_gain
+        - total_return_pct
+        - total_realized_gain
+        - positions_count
+        - closed_positions_count
       properties:
         total_cost_basis:
           type: number
@@ -6400,6 +6498,7 @@ components:
 
     PortfolioValueResponse:
       type: object
+      required: [summary, positions]
       properties:
         summary:
           $ref: "#/components/schemas/PortfolioSummary"
@@ -6410,6 +6509,7 @@ components:
 
     ClosedPositionsResponse:
       type: object
+      required: [total_realized_gain, total_reported_gain, total_disallowed_loss, positions]
       properties:
         total_realized_gain:
           type: number
@@ -6429,13 +6529,13 @@ components:
 
     PerformancePoint:
       type: object
+      required: [date, value, cost_basis, net_contributions, cash, net_flow]
       properties:
         date:
           type: string
           format: date
         value:
           type: number
-          nullable: true
           description: Securities at their last traded price that day (today's prices on the final point), plus cash where known
         cost_basis:
           type: number
@@ -6459,6 +6559,23 @@ components:
 
     PerformanceSummary:
       type: object
+      required:
+        - mwr_pct
+        - twr_pct
+        - twr_note
+        - total_return_pct
+        - total_cost_basis
+        - total_market_value
+        - total_unrealized_gain
+        - cash_balance
+        - total_value
+        - holdings_adjustment
+        - total_invested
+        - total_proceeds
+        - total_realized_gain
+        - total_income
+        - closed_positions_count
+        - trades_count
       properties:
         mwr_pct:
           type: number
@@ -6527,6 +6644,7 @@ components:
 
     ChildPerformance:
       type: object
+      required: [level, id, name, summary, account_id, client_id]
       properties:
         level:
           type: string
@@ -6548,6 +6666,7 @@ components:
 
     LevelPerformance:
       type: object
+      required: [level, id, name, start_date, end_date, summary, timeseries, children]
       properties:
         level:
           type: string
@@ -6577,6 +6696,18 @@ components:
 
     MonthlyReturn:
       type: object
+      required:
+        - year
+        - month
+        - month_label
+        - start_value
+        - end_value
+        - cash_in
+        - cash_out
+        - net_cash_flow
+        - realized_gain
+        - return_pct
+        - includes_unrealized
       properties:
         year:
           type: integer
@@ -6610,6 +6741,7 @@ components:
 
     MonthlyReturnsResponse:
       type: object
+      required: [months, cumulative_return_pct]
       properties:
         months:
           type: array
@@ -6623,6 +6755,7 @@ components:
 
     WeeklyReturnPoint:
       type: object
+      required: [date, twr_cumul, mwr_cumul]
       properties:
         date:
           type: string
@@ -6639,6 +6772,7 @@ components:
 
     ReturnsSeriesResponse:
       type: object
+      required: [level, id, series]
       properties:
         level:
           type: string
@@ -6666,6 +6800,7 @@ components:
 
     FetchMarketPricesResponse:
       type: object
+      required: [status, fetched, symbols, prices, failed]
       properties:
         status:
           type: string
@@ -6697,7 +6832,7 @@ components:
 
     BenchmarkResponse:
       type: object
-      required: [ticker, timeseries]
+      required: [ticker, timeseries, warning]
       properties:
         ticker:
           type: string
@@ -6709,251 +6844,16 @@ components:
           type: string
           nullable: true
 
-    # ── Brokerage connections ──
+    # ── Cash movements and moving symbols ──
 
-    LinkRequest:
-      type: object
-      properties:
-        redirect_uri:
-          type: string
-          description: Where the portal sends the browser when finished (cosmetic)
-        connection_id:
-          type: string
-          nullable: true
-          description: An existing link to sign in to again, when the brokerage has stopped sharing it. Omit to add a new link.
 
-    LinkResponse:
-      type: object
-      required: [redirect_url, expires_in_seconds]
-      properties:
-        redirect_url:
-          type: string
-        expires_in_seconds:
-          type: integer
 
-    Connection:
-      type: object
-      required: [id, client_id, source, institution, status, brokerage_accounts]
-      properties:
-        id:
-          type: string
-        client_id:
-          type: string
-        source:
-          type: string
-          example: snaptrade
-        institution:
-          type: string
-          example: Vanguard
-        status:
-          type: string
-          enum: [active, broken, deleted]
-        brokerage_accounts:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrokerageAccount"
 
-    BrokerageAccount:
-      type: object
-      required: [id, connection_id, name, status, initial_sync_completed]
-      properties:
-        id:
-          type: string
-        connection_id:
-          type: string
-        name:
-          type: string
-        number_last4:
-          type: string
-          nullable: true
-        status:
-          type: string
-          enum: [unmapped, mapped, ignored]
-        account_id:
-          type: string
-          nullable: true
-        default_sleeve_id:
-          type: string
-          nullable: true
-        owner_client_id:
-          type: string
-          nullable: true
-          description: Client who owns the mapped account; may differ from the connection's client
-        sleeve_routes:
-          type: object
-          nullable: true
-          additionalProperties:
-            type: string
-          description: Security type → sleeve id. Types without an entry go to `default_sleeve_id`.
-        sync_start_date:
-          type: string
-          format: date
-          nullable: true
-          description: Earliest activity date loaded; null means full history
-        initial_sync_completed:
-          type: boolean
-          description: False while the source is still loading the account's history
-        transactions_synced_through:
-          type: string
-          format: date
-          nullable: true
-          description: Last date the source reports transactions complete for
-        last_synced_at:
-          type: string
-          format: date-time
-          nullable: true
-        last_reconciled_at:
-          type: string
-          format: date-time
-          nullable: true
-        reconciliation:
-          allOf:
-            - $ref: "#/components/schemas/Reconciliation"
-          nullable: true
-        duplicate_of:
-          allOf:
-            - $ref: "#/components/schemas/DuplicateAccount"
-          nullable: true
-          description: |
-            On an account not yet brought in, the account already in Achalara
-            that it appears to be. Sent to advisors only.
 
-    DuplicateAccount:
-      type: object
-      required: [certainty, account_id, account_name, client_id, client_name]
-      description: |
-        One brokerage account can be reached through more than one login (its
-        owner's, and an agent's). It is brought in once, then shared.
-      properties:
-        certainty:
-          type: string
-          enum: [same, likely]
-          description: |
-            `same`: the brokerage and the full account number agree; the account
-            cannot be added again. `likely`: the brokerage and the last four
-            digits agree; adding it needs `confirmed_distinct`.
-        account_id:
-          type: string
-        account_name:
-          type: string
-        client_id:
-          type: string
-        client_name:
-          type: string
-
-    BrokerageAccountUpdate:
-      type: object
-      required: [status]
-      properties:
-        status:
-          type: string
-          enum: [mapped, ignored]
-        account_id:
-          type: string
-          nullable: true
-          description: Existing account to attach to; omit to create one
-        strategy_id:
-          type: string
-          nullable: true
-          description: Strategy the trades land in; omit for "Unallocated"
-        client_id:
-          type: string
-          nullable: true
-          description: |
-            The client who owns the account, when different from the client whose
-            login reaches it (an agent with authority over another person's
-            account). Defaults to the login's client.
-        strategy_routes:
-          type: object
-          nullable: true
-          additionalProperties:
-            type: string
-          description: |
-            Split the account by what is traded: security type → strategy id,
-            e.g. `{"ETF": "<strategy id>"}`. One sleeve is created per strategy;
-            every other type goes to `strategy_id`. A symbol always stays in the
-            sleeve that first received it.
-        history_start:
-          type: string
-          format: date
-          nullable: true
-          description: Earliest activity date to load on the first sync; omit for full history
-        confirmed_distinct:
-          type: boolean
-          default: false
-          description: |
-            The account shares its brokerage and last four digits with one
-            already in Achalara (`duplicate_of.certainty` is `likely`) and is a
-            different account. Has no effect on a `same` match, which is refused.
-
-    BrokerageSyncResult:
-      type: object
-      required: [status]
-      properties:
-        status:
-          type: string
-          enum: [synced, skipped]
-        reason:
-          type: string
-          nullable: true
-          enum: [synced_recently, initial_sync_pending, rate_limited, null]
-        imported:
-          type: integer
-        duplicates:
-          type: integer
-        cash_imported:
-          type: integer
-        skipped_rows:
-          type: object
-          additionalProperties:
-            type: integer
-          description: Rows not ingested, by reason (corporate_action, incomplete, sweep, unrecognized)
-        next_sync_allowed_at:
-          type: string
-          format: date-time
-          nullable: true
-        transactions_synced_through:
-          type: string
-          format: date
-          nullable: true
-
-    Reconciliation:
-      type: object
-      properties:
-        matched:
-          type: integer
-          description: Symbols where brokerage and derived quantities agree
-        drifted:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReconciliationDrift"
-        unmatched_sells:
-          type: integer
-          description: Symbols left net short by the trades on file (a real short, or a sale of shares bought before the history starts)
-        skipped_rows:
-          type: object
-          additionalProperties:
-            type: integer
-
-    ReconciliationDrift:
-      type: object
-      required: [symbol, brokerage_quantity, derived_quantity, difference, awaiting_transactions]
-      properties:
-        symbol:
-          type: string
-        brokerage_quantity:
-          type: number
-        derived_quantity:
-          type: number
-        difference:
-          type: number
-        awaiting_transactions:
-          type: boolean
-          description: The brokerage holds a lot whose purchase has not reached its transaction feed
 
     CashActivity:
       type: object
-      required: [id, sleeve_id, activity_date, type, amount, counts_toward_returns]
+      required: [id, sleeve_id, activity_date, type, amount, counts_toward_returns, symbol, notes]
       properties:
         id:
           type: string
@@ -7008,7 +6908,23 @@ components:
 
     PeriodPerformance:
       type: object
-      required: [period_start, period_end, opening_value, closing_value, net_flow, gain, basis]
+      required:
+        - period_start
+        - period_end
+        - opening_value
+        - closing_value
+        - net_flow
+        - gain
+        - basis
+        - cash_value
+        - twr_pct
+        - mwr_pct
+        - twr_cumulative_pct
+        - twr_ytd_pct
+        - benchmark_return_pct
+        - excess_return_pct
+        - unpriced_pct
+        - is_provisional
       properties:
         period_start:
           type: string
@@ -7063,7 +6979,7 @@ components:
 
     PeriodsResponse:
       type: object
-      required: [level, id, grain, periods]
+      required: [level, id, grain, periods, name, benchmark, basis]
       properties:
         level:
           type: string
@@ -7092,6 +7008,23 @@ components:
       description: |
         Figures for an account performance report. Returns are decimals; periods
         longer than a year are annualised on a 365.25-day year.
+      required:
+        - level
+        - id
+        - name
+        - as_of
+        - inception
+        - ending_value
+        - cash_value
+        - returns
+        - activity
+        - risk
+        - calendar_years
+        - monthly
+        - cumulative
+        - drawdowns
+        - net_contributions
+        - quality
       properties:
         level:
           type: string
@@ -7127,6 +7060,18 @@ components:
             type: object
         risk:
           type: object
+          required:
+            - annualized_return
+            - volatility
+            - sharpe
+            - sortino
+            - max_drawdown
+            - max_drawdown_date
+            - max_drawdown_start
+            - max_drawdown_recovered
+            - best_month
+            - worst_month
+            - positive_months
           properties:
             annualized_return: {type: number, nullable: true}
             volatility: {type: number, nullable: true}
@@ -7161,6 +7106,7 @@ components:
             type: object
         quality:
           type: object
+          required: [days, observed_days, observed_pct, provisional_days, unpriced_pct, unpriced_value]
           properties:
             days: {type: integer}
             observed_days: {type: integer}
@@ -7194,6 +7140,8 @@ components:
       - kind
       - amount
       - account_name
+      - symbol
+      - quantity
     CumulativePoint:
       properties:
         date:
@@ -7215,6 +7163,10 @@ components:
       type: object
       required:
       - date
+      - twr
+      - mwr
+      - benchmark
+      - value
     MonthFigure:
       properties:
         year:
@@ -7228,6 +7180,7 @@ components:
       required:
       - year
       - month
+      - twr_pct
     OverviewAccount:
       properties:
         id:
@@ -7264,6 +7217,11 @@ components:
       - name
       - shared
       - sleeves
+      - number_last4
+      - value
+      - cash
+      - twr_pct
+      - gain
     OverviewSleeve:
       properties:
         sleeve_id:
@@ -7286,6 +7244,9 @@ components:
       - sleeve_id
       - strategy_id
       - strategy_name
+      - value
+      - twr_pct
+      - gain
     AccountGroupResponse:
       properties:
         id:
@@ -7352,7 +7313,7 @@ components:
     AccountHealth:
       type: object
       description: How far an account's record can be trusted. Figures built on an incomplete account are not to be trusted, and no nudge is built on one.
-      required: [state, reasons]
+      required: [state, reasons, download_from]
       properties:
         state:
           type: string
@@ -7457,6 +7418,23 @@ components:
       - client_id
       - name
       - shared
+      - display_name
+      - number_last4
+      - owed
+      - institution
+      - owners
+      - held_for
+      - needs_sign_in
+      - login_id
+      - health
+      - value
+      - priced_at
+      - recorded_value
+      - cash
+      - as_of
+      - source
+      - synced_at
+      - sleeves
     PortalAccountsResponse:
       properties:
         viewer:
@@ -7553,6 +7531,20 @@ components:
       - closed_at
       - term
       - realized_gain
+      - event
+      - opened_at
+      - days_held
+      - quantity
+      - multiplier
+      - entry_price
+      - exit_price
+      - cost
+      - proceeds
+      - disallowed_loss
+      - short_term_gain
+      - long_term_gain
+      - realized_gain_pct
+      - adjustments
     PortalMonth:
       properties:
         year:
@@ -7569,6 +7561,7 @@ components:
       - year
       - month
       - is_provisional
+      - twr_pct
     PortalHomeResponse:
       properties:
         as_of:
@@ -7678,6 +7671,21 @@ components:
       - carried_losses
       - turning_long_term
       - concentrated
+      - as_of
+      - live_prices_at
+      - record_through
+      - day_change
+      - day_change_pct
+      - ytd_twr_pct
+      - benchmark_ytd_pct
+      - excess_ytd_pct
+      - first_date
+      - since_start_twr_pct
+      - max_drawdown_pct
+      - cash_value
+      - added_ytd
+      - movers_up
+      - movers_down
       description: 'The home page. Value and the day''s change are at live prices; the
     
         year''s figures run through ``record_through``, the custodian''s last day.'
@@ -7701,6 +7709,9 @@ components:
       required:
       - symbol
       - value
+      - day_change
+      - day_change_pct
+      - share
     HomeAllocation:
       properties:
         kind:
@@ -7714,6 +7725,7 @@ components:
       required:
       - kind
       - value
+      - share
     ExpiringOption:
       properties:
         symbol:
@@ -7752,6 +7764,8 @@ components:
       - days
       - contracts
       - written
+      - underlying_price
+      - above_strike_pct
     TurningLongTerm:
       properties:
         symbol:
@@ -7807,6 +7821,11 @@ components:
       - accounts
       - timeseries
       - recent
+      - as_of
+      - total_value
+      - cash_value
+      - ytd_twr_pct
+      - ytd_gain
     BenchmarkChoice:
       type: object
       required: [code, name, includes_dividends]
@@ -7868,6 +7887,10 @@ components:
       - months
       - years
       - periods
+      - first_date
+      - as_of
+      - benchmarks
+      - summary
     PortalPeriod:
       properties:
         period_start:
@@ -7917,6 +7940,13 @@ components:
       - net_flow
       - gain
       - is_provisional
+      - flow_in
+      - flow_out
+      - brought
+      - twr_pct
+      - twr_ytd_pct
+      - benchmark_return_pct
+      - excess_return_pct
     PortalPosition:
       properties:
         account_id:
@@ -7984,6 +8014,16 @@ components:
       - security_type
       - quantity
       - is_short
+      - avg_cost
+      - multiplier
+      - price
+      - price_source
+      - day_change
+      - day_change_pct
+      - cost_basis
+      - market_value
+      - unrealized_gain
+      - unrealized_gain_pct
     PortalPositionsResponse:
       properties:
         as_of:
@@ -8017,7 +8057,7 @@ components:
           description: Cash and the custodian's combined options value by account, as last reported. Not part of the totals.
           items:
             type: object
-            required: [account_id, as_of]
+            required: [account_id, as_of, cash_value, options_value, options_cost]
             properties:
               account_id:
                 type: string
@@ -8047,6 +8087,11 @@ components:
       - total_cost_basis
       - total_unrealized_gain
       - positions
+      - as_of
+      - live_prices_at
+      - total_unrealized_gain_pct
+      - options
+      - account_balances
     GainPeriod:
       properties:
         count:
@@ -8083,6 +8128,7 @@ components:
       - interest
       - period_start
       - period_end
+      - margin_interest
     GainSleeve:
       properties:
         count:
@@ -8120,6 +8166,7 @@ components:
       - sleeve_id
       - strategy_id
       - strategy_name
+      - margin_interest
     GainAccount:
       properties:
         count:
@@ -8162,6 +8209,7 @@ components:
       - account_name
       - shared
       - sleeves
+      - margin_interest
     PortalRealizedResponse:
       properties:
         count:
@@ -8218,6 +8266,14 @@ components:
       - losses
       - years
       - positions
+      - cost
+      - proceeds
+      - disallowed_loss
+      - dividends
+      - interest
+      - margin_interest
+      - periods
+      - accounts
     PortalSleeve:
       properties:
         sleeve_id:
@@ -8301,6 +8357,19 @@ components:
       - net_flow
       - gain
       - is_provisional
+      - cash_value
+      - flow_in
+      - flow_out
+      - brought
+      - twr_pct
+      - mwr_pct
+      - benchmark_return_pct
+      - benchmark_from
+      - excess_return_pct
+      - best_month
+      - worst_month
+      - months_up
+      - months_total
     PortalTrade:
       properties:
         account_id:
@@ -8357,6 +8426,8 @@ components:
       - price
       - amount
       - commission
+      - event
+      - multiplier
     ActivityRow:
       properties:
         account_id:
@@ -8419,6 +8490,14 @@ components:
       - kind
       - label
       - amount
+      - detail
+      - symbol
+      - action
+      - event
+      - security_type
+      - quantity
+      - price
+      - multiplier
       description: 'One thing that happened: a trade, or cash that moved.'
     ActivityAccount:
       properties:
@@ -8504,6 +8583,7 @@ components:
       - limit
       - net_invested
       - rows
+      - accounts
     StatusApp:
       properties:
         environment:
@@ -8535,6 +8615,9 @@ components:
       type: object
       required:
       - known
+      - at
+      - file
+      - size_bytes
     StatusBrokerageAccount:
       properties:
         id:
@@ -8590,6 +8673,16 @@ components:
       - name
       - status
       - connection_status
+      - number_last4
+      - owner
+      - last_synced_at
+      - next_sync_allowed_at
+      - transactions_synced_through
+      - captured_through
+      - holdings_differ
+      - holdings_differ_since
+      - download_from
+      - skipped_rows
     StatusBrokerageLink:
       properties:
         id:
@@ -8623,6 +8716,9 @@ components:
       - status
       - client_id
       - accounts
+      - checked_at
+      - disabled_at
+      - client
       description: One brokerage login, and whether the source is still sharing it.
     StatusCapture:
       properties:
@@ -8669,6 +8765,8 @@ components:
       - trades
       - priced_symbols
       - indices
+      - latest_trade_date
+      - latest_price_date
     StatusDatabase:
       properties:
         ok:
@@ -8682,6 +8780,8 @@ components:
       type: object
       required:
       - ok
+      - size_bytes
+      - migration
     StatusDisk:
       properties:
         total_bytes:
@@ -8706,6 +8806,7 @@ components:
       required:
       - symbol
       - days
+      - latest_date
     StatusJob:
       properties:
         id:
@@ -8738,6 +8839,12 @@ components:
       required:
       - id
       - label
+      - next_run_at
+      - last_started_at
+      - last_finished_at
+      - last_ok
+      - last_error
+      - last_skipped
     StatusLogEntry:
       properties:
         at:
@@ -8781,7 +8888,7 @@ components:
 
     InvitationRequest:
       type: object
-      required: [id, name, email, phone, note, status, created_at]
+      required: [id, name, email, phone, note, status, created_at, handled_at]
       properties:
         id:
           type: string
@@ -8823,7 +8930,7 @@ components:
       - outcome
     MdJobStatus:
       type: object
-      required: [id, label]
+      required: [id, label, outcome, started_at, finished_at, requests, rows_written, note, next_run_at]
       properties:
         id: {type: string}
         label: {type: string}
@@ -8839,7 +8946,7 @@ components:
         next_run_at: {type: string, format: date-time, nullable: true}
     MdIndexStatus:
       type: object
-      required: [code, name, members, in_range]
+      required: [code, name, members, in_range, expected_min, expected_max, source, latest_file]
       properties:
         code: {type: string}
         name: {type: string}
@@ -8883,7 +8990,7 @@ components:
           items: {$ref: '#/components/schemas/MdNamedCount'}
     MdTableStatus:
       type: object
-      required: [name, kind, rows]
+      required: [name, kind, rows, size_bytes]
       properties:
         name: {type: string}
         kind:
@@ -8907,7 +9014,7 @@ components:
           description: total (dividends in) or price (an index level)
     MdPeriod:
       type: object
-      required: [period, start, end, ret, partial]
+      required: [period, start, end, ret, partial, excess]
       properties:
         period: {type: string}
         start: {type: string, format: date}
@@ -8928,7 +9035,7 @@ components:
           items: {$ref: '#/components/schemas/MdPeriod'}
     MdReturnsResponse:
       type: object
-      required: [grain, series, unknown]
+      required: [grain, series, unknown, benchmark]
       properties:
         grain: {type: string}
         benchmark:
@@ -8976,7 +9083,7 @@ components:
         mean: {type: number}
     MdSeasonalityResponse:
       type: object
-      required: [subject, by, kind, basis, survivorship, buckets]
+      required: [subject, by, kind, basis, survivorship, buckets, month, members, years, month_to_date]
       properties:
         subject: {type: string}
         by: {type: string}
@@ -8999,7 +9106,16 @@ components:
           items: {$ref: '#/components/schemas/MdMonthToDate'}
     MdConsistentRow:
       type: object
-      required: [symbol, years, beat, avg_excess, median_excess, worst_excess]
+      required:
+        - symbol
+        - years
+        - beat
+        - avg_excess
+        - median_excess
+        - worst_excess
+        - other_months_beat_share
+        - sector
+        - sector_beat_share
       properties:
         symbol: {type: string}
         years: {type: integer}
@@ -9020,7 +9136,7 @@ components:
           basis: {type: string}
     MdConsistentResponse:
       type: object
-      required: [month, benchmark, min_years, eligible, found, expected_by_luck, rows]
+      required: [month, benchmark, min_years, eligible, found, expected_by_luck, rows, index_long_run]
       properties:
         month: {type: integer}
         benchmark: {$ref: '#/components/schemas/MdBenchmarkRef'}
@@ -9044,7 +9160,7 @@ components:
         ret: {type: number}
     MdMoversResponse:
       type: object
-      required: [grain, basis, count, best, worst]
+      required: [grain, basis, count, best, worst, period]
       properties:
         grain: {type: string}
         period: {type: string, nullable: true}
@@ -9072,6 +9188,7 @@ components:
       required:
       - symbol
       - basis
+      - universe
       title: RsBenchmark
     RsBucket:
       properties:
@@ -9166,6 +9283,7 @@ components:
       - best
       - worst
       - notes
+      - available
       title: RsCalendarResponse
     RsCell:
       properties:
@@ -9242,6 +9360,7 @@ components:
       - months
       - ret
       - complete
+      - running_month
       title: RsGridYear
     RsIndex:
       properties:
@@ -9285,6 +9404,8 @@ components:
       - currency
       - group
       - volatility
+      - first_day
+      - last_day
       title: RsIndex
     RsIndicesResponse:
       properties:
@@ -9353,6 +9474,9 @@ components:
       - rows
       - summary
       - notes
+      - year_summary
+      - best
+      - worst
       title: RsMonthGridResponse
     RsMonthSummary:
       properties:
@@ -9458,6 +9582,7 @@ components:
       - month_name
       - rows
       - notes
+      - as_of
       title: RsMonthResponse
     RsMonthRow:
       properties:
@@ -9487,6 +9612,8 @@ components:
       - label
       - kind
       - basis
+      - month_to_date
+      - record
       title: RsMonthRow
     RsMonthToDate:
       properties:
@@ -9597,6 +9724,10 @@ components:
       - basis
       - survivorship
       - buckets
+      - month
+      - members
+      - years
+      - month_to_date
       title: RsPattern
     RsPerformerRow:
       properties:
@@ -9634,6 +9765,9 @@ components:
       - median_excess
       - worst_excess
       - median_return
+      - name
+      - sector
+      - industry
       title: RsPerformerRow
     RsPeriodReturn:
       properties:
@@ -9698,6 +9832,7 @@ components:
       required:
       - typical
       - years
+      - current
       title: RsMonthPath
     RsPathDay:
       properties:
@@ -9797,6 +9932,10 @@ components:
       - month_by_trading_day
       - month_path
       - notes
+      - name
+      - sector
+      - industry
+      - sector_month_of_year
       title: RsProfileResponse
     RsReturnRow:
       properties:
@@ -9860,6 +9999,8 @@ components:
       - symbol
       - kind
       - indices
+      - name
+      - sector
       title: RsSearchResult
     RsSectorResult:
       properties:
@@ -9978,6 +10119,8 @@ components:
       - share_up
       - best
       - worst
+      - first_year
+      - last_year
       title: RsStats
     RsTool:
       properties:
@@ -10108,6 +10251,7 @@ components:
       - best
       - worst
       - notes
+      - running
       title: RsWeekResponse
     RsYears:
       properties:
@@ -10128,7 +10272,7 @@ components:
       title: RsYears
     MarketDataStatusResponse:
       type: object
-      required: [generated_at, available, own_database, attention, jobs, indices, tables, not_built]
+      required: [generated_at, available, own_database, attention, jobs, indices, tables, not_built, coverage]
       properties:
         generated_at: {type: string, format: date-time}
         available:
@@ -10215,6 +10359,9 @@ components:
       - data
       - backup
       - recent_log
+      - alerts
+      - brokerage_links
+      - webhooks
     PortalTradesResponse:
       properties:
         total:
@@ -10261,6 +10408,7 @@ components:
       - sold
       - net_invested
       - trades
+      - accounts
     PortalViewerResponse:
       properties:
         client_id:
@@ -10282,6 +10430,8 @@ components:
       - client_id
       - name
       - preview
+      - is_minor
+      - not_shared_with_you
     PortalYear:
       properties:
         year:
@@ -10295,6 +10445,7 @@ components:
       required:
       - year
       - is_provisional
+      - twr_pct
     ValuePoint:
       properties:
         date:
