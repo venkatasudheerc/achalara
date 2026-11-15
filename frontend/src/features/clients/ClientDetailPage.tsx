@@ -2,13 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClient, useClientPositions, useClientTrades, useUpdateClient } from '@/hooks/useClients'
-import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
+import { useAccounts } from '@/hooks/useAccounts'
 import { useAccountAccess, useIsAdmin, useUsers } from '@/hooks/useAuth'
 import { useScope, useScopeFollowsPage } from '@/context/ScopeContext'
 import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
+import { QueryState } from '@/components/QueryState'
 import { formatCurrency, formatDate, formatStoredPrice } from '@/lib/formatters'
 import type { AggregatedPosition, TradeSummary } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
@@ -22,18 +23,14 @@ export function ClientDetailPage() {
   const { setClient } = useScope()
 
   const { data: client, isLoading, isError, refetch } = useClient(clientId!)
-  const { data: accounts } = useAccounts(clientId!)
+  const accountsQuery = useAccounts(clientId!)
+  const accounts = accountsQuery.data
   // Accounts of other clients this one may view, e.g. as agent on a relative's account.
-  const { data: sharedAccounts } = useAccountAccess(clientId!)
-  const { data: positions } = useClientPositions(clientId!)
-  const { data: tradesData } = useClientTrades(clientId!, 0, 100)
-
-  const [showAccountForm, setShowAccountForm] = useState(false)
-  const [accName, setAccName] = useState('')
-  const [accDesc, setAccDesc] = useState('')
-  const [accNum, setAccNum] = useState('')
-  const [formError, setFormError] = useState('')
-  const createAccount = useCreateAccount()
+  const sharedQuery = useAccountAccess(clientId!)
+  const sharedAccounts = sharedQuery.data
+  const positionsQuery = useClientPositions(clientId!)
+  const positions = positionsQuery.data
+  const tradesQuery = useClientTrades(clientId!, 0, 100)
   const updateClient = useUpdateClient()
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -47,7 +44,7 @@ export function ClientDetailPage() {
   useScopeFollowsPage(client && { id: client.id, name: client.name })
 
   if (isLoading) return <SkeletonCard />
-  if (isError || !client) return <ErrorState message="Client not found." onRetry={() => refetch()} />
+  if (isError || !client) return <ErrorState message="Could not open this person. They may have been removed, or the connection dropped." onRetry={() => refetch()} />
 
   const startEditing = () => {
     setEditName(client.name); setEditEmail(client.email ?? ''); setEditError('')
@@ -74,21 +71,6 @@ export function ClientDetailPage() {
       await updateClient.mutateAsync({ clientId: client.id, body: { advisor_id: advisorId || null } })
     } catch (err) {
       setAdvisorError(err instanceof Error ? err.message : 'Could not change the advisor.')
-    }
-  }
-
-  const handleCreateAccount = async (e: FormEvent) => {
-    e.preventDefault()
-    setFormError('')
-    try {
-      await createAccount.mutateAsync({
-        clientId: clientId!,
-        body: { name: accName, description: accDesc, account_number: accNum || null },
-      })
-      setAccName(''); setAccDesc(''); setAccNum('')
-      setShowAccountForm(false)
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -120,10 +102,9 @@ export function ClientDetailPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-16">
         {editing ? (
           <form onSubmit={handleUpdateClient} className="flex-1 max-w-md mr-6 space-y-3">
-            <p className="text-xs text-stone font-mono">CLIENT</p>
             <div>
               <label htmlFor="client-name" className="text-xs text-stone block mb-1">Name</label>
               <input id="client-name" required value={editName} onChange={(e) => setEditName(e.target.value)}
@@ -134,7 +115,7 @@ export function ClientDetailPage() {
               <input id="client-email" type="email" required={!!client.email} value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
                 className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm font-mono bg-surface focus:outline-none focus:border-pine" />
               <p className="text-xs text-stone mt-1">
-                For your records. The address the client signs in with is set under Client login below.
+                For your records. The address they sign in with is set under Sign-in below.
               </p>
             </div>
             {editError && <p className="text-loss text-xs">{editError}</p>}
@@ -151,7 +132,7 @@ export function ClientDetailPage() {
           </form>
         ) : (
           <div>
-            <p className="text-xs text-stone font-mono mb-1">CLIENT</p>
+            <p className="text-xs text-stone mb-1"><Link to="/app/clients" className="hover:text-pine">People</Link></p>
             <h1 className="font-display text-3xl text-summit-ink">{client.name}</h1>
             <p className="text-stone text-sm mt-1">
               {client.email ?? 'No email'}
@@ -176,12 +157,12 @@ export function ClientDetailPage() {
             )}
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             to={`/home?as=${client.id}`}
             className="px-16 py-2 border border-pine text-pine text-sm font-medium rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
           >
-            Preview the client's view
+            Preview {client.name.split(' ')[0]}'s view
           </Link>
           <button
             onClick={() => { flushSync(() => setClient(client.id, client.name)); navigate('/app/performance') }}
@@ -194,48 +175,15 @@ export function ClientDetailPage() {
 
       {/* Accounts */}
       <section className="border border-stone/20 rounded-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Accounts</h2>
-          <button
-            onClick={() => setShowAccountForm(!showAccountForm)}
-            className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
-          >
-            + Add account
-          </button>
-        </div>
-
-        {showAccountForm && (
-          <form onSubmit={handleCreateAccount} className="mb-4 p-4 bg-mist/30 rounded-btn space-y-3">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-stone block mb-1">Name *</label>
-                <input required value={accName} onChange={(e) => setAccName(e.target.value)}
-                  placeholder="Taxable Brokerage"
-                  className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine" />
-              </div>
-              <div>
-                <label className="text-xs text-stone block mb-1">Description</label>
-                <input value={accDesc} onChange={(e) => setAccDesc(e.target.value)}
-                  className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine" />
-              </div>
-              <div>
-                <label className="text-xs text-stone block mb-1">Account number</label>
-                <input value={accNum} onChange={(e) => setAccNum(e.target.value)}
-                  className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine" />
-              </div>
-            </div>
-            {formError && <p className="text-loss text-xs">{formError}</p>}
-            <div className="flex gap-2">
-              <button type="submit" disabled={createAccount.isPending}
-                className="px-3 py-1.5 bg-pine text-on-dark text-xs rounded-btn hover:bg-pine-deep disabled:opacity-50">
-                {createAccount.isPending ? 'Creating…' : 'Create'}
-              </button>
-              <button type="button" onClick={() => setShowAccountForm(false)}
-                className="px-3 py-1.5 text-stone text-xs">Cancel</button>
-            </div>
-          </form>
-        )}
-
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Accounts</h2>
+        <p className="text-sm text-stone mb-4">
+          Accounts come in when {client.name.split(' ')[0]} links them with Plaid, from their own app or your preview of it.
+        </p>
+        <QueryState query={{
+          isLoading: accountsQuery.isLoading || sharedQuery.isLoading,
+          isError: accountsQuery.isError || sharedQuery.isError,
+          refetch: () => { accountsQuery.refetch(); sharedQuery.refetch() },
+        }} error="Could not load the accounts.">
         {(accounts && accounts.length > 0) || (sharedAccounts && sharedAccounts.length > 0) ? (
           <div className="divide-y divide-stone/10">
             {(accounts ?? []).map((acc) => (
@@ -250,7 +198,7 @@ export function ClientDetailPage() {
                   to={`/app/clients/${clientId}/accounts/${acc.id}`}
                   className="text-xs border border-stone/30 text-stone rounded-btn px-3 py-1.5 hover:border-pine hover:text-pine transition-colors"
                 >
-                  Manage →
+                  Open →
                 </Link>
               </div>
             ))}
@@ -275,6 +223,7 @@ export function ClientDetailPage() {
         ) : (
           <p className="text-stone text-sm py-4">No accounts yet.</p>
         )}
+        </QueryState>
       </section>
 
       <ClientLoginSection clientId={clientId!} clientEmail={client.email} />
@@ -287,7 +236,8 @@ export function ClientDetailPage() {
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Positions (all accounts)</h2>
-        {positions ? (
+        <QueryState query={positionsQuery} error="Could not load the positions.">
+        {positions && (
           <>
             <div className="flex gap-6 mb-4 text-sm font-mono">
               <span className="text-stone">Market value: <span className="text-summit-ink">{formatCurrency(positions.total_market_value)}</span></span>
@@ -303,7 +253,8 @@ export function ClientDetailPage() {
               emptyMessage="No positions found."
             />
           </>
-        ) : <p className="text-stone text-sm">Loading positions…</p>}
+        )}
+        </QueryState>
       </section>
 
       {/* Trades */}
@@ -311,12 +262,14 @@ export function ClientDetailPage() {
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">
           Recent trades
         </h2>
-        <DataTable
-          columns={tradeCols}
-          rows={tradesData?.trades ?? []}
-          getKey={(r) => r.id}
-          emptyMessage="No trades found."
-        />
+        <QueryState query={tradesQuery} error="Could not load the trades.">
+          <DataTable
+            columns={tradeCols}
+            rows={tradesQuery.data?.trades ?? []}
+            getKey={(r) => r.id}
+            emptyMessage="No trades yet."
+          />
+        </QueryState>
       </section>
     </div>
   )

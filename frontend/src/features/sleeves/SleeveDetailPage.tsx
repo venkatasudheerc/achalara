@@ -10,6 +10,7 @@ import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
+import { QueryState } from '@/components/QueryState'
 import { formatCurrency, formatDate, formatPercent, formatStoredPrice } from '@/lib/formatters'
 import { GainBadge } from '@/components/StatCard'
 import type { PositionResponse, ClosedPosition, TradeSummary, CashActivity } from '@/api/types'
@@ -25,10 +26,14 @@ export function SleeveDetailPage() {
   const { setClient, setAccount, setSleeve, scope } = useScope()
 
   const { data: sleeve, isLoading, isError, refetch } = useSleeve(clientId!, accountId!, sleeveId!)
-  const { data: portfolioData } = useSleevePositions(clientId!, accountId!, sleeveId!)
-  const { data: closedPositions } = useSleeveClosedPositions(clientId!, accountId!, sleeveId!)
-  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, TRADES_PAGE)
-  const { data: cashActivities } = useSleeveCashActivities(clientId!, accountId!, sleeveId!)
+  const positionsQuery = useSleevePositions(clientId!, accountId!, sleeveId!)
+  const portfolioData = positionsQuery.data
+  const closedQuery = useSleeveClosedPositions(clientId!, accountId!, sleeveId!)
+  const closedPositions = closedQuery.data
+  const tradesQuery = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, TRADES_PAGE)
+  const tradesData = tradesQuery.data
+  const cashQuery = useSleeveCashActivities(clientId!, accountId!, sleeveId!)
+  const cashActivities = cashQuery.data
   const { data: accountSleeves } = useSleeves(clientId!, accountId!)
   const fetchPrices = useFetchMarketPrices()
   const createTrade = useCreateTrade()
@@ -53,7 +58,7 @@ export function SleeveDetailPage() {
   const [tradeError, setTradeError] = useState('')
 
   if (isLoading) return <SkeletonCard />
-  if (isError || !sleeve) return <ErrorState message="Sleeve not found." onRetry={() => refetch()} />
+  if (isError || !sleeve) return <ErrorState message="Could not open this strategy. It may have been removed, or the connection dropped." onRetry={() => refetch()} />
 
   const handleCreateTrade = async (e: FormEvent) => {
     e.preventDefault()
@@ -167,19 +172,18 @@ export function SleeveDetailPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-16">
         <div>
-          <p className="text-xs text-stone font-mono mb-1">
-            <Link to={`/app/clients/${clientId}`} className="hover:text-pine">{scope.clientName ?? 'Client'}</Link>
+          <p className="text-xs text-stone mb-1">
+            <Link to={`/app/clients/${clientId}`} className="hover:text-pine">{client?.name ?? scope.clientName ?? 'This person'}</Link>
             {' / '}
-            <Link to={`/app/clients/${clientId}/accounts/${accountId}`} className="hover:text-pine">{scope.accountName ?? 'Account'}</Link>
-            {' / '}SLEEVE
+            <Link to={`/app/clients/${clientId}/accounts/${accountId}`} className="hover:text-pine">{account?.name ?? scope.accountName ?? 'Account'}</Link>
           </p>
           <h1 className="font-display text-3xl text-summit-ink">
             {sleeve.strategy_name ?? sleeve.strategy_id}
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={async () => {
               await fetchPrices.mutateAsync({ clientId: clientId!, accountId: accountId!, sleeveId: sleeveId! })
@@ -227,7 +231,7 @@ export function SleeveDetailPage() {
 
       {/* Tabs */}
       <section className="border border-stone/20 rounded-card overflow-hidden">
-        <div className="flex border-b border-stone/20">
+        <div className="flex flex-wrap border-b border-stone/20">
           {(['positions', 'closed', 'trades', 'income'] as const).map((tab) => (
             <button
               key={tab}
@@ -305,15 +309,17 @@ export function SleeveDetailPage() {
           )}
 
           {activeTab === 'positions' && (
-            <DataTable
-              columns={openPosCols}
-              rows={portfolioData?.positions ?? []}
-              getKey={(r) => r.id}
-              emptyMessage="No open positions. Add some trades first."
-            />
+            <QueryState query={positionsQuery} error="Could not load the open positions.">
+              <DataTable
+                columns={openPosCols}
+                rows={portfolioData?.positions ?? []}
+                getKey={(r) => r.id}
+                emptyMessage="No open positions."
+              />
+            </QueryState>
           )}
           {activeTab === 'closed' && (
-            <>
+            <QueryState query={closedQuery} error="Could not load the closed positions.">
               {closedPositions && (
                 <p className="text-sm font-mono text-stone mb-3">
                   Total realised gain: {' '}
@@ -331,10 +337,10 @@ export function SleeveDetailPage() {
                 getKey={(r) => `${r.symbol}-${r.closed_at}`}
                 emptyMessage="No closed positions yet."
               />
-            </>
+            </QueryState>
           )}
           {activeTab === 'trades' && (
-            <>
+            <QueryState query={tradesQuery} error="Could not load the trades.">
               {otherSleeves.length > 0 && heldSymbols.length > 0 && (
                 <form onSubmit={handleMove} className="mb-4 flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-stone">Move all trades of</span>
@@ -380,17 +386,19 @@ export function SleeveDetailPage() {
                 columns={tradeCols}
                 rows={tradesData?.trades ?? []}
                 getKey={(r) => r.id}
-                emptyMessage="No trades yet. Add a trade above."
+                emptyMessage="No trades yet."
               />
-            </>
+            </QueryState>
           )}
           {activeTab === 'income' && (
-            <DataTable
-              columns={incomeCols}
-              rows={cashActivities ?? []}
-              getKey={(r) => r.id}
-              emptyMessage="No dividends, fees or transfers recorded for this sleeve."
-            />
+            <QueryState query={cashQuery} error="Could not load the income and cash.">
+              <DataTable
+                columns={incomeCols}
+                rows={cashActivities ?? []}
+                getKey={(r) => r.id}
+                emptyMessage="No dividends, fees or transfers recorded for this strategy."
+              />
+            </QueryState>
           )}
         </div>
       </section>

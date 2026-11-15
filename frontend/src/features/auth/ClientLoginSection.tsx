@@ -45,11 +45,11 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
     return run(() => (user.has_password ? reset.mutateAsync(user.id) : invite.mutateAsync({ clientId })))
   }
 
-  let status = 'No login yet. Create an invite link and send it to the client.'
+  let status = 'No login yet. Create an invite link and send it to them.'
   if (user?.has_password) {
     status = user.last_login_at ? `Last signed in ${formatDate(user.last_login_at)}.` : 'Has not signed in since setting a password.'
   } else if (user) {
-    status = 'Invited; the client has not set a password yet.'
+    status = 'Invited; they have not set a password yet.'
   }
 
   let action = 'Create invite link'
@@ -59,7 +59,7 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
 
   return (
     <section className="border border-stone/20 rounded-card p-6">
-      <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Client login</h2>
+      <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Sign-in</h2>
       <p className="text-sm text-summit-ink">
         {isLoading ? 'Loading…' : isError ? 'Could not load the login state.' : status}
       </p>
@@ -77,12 +77,12 @@ export function ClientLoginSection({ clientId, clientEmail }: { clientId: string
       </div>
       <p className="text-xs text-stone mt-2">
         {user && changed
-          ? 'The current address will stop working and the client will be signed out. Their password is kept; the link lets them choose a new one.'
-          : 'This is the address the client signs in with. Use a different one if it already belongs to another login; you can change it later.'}
+          ? 'The current address will stop working and they will be signed out. Their password is kept; the link lets them choose a new one.'
+          : 'This is the address they sign in with. Use a different one if it already belongs to another login; you can change it later.'}
       </p>
       {error && <p className="text-loss text-xs mt-3">{error.message}</p>}
 
-      {link && <OneTimeLink link={link} whose="this client's login" />}
+      {link && <OneTimeLink link={link} whose="this person's login" />}
     </section>
   )
 }

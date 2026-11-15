@@ -5,7 +5,8 @@ import { GainBadge } from './StatCard'
 
 interface Props {
   children: PerformanceChild[]
-  makeHref: (child: PerformanceChild) => string
+  /** Where a row opens; null when it has no page of its own (the row is then not a link). */
+  makeHref: (child: PerformanceChild) => string | null
   label: string
 }
 
@@ -16,12 +17,11 @@ export function LevelBreakdown({ children, makeHref, label }: Props) {
 
   return (
     <div className="divide-y divide-stone/10">
-      {children.map((child) => (
-        <Link
-          key={child.id}
-          to={makeHref(child)}
-          className="grid grid-cols-5 items-center py-4 px-2 hover:bg-mist/50 rounded transition-colors group gap-4"
-        >
+      {children.map((child) => {
+        const href = makeHref(child)
+        const row = 'grid grid-cols-5 items-center py-4 px-2 rounded transition-colors group gap-4'
+        const cells = (
+          <>
           {/* Name + market value */}
           <div className="col-span-2">
             <p className="font-medium text-summit-ink group-hover:text-pine transition-colors">
@@ -50,8 +50,12 @@ export function LevelBreakdown({ children, makeHref, label }: Props) {
               {formatCurrency(child.summary.total_unrealized_gain)}
             </span>
           </div>
-        </Link>
-      ))}
+          </>
+        )
+        return href
+          ? <Link key={child.id} to={href} className={`${row} hover:bg-mist/50`}>{cells}</Link>
+          : <div key={child.id} className={row}>{cells}</div>
+      })}
     </div>
   )
 }

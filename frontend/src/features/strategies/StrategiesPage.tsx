@@ -37,11 +37,11 @@ export function StrategiesPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-16 mb-6">
         <div>
           <h1 className="font-display text-2xl text-summit-ink">Strategies</h1>
           <p className="text-stone text-sm mt-1">
-            Firm-wide strategy definitions applied across client accounts.
+            Ways of investing, shared by every account that follows one. An account's trades and holdings are kept under its strategy.
             {!isAdmin && ' The admin adds new ones.'}
           </p>
         </div>
@@ -66,7 +66,7 @@ export function StrategiesPage() {
             <div>
               <label className="text-xs text-stone block mb-1">Description</label>
               <input value={desc} onChange={(e) => setDesc(e.target.value)}
-                placeholder="Long-term growth via diversified equities"
+                placeholder="Shares held for the long run"
                 className="w-full border border-stone/30 rounded-btn px-3 py-2 text-sm focus:outline-none focus:border-pine" />
             </div>
           </div>
@@ -85,7 +85,7 @@ export function StrategiesPage() {
         <EmptyState
           title="No strategies yet"
           message={isAdmin
-            ? 'Create your first firm-wide strategy definition. Strategies are applied to accounts to create sleeves.'
+            ? 'Add the first one. Each account follows one or more strategies, and its trades are kept under them.'
             : 'The admin has not defined any strategies yet.'}
           action={isAdmin ? { label: 'Create strategy', onClick: () => setShowForm(true) } : undefined}
         />

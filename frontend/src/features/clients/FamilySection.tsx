@@ -36,7 +36,7 @@ export function FamilySection({ client }: { client: ClientResponse }) {
   const spouse = relatives?.find((r) => r.relation === 'spouse')
   const minors = (relatives ?? []).filter((r) => r.relation === 'minor')
   const others = clients.filter((c) => c.id !== client.id)
-  const nameOf = (id: string) => clients.find((c) => c.id === id)?.name ?? 'another client'
+  const nameOf = (id: string) => clients.find((c) => c.id === id)?.name ?? 'someone else'
   // Who could be this client's spouse, minor or guardian, by the same rules the API applies.
   const spouseChoices = others.filter((c) => !c.guardian_id && !c.spouse_id)
   const minorChoices = others.filter((c) => !c.guardian_id && !c.spouse_id && c.id !== client.spouse_id)
@@ -70,7 +70,7 @@ export function FamilySection({ client }: { client: ClientResponse }) {
                     disabled={changes.setSpouse.isPending} className={quiet}>Remove</button>} />
               ) : (
                 <div className="space-y-3">
-                  <Choose label="Choose an existing client" choices={spouseChoices} button="Make spouse"
+                  <Choose label="Choose someone already here" choices={spouseChoices} button="Make spouse"
                     pending={changes.setSpouse.isPending}
                     onChoose={(id) => run(() => changes.setSpouse.mutateAsync({ clientId: client.id, spouseId: id }))} />
                   <AddNew relation="spouse" pending={changes.addRelative.isPending}
@@ -96,7 +96,7 @@ export function FamilySection({ client }: { client: ClientResponse }) {
                 </ul>
               )}
               <div className="space-y-3">
-                <Choose label="Choose an existing client" choices={minorChoices} button="Make a minor of this client"
+                <Choose label="Choose someone already here" choices={minorChoices} button="Make a minor of this person"
                   pending={changes.setGuardian.isPending}
                   onChoose={(id) => run(() => changes.setGuardian.mutateAsync({ clientId: id, guardianId: client.id }))} />
                 <AddNew relation="minor" pending={changes.addRelative.isPending}
@@ -114,7 +114,7 @@ export function FamilySection({ client }: { client: ClientResponse }) {
                   <p className="text-sm text-summit-ink">
                     In the care of{' '}
                     <Link to={`/app/clients/${client.guardian_id}`} className="text-pine underline underline-offset-2">{nameOf(client.guardian_id)}</Link>,
-                    who (with their spouse) sees this client's accounts.
+                    who (with their spouse) sees this person's accounts.
                   </p>
                   <button onClick={() => run(() => changes.setGuardian.mutateAsync({ clientId: client.id, guardianId: null }))}
                     disabled={changes.setGuardian.isPending} className={quiet}>Clear</button>
@@ -221,7 +221,7 @@ function AddNew({ relation, pending, onAdd }: {
     setName(''); setEmail(''); setOpen(false)
   }
 
-  if (!open) return <button onClick={() => setOpen(true)} className={outline}>+ {label} as a new client</button>
+  if (!open) return <button onClick={() => setOpen(true)} className={outline}>+ {label} as someone new</button>
   return (
     <form onSubmit={submit} className="p-16 bg-mist/30 rounded-btn space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

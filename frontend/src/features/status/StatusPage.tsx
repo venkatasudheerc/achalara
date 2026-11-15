@@ -137,7 +137,7 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
                     <td className={mono}>{link.accounts}</td>
                     <td className={td}>
                       <Link to={`/app/clients/${link.client_id}`} className="text-pine underline underline-offset-2">
-                        {link.client ?? 'Client'}
+                        {link.client ?? 'Their page'}
                       </Link>
                     </td>
                   </tr>
@@ -254,7 +254,7 @@ export function StatusPage() {
           note={`Running since ${when(status.app.started_at)}`} />
         <Tile label="Database" tone={status.database.ok ? 'ok' : 'attention'}
           value={status.database.ok ? bytes(status.database.size_bytes) : 'Not answering'}
-          note={`${formatNumber(status.data.trades, 0)} trades · ${status.data.accounts} accounts · ${status.data.clients} clients`} />
+          note={`${formatNumber(status.data.trades, 0)} trades · ${status.data.accounts} accounts · ${status.data.clients} ${status.data.clients === 1 ? 'person' : 'people'}`} />
         <Tile label="Daily jobs"
           tone={!status.app.scheduler_enabled ? 'quiet' : failed > 0 ? 'attention' : 'ok'}
           value={!status.app.scheduler_enabled ? 'Switched off' : failed > 0 ? `${failed} failed` : 'Scheduled'}

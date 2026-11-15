@@ -26,7 +26,7 @@ export function RequestsPage() {
       await setStatus.mutateAsync({ id: request.id, status: 'contacted' })
       navigate(`/app/clients/${client.id}`)
     } catch {
-      setError(`Could not create a client for ${request.name}. A client with that email may already exist.`)
+      setError(`Could not add ${request.name}. Someone with that email may already be here.`)
     }
   }
 
@@ -69,7 +69,7 @@ export function RequestsPage() {
               <div className="flex flex-wrap items-center gap-16 mt-5">
                 <button onClick={() => makeClient(request)} disabled={busy}
                   className="text-xs bg-pine text-on-dark px-3 py-1.5 rounded-btn hover:bg-pine-deep disabled:opacity-50">
-                  Create client
+                  Add as a person
                 </button>
                 <button onClick={() => setStatus.mutate({ id: request.id, status: 'contacted' })} disabled={busy} className={quiet}>
                   Mark contacted

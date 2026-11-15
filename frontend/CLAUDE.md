@@ -40,7 +40,7 @@ Two React contexts drive all data-fetching:
 - `ScopeContext` — the currently selected `{ clientId?, accountId?, sleeveId? }`. Changing scope invalidates performance queries.
 - `DateRangeContext` — `{ startDate, endDate }` fed as query params to all performance endpoints.
 
-Detail pages (client, account, sleeve) call `useScopeFollowsPage(...)` so the scope, and the top-bar breadcrumb that displays it, always names the entity on screen rather than whatever was last sent to Performance.
+Detail pages (client, account, sleeve) call `useScopeFollowsPage(...)` so the scope, and the top-bar trail that displays it, always names the entity on screen rather than whatever was last sent to Performance.
 
 Both live in `src/context/`. Every performance screen reads from these; never accept scope or dates as local state.
 
@@ -64,8 +64,21 @@ strategy's performance show only for an admin (`useIsAdmin`), since the API refu
 advisor. An advisor adds trades, moves symbols and manages logins for their own clients (the API
 answers their `/auth/users` with those logins only). Staff land in `/app/clients`, clients in
 `/home`. A client remembered in the tab's scope that this login cannot see is forgotten
-(`AppShell` checks it against the clients list; Performance clears it on a 404). The word "Advisor" on screen means the limited role only. The old client portal is
-retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
+(`AppShell` checks it against the clients list; Performance clears it on a 404). The word "Advisor" on screen means the limited role only.
+
+**The staff frame (`AppShell`).** On screen the staff site says **People** and **person** where the
+code and the API say client (`/app/clients`, `clientId`, `ClientResponse` stay as they are); no
+"firm" wording. The menu: People, Requests (admin), Market patterns, Performance, Strategies, then
+a **Platform** group for the admin (Imports, System status, Market data, Settings), and at the
+foot the person (name · role), the light/dark switch and Sign out. On a phone the sidebar gives way
+to a bottom bar of People, Markets, Performance and **More**, a sheet with every other page, the
+person, the switch and Sign out, so every page and Sign out are reachable at 390 px. The top bar
+is there only where it means something: the scope's trail (each part opens its page) on
+Performance and under an account, and the date range on Performance alone; elsewhere a phone shows
+only the wordmark. Nothing "coming soon" is in the menu: the old `/app/portfolio`, `/app/risk` and
+`/app/grow` addresses redirect to `/app`.
+
+The old client portal is retired: any `/portal/...` address opens the matching place in the new app (`OldPortalRedirect`
 in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
@@ -98,7 +111,7 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and
   hides their page titles. Views that cannot apply (Holdings for a cash account) are hidden.
 - Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
-- An admin or advisor opens it as a client with "Preview the client's view" (`/home?as=<clientId>`);
+- An admin or advisor opens it as a client with "Preview <first name>'s view" on the person's page (`/home?as=<clientId>`);
   the banner says "Admin preview" or "Advisor preview".
 - **Family** (`/home/family`, `FamilyPage`): the viewer's spouse and minors from
   `/portal/relatives`, whether each can sign in, "Invite" for one who cannot (a one-time link,
@@ -147,7 +160,7 @@ premium), each marked "Priced by the custodian as a group", never with a price o
 no trade names them it says so. The strategies then hold only what is priced. The performance page's "Compare with" list
 comes from the response (`benchmarks`); the choice is sent back as `benchmark`. Do not hard-code
 benchmark names on a screen. An advisor previews a client's view at `/home?as=<clientId>`
-("Preview the client's view" on the client's page); `usePreviewClient()` reads that, every
+("Preview <first name>'s view" on the person's page); `usePreviewClient()` reads that, every
 portal hook passes it on, and `HomeShell` keeps it on its links.
 
 **Spacing classes:** `tailwind.config.ts` redefines the steps `4, 8, 12, 16, 24, 32, 48, 64, 96`
@@ -158,8 +171,6 @@ All advisor routes nest under `<AppShell>` at `/app/*`. Route params:
 - `/app/clients/:clientId`
 - `/app/clients/:clientId/accounts/:accountId`
 - `/app/clients/:clientId/accounts/:accountId/sleeves/:sleeveId`
-
-Fast-follower routes (`/app/portfolio`, `/app/risk`, `/app/grow`) exist but render `<ComingSoon>`.
 
 ### Data layer conventions
 
@@ -184,19 +195,19 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 
 | Component | Purpose |
 |---|---|
-| `AppShell` | Left sidebar + scope switcher + date picker; wraps all app routes |
+| `AppShell` | The staff frame: sidebar (laptop), bottom bar with More (phone), the scope's trail and the date range where they apply; wraps all `/app` routes |
 | `StatCard` | Single metric display (label + value + optional delta) |
 | `PerformanceChart` | Portfolio value over time — single line, `{date, value, cost_basis}` points |
 | `ReturnsSeriesChart` | Dual-line TWR vs MWR chart — `{date, twr_cumul, mwr_cumul}` weekly points; pine solid = TWR, gold dashed = MWR |
 | `MonthlyReturnsHeatmap` | Year × month grid from `/performance/monthly`; gain/clay ramp; `return_pct` is whole-number % |
-| `LevelBreakdown` | 5-column grid of `children[]` (name, MWR, TWR, unrealised gain) with drill-down links |
+| `LevelBreakdown` | 5-column grid of `children[]` (name, MWR, TWR, unrealised gain) with drill-down links; a row whose `makeHref` gives `null` has no page and is not a link |
 | `DataTable` | Generic sortable table; columns declare `sortValue?: (row) => string\|number` for client-side sort |
 | `EmptyState` / `ErrorState` | Consistent empty and error treatments; every screen uses these |
+| `QueryState` | One section's data: skeleton rows while it loads, `ErrorState` with Try again if it fails, else the section. Wrap any table or card fed by its own query, so an empty table never stands in for a failed or running request |
 | `Skeleton` | Loading placeholders; every data-fetching screen shows skeletons |
 | `ShortBadge` | "Short" tag beside a symbol when a position's quantity is negative |
 | `PeriodTable` | Performance by day / week / month / quarter for the entity in scope, from `…/performance/periods`; shows whether each period was observed or rebuilt |
 | `SleeveFilter` | Dropdown in the performance headline that re-scopes the page to one sleeve or back to all; sets `ScopeContext`, holds no state of its own |
-| `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
 | `ImportDialog` | "Update from a file": choose a custodian's file, see what it would add (`…/imports/preview`), then add it and show the holdings check. Before a file is chosen it shows the same check (`useHoldingsCheck`, `…/imports/check`): whether holdings agree with the institution's record and, if not, "Download the activity report from <date> to today", so only the missing dates are downloaded. System status's holdings column says the same (since when, report from when). One dialog for both doors (`ImportDoor`: the portal for a client's own account, the advisor's account route); hook `useAccountImport` in `src/hooks/useImports.ts`. The template it offers is `public/achalara-activity-template.csv`. When the file reaches before the account's history here (`history_starts`), the preview says the record will extend back and figures since the start will change |
 
 The headline card, returns chart, monthly grid and period table are all at market value (each day's closing prices). The three period widgets pass `basis: PERIOD_BASIS` from `src/api/endpoints/performance.ts`; the API also supports `realized` (holdings at cost). Change the constant, not individual calls.
@@ -205,14 +216,14 @@ The headline card, returns chart, monthly grid and period table are all at marke
 
 Each feature directory contains its page component(s). Implemented:
 - `performance/PerformancePage` — hero MWR/TWR cards, portfolio value chart, TWR vs MWR returns-series chart, monthly heatmap, level breakdown; 1M/3M/6M/1Y/3Y/MAX quick-filter presets
-- `clients/ClientsPage` (an admin sees every client with its advisor and may choose one when
-  creating; an advisor sees and creates only their own; the email is optional, as a minor may have
-  none), `clients/ClientDetailPage` (the header's "Edit name or email" corrects the client record;
-  the contact email there is separate from the sign-in email under Client login; an admin assigns
-  the Advisor there) and `clients/FamilySection` on it: the spouse (choose a client, or add one
+- `clients/ClientsPage` ("People": an admin sees every person with their advisor and may choose one when
+  adding; an advisor sees and adds only their own; the email is optional, as a minor may have
+  none; each row opens the person, "Performance" is secondary), `clients/ClientDetailPage` (the person's page; the header's "Edit name or email" corrects the client record;
+  the contact email there is separate from the sign-in email under Sign-in; an admin assigns
+  the Advisor there. Accounts are listed, not created: they come from Plaid, so there is no "+ Add account" here) and `clients/FamilySection` on it: the spouse (choose a client, or add one
   new; Remove), the minors (choose or add; "No longer a minor"), "Is a minor of" (a guardian, or
   Clear), and Invite for a relative with no login. The API's refusals (409, 422) show inline
-- `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend) and the account's cost basis method (FIFO / MinTax), set to match the brokerage
+- `accounts/AccountDetailPage` — includes "Download report" (the account's PDF performance report, served by the backend), the account's cost basis method (FIFO / MinTax), set to match the brokerage, and its strategies (sleeves)
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
 - `invitations/RequestInvitationPage` (`/request-invitation`, in `AuthFrame` beside sign-in) holding `invitations/RequestInvitationForm` ( name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public, in `AuthFrame`; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
@@ -259,14 +270,12 @@ Each feature directory contains its page component(s). Implemented:
 - "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
   new app when the rail's selection is one account the client owns (not a shared one). An advisor's
   preview shows it too, since the preview is exactly what the client sees
-- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` (on `ClientDetailPage`: a client's login state, the sign-in email staff set or change, and the one-time invite / reset link to pass on; an advisor sees their own clients' logins). Every one-time link is shown by `auth/OneTimeLink` (Copy, and "Email it" when the link's `can_email` is true)
+- `auth/LoginPage`, `auth/AcceptLinkPage` (invite and reset); every password field there is `auth/PasswordInput`, which has the show/hide eye, `auth/ClientLoginSection` ("Sign-in" on `ClientDetailPage`: a person's login state, the sign-in email staff set or change, and the one-time invite / reset link to pass on; an advisor sees their own clients' logins). Every one-time link is shown by `auth/OneTimeLink` (Copy, and "Email it" when the link's `can_email` is true)
 - `SettingsPage` (`/app/settings`, admin only): **Advisors** (each with sign-in state and how many
-  clients, and "Invite an advisor": name and email, `POST /auth/advisors`, then the link), the
-  clients, and a note on sign-in
+  people, and "Invite an advisor": name and email, `POST /auth/advisors`, then the link), the
+  people, and a note on sign-in
 - `auth/SharedAccountsSection` (on `ClientDetailPage`: share another client's account with this client, read-only)
 - `home/*` — the new app (see Routing). `portal/*` — the pages its Holdings, Transactions, Performance and Cost basis tabs show: `PortalHoldingsPage`, `PortalActivityPage` (trades and cash movements in one list, from `/portal/activity`), `PortalRealizedPage`, `PortalPerformancePage`. Shared controls, the account/strategy filter and `HomeSelection` are in `portal/ui.tsx`.
-
-Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`.
 
 ### Performance chart date filtering
 
@@ -365,9 +374,9 @@ Rules that keep both themes working:
 
 Copy `.env.example` to `.env`. Required var: `VITE_API_BASE_URL=http://localhost:8000`.
 
-## Fast-Follower Modules (do not wire to endpoints)
+## Nothing "coming soon"
 
-Portfolio, Risk and Grow have no backend yet. Render `<ComingSoon>` and record gaps in `../docs/OPEN_ITEMS.md` (local). Benchmark comparison (`GET /api/v1/benchmarks/{ticker}/performance`) and list-all-clients (`GET /api/v1/clients/`) are now implemented.
+A page that does nothing yet is not shown: the Portfolio, Risk and Grow stubs are retired. Record a gap in `../docs/OPEN_ITEMS.md` (local) instead. (The new app's Plan and Tax pages are the one exception, by the one-app design.)
 
 ## What "Done" Looks Like
 
