@@ -51,7 +51,7 @@ export interface ClientCreate { name: string; email?: string | null; advisor_id?
  * `advisor_id` is an admin's alone to send; null leaves the client with no advisor. */
 export interface ClientUpdate { name?: string; email?: string; advisor_id?: string | null }
 /** A client's spouse, or a minor in their (or their spouse's) care */
-export type Relation = 'spouse' | 'minor'
+export type Relation = 'spouse' | 'minor' | 'child_grown' | 'parent' | 'friend' | 'other'
 export interface Relative {
   id: string; name: string; email: string | null; relation: Relation
   /** Whether they have a login (invited or signed in) */
@@ -377,8 +377,9 @@ export interface PortalAccount extends VisibleAccount {
   /** The institution the figures come from, and its last transactions sync */
   source: string | null; synced_at: string | null
   sleeves: PortalSleeve[]
-  /** The owner keeps it from their spouse; a minor's guardians still see it */
-  is_private: boolean
+  /** Every owner (a joint account has several), and the minor a custodial account is held for */
+  owners?: { id: string; name: string }[]
+  held_for?: string | null
   /** The owner's own name for it, shown in place of `name` (the custodian's) when set */
   display_name?: string | null
 }
@@ -400,13 +401,43 @@ export interface PortalConnectionsResponse {
   needs_sign_in: number
 }
 /** What an account's owner may change, as the server now holds it */
-export interface PortalAccountSettings { is_private: boolean; display_name: string | null }
+export interface PortalAccountSettings { display_name: string | null }
+
+// ── Who owns an account, and who sees it ──
+export interface SharingPerson { kind: 'person' | 'advisor'; id: string; name: string; level: 'view' }
+export interface AccountSharing {
+  account_id: string; name: string
+  /** The viewer may share it and change its owners */
+  can_manage: boolean
+  owners: { id: string; name: string; has_login: boolean }[]
+  held_for: { id: string; name: string } | null
+  shared_with: SharingPerson[]
+  /** The viewer's own advisor, who can be shared with like anyone else */
+  advisor: { id: string; name: string } | null
+}
+export interface PersonRow {
+  id: string; name: string; relation: Relation; group: 'family' | 'others'
+  has_login: boolean; is_minor: boolean
+  you_share: number; shares_with_you: number; own_together: number; you_hold_for: number
+}
+export interface PeopleResponse {
+  people: PersonRow[]
+  advisor: { id: string; name: string; you_share: number; not_shared: number } | null
+  /** True once, after earlier visibility became explicit shares */
+  notice: boolean
+  your_accounts: { id: string; name: string; owners: string[]; seen_by: string[] }[]
+  shared_with_you: { id: string; name: string; owner: string; level: string }[]
+}
 /** One of the client's own named groups of accounts */
 export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
 export interface PortalAccountsResponse {
   /** `preview` is true when an admin or advisor is looking at this client's portal.
    * A minor (`is_minor`) sees only their own accounts and cannot add family. */
-  viewer: { client_id: string; name: string; preview: boolean; is_minor: boolean }
+  viewer: {
+    client_id: string; name: string; preview: boolean; is_minor: boolean
+    /** An advisor's preview only: the client's accounts not shared with the advisor (a count) */
+    not_shared_with_you?: number
+  }
   accounts: PortalAccount[]
 }
 
@@ -883,7 +914,12 @@ export interface PlaidFoundAccount {
   candidates: PlaidCandidate[]
 }
 export interface PlaidFound { connection_id: string; institution: string; logins_left: number; accounts: PlaidFoundAccount[] }
-export interface PlaidChoice { link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind }
+export interface PlaidChoice {
+  link_id: string; action: 'link' | 'new' | 'skip'; account_id?: string; kind?: AccountKind
+  /** With new: whose it is (default the person linking), the minor it is held for, who else sees it (view only), cost basis */
+  owner_ids?: string[]; held_for?: string; share_with?: string[]; share_advisor?: boolean
+  cost_basis?: 'FIFO' | 'MIN_TAX'
+}
 /** A likely ticker change seen in the accounts' own records, waiting for a person */
 export interface TickerChangeProposal { old: string; new: string; on: string; company: string; accounts: number }
 

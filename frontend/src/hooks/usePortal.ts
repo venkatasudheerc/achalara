@@ -127,16 +127,6 @@ export function useGroupChanges() {
   }
 }
 
-/** Keep one of the viewer's own accounts from their spouse, or stop. */
-export function useSetAccountPrivate() {
-  const asClient = usePreviewClient()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (v: { accountId: string; isPrivate: boolean }) => portalApi.setAccountPrivate(v.accountId, v.isPrivate, asClient),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', 'accounts'] }),
-  })
-}
-
 /** Give one of the viewer's own accounts a name of their own, or clear it. */
 export function useRenameAccount() {
   const asClient = usePreviewClient()
@@ -173,5 +163,43 @@ export function useRelativeChanges() {
       mutationFn: (v: { relativeId: string; email?: string }) => portalApi.inviteRelative(v.relativeId, v.email, asClient),
       onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', 'relatives'] }),
     }),
+  }
+}
+
+/** Everyone connected to the viewer, and who sees what. */
+export function usePortalPeople(enabled = true) {
+  const asClient = usePreviewClient()
+  return useQuery({ queryKey: ['portal', 'people', asClient], queryFn: () => portalApi.people(asClient), enabled })
+}
+
+/** One account's owners and who else sees it. */
+export function useAccountSharing(accountId: string | null) {
+  const asClient = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'sharing', asClient, accountId],
+    queryFn: () => portalApi.sharing(accountId as string, asClient),
+    enabled: !!accountId,
+  })
+}
+
+/** Share, stop sharing, change owner, hold for a minor, hand over, stop seeing. Each refreshes what depends on it. */
+export function useSharingChanges() {
+  const asClient = usePreviewClient()
+  const qc = useQueryClient()
+  // Who sees what changes the accounts in view as well as the sharing lists.
+  const refresh = () => qc.invalidateQueries({ queryKey: ['portal'] })
+  return {
+    share: useMutation({ mutationFn: (v: { accountId: string; personId?: string; advisor?: boolean }) =>
+      portalApi.share(v.accountId, v, asClient), onSuccess: refresh }),
+    unshare: useMutation({ mutationFn: (v: { accountId: string; personId?: string; advisor?: boolean }) =>
+      portalApi.unshare(v.accountId, v, asClient), onSuccess: refresh }),
+    setOwners: useMutation({ mutationFn: (v: { accountId: string; ownerIds: string[]; keepView: boolean }) =>
+      portalApi.setOwners(v.accountId, v.ownerIds, v.keepView, asClient), onSuccess: refresh }),
+    holdFor: useMutation({ mutationFn: (v: { accountId: string; minorId: string | null }) =>
+      portalApi.holdFor(v.accountId, v.minorId, asClient), onSuccess: refresh }),
+    handOver: useMutation({ mutationFn: (v: { accountId: string; keepView: boolean }) =>
+      portalApi.handOver(v.accountId, v.keepView, asClient), onSuccess: refresh }),
+    stopSeeing: useMutation({ mutationFn: (accountId: string) => portalApi.stopSeeing(accountId, asClient), onSuccess: refresh }),
+    dismissNotice: useMutation({ mutationFn: () => portalApi.dismissNotice(asClient), onSuccess: refresh }),
   }
 }

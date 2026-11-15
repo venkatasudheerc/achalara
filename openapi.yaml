@@ -4719,12 +4719,11 @@ paths:
   /api/v1/portal/accounts/{account_id}:
     patch:
       tags: [portal]
-      summary: Change one of the viewer's own accounts (private, its own name)
+      summary: Give one of the viewer's accounts a name of their own
       description: >-
-        Keep it private (their spouse no longer sees it; a minor's guardians always do) or give
-        it a name of the owner's own, shown in place of the custodian's. A field left out is
-        left as it is; an empty name clears it. Only the owner may change it (an admin or
-        advisor previewing the owner, as_client, may too).
+        A name of the owner's own, shown in place of the custodian's; an empty name clears it.
+        Only an owner (or whoever linked it, until an owner signs in) may change it; an admin or
+        advisor previewing, as_client, may too. Sharing has its own routes.
       operationId: setPortalAccountPrivate
       parameters:
         - {name: account_id, in: path, required: true, schema: {type: string}}
@@ -4740,8 +4739,164 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/PortalAccountSettings'}
-        '404': {description: Not one of the viewer's own accounts}
+        '404': {description: Not an account the viewer controls}
         '422': {description: A name longer than 60 characters}
+  /api/v1/portal/people:
+    get:
+      tags: [portal]
+      summary: Everyone connected to the viewer, and who sees what
+      description: >-
+        Family, Others and the viewer's advisor, each with what is shared in each direction;
+        the viewer's accounts with their owners and who sees them; and what is shared with the
+        viewer (view only). `notice` is true once after earlier visibility became explicit shares.
+      operationId: getPortalPeople
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The people
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PeopleResponse'}
+  /api/v1/portal/people/notice/dismiss:
+    post:
+      tags: [portal]
+      summary: Dismiss the one-time sharing notice
+      operationId: dismissPortalSharingNotice
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '204': {description: Dismissed}
+  /api/v1/portal/accounts/{account_id}/sharing:
+    get:
+      tags: [portal]
+      summary: Who owns an account and who sees it
+      operationId: getPortalAccountSharing
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: Owners, the minor it is held for, and who else sees it
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not an account the viewer sees}
+  /api/v1/portal/accounts/{account_id}/shares:
+    post:
+      tags: [portal]
+      summary: Let a person, or the viewer's advisor, view an account (read-only)
+      description: Any owner may. Nobody sees an account until it is shared.
+      operationId: sharePortalAccount
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShareRequest'}
+      responses:
+        '200':
+          description: The account's sharing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not an account the viewer controls, or not a person they know}
+        '422': {description: Already an owner, or no advisor}
+    delete:
+      tags: [portal]
+      summary: Stop sharing an account with a person or the advisor
+      operationId: unsharePortalAccount
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: person_id, in: query, required: false, schema: {type: string}}
+        - {name: advisor, in: query, required: false, schema: {type: boolean}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The account's sharing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not shared with them, or not an account the viewer controls}
+  /api/v1/portal/accounts/{account_id}/owners:
+    put:
+      tags: [portal]
+      summary: Change who owns an account
+      description: The new owner needs no acceptance. A minor cannot own; hold the account for them instead.
+      operationId: setPortalAccountOwners
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OwnersRequest'}
+      responses:
+        '200':
+          description: The account's sharing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not an account the viewer controls, or not a person they know}
+        '422': {description: No owner, or a minor as owner}
+  /api/v1/portal/accounts/{account_id}/held-for:
+    put:
+      tags: [portal]
+      summary: Hold an account for a minor (custodial), or stop
+      operationId: setPortalAccountHeldFor
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HoldForRequest'}
+      responses:
+        '200':
+          description: The account's sharing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not an account the viewer controls, or not their minor}
+  /api/v1/portal/accounts/{account_id}/hand-over:
+    post:
+      tags: [portal]
+      summary: Give a custodial account to the minor it is held for
+      description: The minor must have a sign-in (409 otherwise).
+      operationId: handOverPortalAccount
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HandOverRequest'}
+      responses:
+        '200':
+          description: The account's sharing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSharing'}
+        '404': {description: Not an account the viewer controls}
+        '409': {description: The minor has no sign-in yet}
+        '422': {description: The account is not held for anyone}
+  /api/v1/portal/accounts/{account_id}/shared-with-me:
+    delete:
+      tags: [portal]
+      summary: Stop seeing an account shared with the viewer
+      description: Hides it on the viewer's screens; the owner is not told.
+      operationId: stopSeeingPortalAccount
+      parameters:
+        - {name: account_id, in: path, required: true, schema: {type: string}}
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '204': {description: Hidden}
+        '404': {description: Not shared with the viewer}
   /api/v1/portal/relatives/{relative_id}/invite:
     post:
       tags: [portal]
@@ -5082,6 +5237,26 @@ components:
           - type: string
           - type: 'null'
           title: Kind
+        owner_ids:
+          type: array
+          nullable: true
+          items: {type: string}
+          description: With new. Whose it is; default the person linking.
+        held_for:
+          type: string
+          nullable: true
+          description: With new. The minor a custodial account is held for.
+        share_with:
+          type: array
+          items: {type: string}
+          description: With new. People who may view it (view only); default nobody.
+        share_advisor:
+          type: boolean
+          default: false
+        cost_basis:
+          type: string
+          nullable: true
+          enum: [FIFO, MIN_TAX]
       type: object
       required:
       - link_id
@@ -5509,7 +5684,7 @@ components:
           minLength: 1
         relation:
           type: string
-          enum: [spouse, minor]
+          enum: [spouse, minor, child_grown, parent, friend, other]
         email:
           type: string
           format: email
@@ -5528,7 +5703,7 @@ components:
           nullable: true
         relation:
           type: string
-          enum: [spouse, minor]
+          enum: [spouse, minor, child_grown, parent, friend, other]
         has_login:
           type: boolean
 
@@ -5627,10 +5802,6 @@ components:
       type: object
       description: What an account's owner may change. A field left out is left as it is.
       properties:
-        is_private:
-          type: boolean
-          nullable: true
-          description: Keep it from their spouse (never from a minor's guardians).
         display_name:
           type: string
           nullable: true
@@ -5638,13 +5809,143 @@ components:
 
     PortalAccountSettings:
       type: object
-      required: [is_private]
       properties:
-        is_private:
-          type: boolean
         display_name:
           type: string
           nullable: true
+
+    AccountPerson:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+
+    SharingPerson:
+      type: object
+      required: [kind, id, name]
+      properties:
+        kind: {type: string, enum: [person, advisor]}
+        id: {type: string}
+        name: {type: string}
+        level: {type: string, enum: [view], default: view}
+
+    AccountOwnerOut:
+      type: object
+      required: [id, name, has_login]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        has_login: {type: boolean}
+
+    AccountSharing:
+      type: object
+      required: [account_id, name, can_manage, owners, shared_with]
+      properties:
+        account_id: {type: string}
+        name: {type: string}
+        can_manage: {type: boolean}
+        owners:
+          type: array
+          items: {$ref: '#/components/schemas/AccountOwnerOut'}
+        held_for:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AccountPerson'}]
+        shared_with:
+          type: array
+          items: {$ref: '#/components/schemas/SharingPerson'}
+        advisor:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AccountPerson'}]
+
+    ShareRequest:
+      type: object
+      properties:
+        person_id: {type: string, nullable: true}
+        advisor: {type: boolean, default: false}
+
+    OwnersRequest:
+      type: object
+      required: [owner_ids]
+      properties:
+        owner_ids:
+          type: array
+          items: {type: string}
+        keep_view: {type: boolean, default: true}
+
+    HoldForRequest:
+      type: object
+      properties:
+        minor_id: {type: string, nullable: true}
+
+    HandOverRequest:
+      type: object
+      properties:
+        keep_view: {type: boolean, default: true}
+
+    PersonRow:
+      type: object
+      required: [id, name, relation, group, has_login, is_minor, you_share, shares_with_you, own_together, you_hold_for]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        relation: {type: string, enum: [spouse, minor, child_grown, parent, friend, other]}
+        group: {type: string, enum: [family, others]}
+        has_login: {type: boolean}
+        is_minor: {type: boolean}
+        you_share: {type: integer}
+        shares_with_you: {type: integer}
+        own_together: {type: integer}
+        you_hold_for: {type: integer}
+
+    AdvisorRow:
+      type: object
+      required: [id, name, you_share, not_shared]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        you_share: {type: integer}
+        not_shared: {type: integer}
+
+    OwnAccountRow:
+      type: object
+      required: [id, name, owners, seen_by]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        owners:
+          type: array
+          items: {type: string}
+        seen_by:
+          type: array
+          items: {type: string}
+
+    SharedWithYouRow:
+      type: object
+      required: [id, name, owner, level]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        owner: {type: string}
+        level: {type: string}
+
+    PeopleResponse:
+      type: object
+      required: [people, notice, your_accounts, shared_with_you]
+      properties:
+        people:
+          type: array
+          items: {$ref: '#/components/schemas/PersonRow'}
+        advisor:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AdvisorRow'}]
+        notice: {type: boolean}
+        your_accounts:
+          type: array
+          items: {$ref: '#/components/schemas/OwnAccountRow'}
+        shared_with_you:
+          type: array
+          items: {$ref: '#/components/schemas/SharedWithYouRow'}
 
     ClientResponse:
       type: object
@@ -7068,10 +7369,14 @@ components:
         institution:
           type: string
           nullable: true
-        is_private:
-          type: boolean
-          default: false
-          description: The owner keeps it from their spouse (a minor's guardians still see it).
+        owners:
+          type: array
+          items: {$ref: '#/components/schemas/AccountPerson'}
+          description: Every owner (a joint account has several).
+        held_for:
+          type: string
+          nullable: true
+          description: The minor a custodial account is held for.
         needs_sign_in:
           type: boolean
           default: false
@@ -9931,7 +10236,11 @@ components:
         is_minor:
           type: boolean
           default: false
-          description: A minor sees only their own accounts and cannot add family members.
+          description: A minor sees only their own accounts and those held for them, and cannot add people.
+        not_shared_with_you:
+          type: integer
+          default: 0
+          description: An advisor's preview only. How many of the client's accounts are not shared with the advisor (a count, never names or figures).
       type: object
       required:
       - client_id

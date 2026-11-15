@@ -1,5 +1,7 @@
 import { apiClient } from '../client'
 import type {
+  AccountSharing,
+  PeopleResponse,
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
   AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse,
@@ -93,12 +95,6 @@ export const portalApi = {
   deleteGroup: (id: string, asClient?: string) =>
     apiClient.delete(`${base}/groups/${id}`, { params: clean({ as_client: asClient }) }).then(() => undefined),
 
-  /** Keeps one of the viewer's own accounts from their spouse, or stops keeping it. */
-  setAccountPrivate: (accountId: string, isPrivate: boolean, asClient?: string) =>
-    apiClient
-      .patch<PortalAccountSettings>(`${base}/accounts/${accountId}`, { is_private: isPrivate },
-        { params: clean({ as_client: asClient }) })
-      .then((r) => r.data),
   /** Gives one of the viewer's own accounts a name of their own; empty clears it. */
   renameAccount: (accountId: string, displayName: string, asClient?: string) =>
     apiClient
@@ -106,7 +102,31 @@ export const portalApi = {
         { params: clean({ as_client: asClient }) })
       .then((r) => r.data),
 
-  /** The viewer's spouse first, then their minors. */
+  people: (asClient?: string) =>
+    apiClient.get<PeopleResponse>(`${base}/people`, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  dismissNotice: (asClient?: string) =>
+    apiClient.post(`${base}/people/notice/dismiss`, null, { params: clean({ as_client: asClient }) }).then(() => undefined),
+  sharing: (accountId: string, asClient?: string) =>
+    apiClient.get<AccountSharing>(`${base}/accounts/${accountId}/sharing`, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  share: (accountId: string, who: { personId?: string; advisor?: boolean }, asClient?: string) =>
+    apiClient.post<AccountSharing>(`${base}/accounts/${accountId}/shares`,
+      { person_id: who.personId ?? null, advisor: !!who.advisor }, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  unshare: (accountId: string, who: { personId?: string; advisor?: boolean }, asClient?: string) =>
+    apiClient.delete<AccountSharing>(`${base}/accounts/${accountId}/shares`,
+      { params: clean({ as_client: asClient, person_id: who.personId, advisor: who.advisor || undefined }) }).then((r) => r.data),
+  setOwners: (accountId: string, ownerIds: string[], keepView: boolean, asClient?: string) =>
+    apiClient.put<AccountSharing>(`${base}/accounts/${accountId}/owners`,
+      { owner_ids: ownerIds, keep_view: keepView }, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  holdFor: (accountId: string, minorId: string | null, asClient?: string) =>
+    apiClient.put<AccountSharing>(`${base}/accounts/${accountId}/held-for`,
+      { minor_id: minorId }, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  handOver: (accountId: string, keepView: boolean, asClient?: string) =>
+    apiClient.post<AccountSharing>(`${base}/accounts/${accountId}/hand-over`,
+      { keep_view: keepView }, { params: clean({ as_client: asClient }) }).then((r) => r.data),
+  stopSeeing: (accountId: string, asClient?: string) =>
+    apiClient.delete(`${base}/accounts/${accountId}/shared-with-me`, { params: clean({ as_client: asClient }) }).then(() => undefined),
+
+  /** The people the viewer added: spouse, minors, then anyone else. */
   relatives: (asClient?: string) =>
     apiClient.get<Relative[]>(`${base}/relatives`, { params: clean({ as_client: asClient }) }).then((r) => r.data),
   addRelative: (body: RelativeCreate, asClient?: string) =>

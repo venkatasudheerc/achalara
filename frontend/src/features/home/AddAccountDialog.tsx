@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AccountKind, PlaidChoice, PlaidConfirmed, PlaidFound, PlaidFoundAccount } from '@/api/types'
+import type { AccountKind, PersonRow, PlaidChoice, PlaidConfirmed, PlaidFound, PlaidFoundAccount } from '@/api/types'
 import { usePlaidAvailability, usePlaidLink } from '@/hooks/usePlaid'
+import { usePortalAccounts, usePortalPeople } from '@/hooks/usePortal'
 import { formatCurrency } from '@/lib/formatters'
 import { loadPlaid } from '@/lib/plaid'
-import { KINDS } from './selection'
+import { INVESTED, KINDS } from './selection'
 
 type Step = 'choose' | 'found' | 'done'
-interface Pick { action: 'link' | 'new' | 'skip'; accountId?: string; kind: AccountKind }
+interface Pick {
+  action: 'link' | 'new' | 'skip'; accountId?: string; kind: AccountKind
+  /** Whose it is: me, 'joint:<id>', 'for:<minorId>' (held for), or 'other:<id>' (theirs; I view it) */
+  whose: string
+  /** Who else sees it: nobody by default; person ids, and 'advisor' */
+  sees: string[]
+  costBasis: 'FIFO' | 'MIN_TAX'
+}
 
 /** Why a candidate looks like this account, in words. */
 function evidence(c: PlaidFoundAccount['candidates'][number]): string {
@@ -18,12 +26,16 @@ function evidence(c: PlaidFoundAccount['candidates'][number]): string {
 }
 
 function initialPick(a: PlaidFoundAccount): Pick {
-  if (a.proposal === 'same' && a.account_id) return { action: 'link', accountId: a.account_id, kind: a.kind }
-  if (a.proposal === 'new') return { action: 'new', kind: a.kind }
-  return { action: 'skip', kind: a.kind } // "choose": the person decides
+  const rest = { whose: 'me', sees: [] as string[], costBasis: 'FIFO' as const }
+  if (a.proposal === 'same' && a.account_id) return { action: 'link', accountId: a.account_id, kind: a.kind, ...rest }
+  if (a.proposal === 'new') return { action: 'new', kind: a.kind, ...rest }
+  return { action: 'skip', kind: a.kind, ...rest } // "choose": the person decides
 }
 
-function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick: Pick; onPick: (p: Pick) => void }) {
+function FoundRow({ account, pick, onPick, people, advisor }: {
+  account: PlaidFoundAccount; pick: Pick; onPick: (p: Pick) => void
+  people: PersonRow[]; advisor: { name: string } | null
+}) {
   const done = account.status === 'mapped' || account.status === 'matched'
   const value = pick.action === 'link' ? `link:${pick.accountId}` : pick.action
   const field = 'h-[44px] px-[12px] rounded-[12px] border border-stone/40 bg-surface text-[14px]'
@@ -62,6 +74,43 @@ function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick:
             {KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
           </select>
         </div>
+        {pick.action === 'new' && (
+          <div className="flex flex-col gap-[10px] border-t border-line pt-[12px]">
+            <label className="flex flex-col gap-[6px] text-[13px] font-semibold text-stone">
+              Whose is it
+              <select value={pick.whose} className={`${field} font-normal`} onChange={(e) => onPick({ ...pick, whose: e.target.value })}>
+                <option value="me">Mine</option>
+                {people.filter((p) => p.relation === 'spouse').map((p) => <option key={`j${p.id}`} value={`joint:${p.id}`}>Mine, jointly with {p.name}</option>)}
+                {people.filter((p) => p.is_minor).map((p) => <option key={`f${p.id}`} value={`for:${p.id}`}>Held by me for {p.name}</option>)}
+                {people.filter((p) => !p.is_minor).map((p) => <option key={`o${p.id}`} value={`other:${p.id}`}>{p.name}’s (I view it)</option>)}
+              </select>
+            </label>
+            <fieldset className="flex flex-col gap-[2px]">
+              <legend className="text-[13px] font-semibold text-stone mb-[4px]">Who else sees it</legend>
+              {people.length === 0 && !advisor && <span className="text-[14px] text-stone">Nobody. Add people on the People page to share with them.</span>}
+              {[...(advisor ? [{ id: 'advisor', name: `${advisor.name} (your advisor)` }] : []), ...people.filter((p) => !pick.whose.endsWith(p.id) || pick.whose.startsWith('for:'))]
+                .map((p) => (
+                  <label key={p.id} className="min-h-[36px] flex items-center gap-[10px] text-[14px] cursor-pointer">
+                    <input type="checkbox" className="w-[18px] h-[18px] accent-pine" checked={pick.sees.includes(p.id)}
+                      onChange={() => onPick({ ...pick, sees: pick.sees.includes(p.id) ? pick.sees.filter((x) => x !== p.id) : [...pick.sees, p.id] })} />
+                    {p.name}
+                  </label>
+                ))}
+              <span className="text-[13px] text-stone mt-[2px]">Nobody else sees it unless you say so. They see it as it is and change nothing.</span>
+            </fieldset>
+            {INVESTED.includes(pick.kind) && (
+              <label className="flex flex-col gap-[6px] text-[13px] font-semibold text-stone">
+                Cost basis
+                <select value={pick.costBasis} className={`${field} font-normal`}
+                  onChange={(e) => onPick({ ...pick, costBasis: e.target.value as Pick['costBasis'] })}>
+                  <option value="FIFO">First in, first out</option>
+                  <option value="MIN_TAX">Minimum tax</option>
+                </select>
+                <span className="text-[13px] font-normal">Match what your brokerage uses; you can change it later.</span>
+              </label>
+            )}
+          </div>
+        )}
       </>)}
     </li>
   )
@@ -106,6 +155,8 @@ function LinkError({ raw }: { raw: string }) {
 export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const availability = usePlaidAvailability()
+  const { data: peopleData } = usePortalPeople(open)
+  const { data: portal } = usePortalAccounts()
   const { start, finish, confirm } = usePlaidLink()
   const [step, setStep] = useState<Step>('choose')
   const [found, setFound] = useState<PlaidFound | null>(null)
@@ -160,11 +211,22 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
 
   const add = () => {
     if (!found) return
+    const viewerId = portal?.viewer.client_id ?? ''
     const choices: PlaidChoice[] = found.accounts
       .filter((a) => a.status !== 'mapped' && a.status !== 'matched')
       .map((a) => {
         const p = picks[a.link_id]
-        return { link_id: a.link_id, action: p.action, account_id: p.accountId, kind: p.kind }
+        const choice: PlaidChoice = { link_id: a.link_id, action: p.action, account_id: p.accountId, kind: p.kind }
+        if (p.action === 'new') {
+          const [how, who] = p.whose.split(':')
+          if (how === 'joint') choice.owner_ids = [viewerId, who]
+          if (how === 'other') choice.owner_ids = [who]
+          if (how === 'for') choice.held_for = who
+          choice.share_with = p.sees.filter((x) => x !== 'advisor')
+          choice.share_advisor = p.sees.includes('advisor')
+          if (INVESTED.includes(p.kind)) choice.cost_basis = p.costBasis
+        }
+        return choice
       })
     if (!choices.length) { close(); return }
     confirm.mutate({ connectionId: found.connection_id, choices }, {
@@ -187,7 +249,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
               {step === 'found' ? `What we found at ${found?.institution || 'your institution'}` : step === 'done' ? 'Accounts added' : 'Add an account'}
             </h2>
             {step === 'found' && (
-              <p className="text-[14px] text-stone leading-relaxed">Check each one: link it to an account that’s already here, add it as new, or leave it out.</p>
+              <p className="text-[14px] text-stone leading-relaxed">Check each one: link it to an account that’s already here, add it as new, or leave it out. Nobody else sees a new account unless you say so.</p>
             )}
           </div>
           <button type="button" onClick={close} aria-label="Close"
@@ -222,6 +284,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
           <ul className="flex flex-col gap-[12px] max-h-[55vh] overflow-y-auto">
             {found.accounts.map((a) => (
               <FoundRow key={a.link_id} account={a} pick={picks[a.link_id]}
+                people={peopleData?.people ?? []} advisor={peopleData?.advisor ?? null}
                 onPick={(p) => setPicks((all) => ({ ...all, [a.link_id]: p }))} />
             ))}
           </ul>

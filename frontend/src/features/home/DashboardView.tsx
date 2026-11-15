@@ -10,7 +10,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { KINDS, accountName, type Selection } from './selection'
 import { dateTicks } from '@/lib/chartTicks'
-import { PrivateToggle } from './PrivateToggle'
+import { SharingPanel } from './SharingPanel'
 import { AccountNameEditor } from './AccountNameEditor'
 
 type Chart = 'balances' | 'activity' | 'returns'
@@ -52,6 +52,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
 }) {
   const colours = useChartColours()
   const [chart, setChart] = useState<Chart>('balances')
+  const [sharing, setSharing] = useState<string | null>(null)
   const accountIds = selection.type === 'all' ? undefined : accounts.map((a) => a.id)
   const { data, isLoading, isError, error, refetch } = usePortalPerformance({
     account_ids: accountIds, start_date: isoDaysAgo(365), grain: 'month',
@@ -190,14 +191,24 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
           <h2 id="about" className="font-display text-[20px]">About this account</h2>
           <dl className="border border-line rounded-[18px] p-[18px] grid grid-cols-1 sm:grid-cols-2 gap-[14px] text-[15px]">
             <div className="sm:col-span-2"><dt className="text-[13px] text-stone">Name</dt><dd><AccountNameEditor account={one} /></dd></div>
-            <div><dt className="text-[13px] text-stone">Owner</dt><dd>{one.owner_name}{one.shared ? ' (shared with you)' : ''}</dd></div>
+            <div>
+              <dt className="text-[13px] text-stone">Owner</dt>
+              <dd>
+                {one.shared ? `${one.owner_name} (shared with you)` : (one.owners?.map((o) => o.name).join(' and ') || one.owner_name)}
+                {one.held_for ? <span className="block text-[13px] text-stone">Held for {one.held_for}, who doesn’t own it yet</span> : null}
+              </dd>
+            </div>
             <div><dt className="text-[13px] text-stone">Kind</dt><dd>{KINDS.find((k) => k.kind === one.kind)?.label}</dd></div>
             <div><dt className="text-[13px] text-stone">Cash in it</dt><dd className="tabular-nums">{one.cash == null ? '—' : formatCurrency(one.cash)}</dd></div>
             <div><dt className="text-[13px] text-stone">Figures from</dt><dd>{one.source ?? 'Entered by hand'}{one.synced_at ? `, last synced ${formatDate(one.synced_at)}` : ''}</dd></div>
-            {!one.shared && (
-              <div className="sm:col-span-2 border-t border-line pt-[10px]"><PrivateToggle account={one} /></div>
-            )}
+            <div className="sm:col-span-2 border-t border-line pt-[10px]">
+              <button type="button" onClick={() => setSharing(one.id)}
+                className="min-h-[44px] px-[18px] rounded-[22px] border border-stone/30 text-[14px] font-semibold hover:bg-line">
+                {one.shared ? 'Who owns it, who sees it' : 'Who owns it, who sees it…'}
+              </button>
+            </div>
           </dl>
+          <SharingPanel accountId={sharing} onClose={() => setSharing(null)} />
         </section>
       )}
     </div>

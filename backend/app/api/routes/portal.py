@@ -19,6 +19,12 @@ from app.api.schemas.client import Relative, RelativeCreate, RelativeInvite
 from app.models.client import Client
 from app.services.auth_service import AuthError, AuthService
 from app.api.schemas.portal import (
+    AccountSharing,
+    HandOverRequest,
+    HoldForRequest,
+    OwnersRequest,
+    PeopleResponse,
+    ShareRequest,
     PortalAccountSettings,
     PortalAccountUpdate,
     AccountGroupCreate,
@@ -57,6 +63,7 @@ from app.services.account_import_service import (
     AccountImportService,
 )
 from app.services.account_group_service import AccountGroupService
+from app.services.sharing_service import SharingService
 from app.services.performance_stats_service import GRAINS
 from app.services.portal_service import (
     PortalError,
@@ -89,7 +96,7 @@ def _service(
     viewer: PortalViewer, db: Session, account_ids: Optional[List[str]] = None
 ) -> PortalService:
     """The viewer's portal, narrowed to ``account_ids`` when some are named."""
-    return PortalService(db, viewer.client_id).narrow(account_ids)
+    return PortalService(db, viewer.client_id, viewer.advisor_user_id).narrow(account_ids)
 
 
 def _csv(
@@ -118,14 +125,16 @@ def portal_accounts(
     viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
 ):
     """Whose portal this is, the accounts in view, and each one's strategies."""
+    service = _service(viewer, db)
     return {
         "viewer": {
             "client_id": viewer.client_id,
             "name": viewer.name,
             "preview": viewer.preview,
             "is_minor": bool(getattr(db.get(Client, viewer.client_id), "guardian_id", None)),
+            "not_shared_with_you": service.not_shared_with_advisor,
         },
-        "accounts": _service(viewer, db).accounts(),
+        "accounts": service.accounts(),
     }
 
 
@@ -146,21 +155,95 @@ def update_own_account(
     viewer: PortalViewer = Depends(portal_viewer),
     db: Session = Depends(get_db),
 ):
-    """Change one of the viewer's own accounts: keep it private (their spouse no
-    longer sees it; a minor's guardians always do), or give it a name of their
-    own. Only the owner may change it."""
+    """Give an account a name of the viewer's own. Only an owner (or whoever
+    linked it, until an owner signs in) may."""
     with _http_errors():
         account = update_own_account_settings(
             db,
             viewer.client_id,
             account_id,
-            is_private=body.is_private,
             display_name=body.display_name,
             rename="display_name" in body.model_fields_set,
         )
-    return PortalAccountSettings(
-        is_private=account.is_private, display_name=account.display_name
-    )
+    return PortalAccountSettings(display_name=account.display_name)
+
+
+@contextmanager
+def _share_errors():
+    try:
+        yield
+    except AuthError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+
+def _sharing(viewer: PortalViewer, db: Session) -> SharingService:
+    return SharingService(db, viewer.client_id)
+
+
+@router.get("/people", response_model=PeopleResponse)
+def portal_people(viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Everyone connected to the viewer, and who sees what."""
+    with _share_errors():
+        return _sharing(viewer, db).people()
+
+
+@router.post("/people/notice/dismiss", status_code=204)
+def portal_dismiss_notice(viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """The one-time note that earlier visibility became explicit shares."""
+    _sharing(viewer, db).dismiss_notice()
+
+
+@router.get("/accounts/{account_id}/sharing", response_model=AccountSharing)
+def portal_account_sharing(account_id: str, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    with _share_errors():
+        return _sharing(viewer, db).sharing(account_id)
+
+
+@router.post("/accounts/{account_id}/shares", response_model=AccountSharing)
+def portal_share_account(account_id: str, body: ShareRequest, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Let a person (or the viewer's advisor) view the account, read-only."""
+    with _share_errors():
+        return _sharing(viewer, db).share(account_id, body.person_id, body.advisor)
+
+
+@router.delete("/accounts/{account_id}/shares", response_model=AccountSharing)
+def portal_unshare_account(
+    account_id: str,
+    person_id: Optional[str] = None,
+    advisor: bool = False,
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    with _share_errors():
+        return _sharing(viewer, db).unshare(account_id, person_id, advisor)
+
+
+@router.put("/accounts/{account_id}/owners", response_model=AccountSharing)
+def portal_set_owners(account_id: str, body: OwnersRequest, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Change who owns the account. The new owner needs no acceptance."""
+    with _share_errors():
+        return _sharing(viewer, db).set_owners(account_id, body.owner_ids, body.keep_view)
+
+
+@router.put("/accounts/{account_id}/held-for", response_model=AccountSharing)
+def portal_hold_for(account_id: str, body: HoldForRequest, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Hold the account for a minor (custodial), or stop."""
+    with _share_errors():
+        return _sharing(viewer, db).hold_for(account_id, body.minor_id)
+
+
+@router.post("/accounts/{account_id}/hand-over", response_model=AccountSharing)
+def portal_hand_over(account_id: str, body: HandOverRequest, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Give a custodial account to the minor it is held for; they need a sign-in."""
+    with _share_errors():
+        return _sharing(viewer, db).hand_over(account_id, body.keep_view)
+
+
+@router.delete("/accounts/{account_id}/shared-with-me", status_code=204)
+def portal_stop_seeing(account_id: str, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Hide an account shared with the viewer, without telling its owner."""
+    with _share_errors():
+        _sharing(viewer, db).stop_seeing(account_id)
 
 
 @router.get("/relatives", response_model=List[Relative])

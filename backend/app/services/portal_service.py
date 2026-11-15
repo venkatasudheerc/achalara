@@ -17,6 +17,7 @@ from app.connectors.models import is_option_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.client import Client
+from app.models.user import AccountAccess
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
@@ -250,15 +251,14 @@ def update_own_account_settings(
     db: Session,
     client_id: str,
     account_id: str,
-    is_private: Optional[bool] = None,
     display_name: Optional[str] = None,
     rename: bool = False,
 ) -> Account:
-    """Change what an account's owner may change: whether it is private, and
-    (when ``rename``) its own name, trimmed; empty clears it. Anyone but the
-    owner gets the same 404 as an account that is not there."""
+    """Change what an account's owner may change: its own name, trimmed; empty
+    clears it. Anyone who cannot control the account gets the same 404 as one
+    that is not there."""
     account = db.get(Account, account_id)
-    if account is None or account.client_id != client_id:
+    if account is None or not AuthService(db).can_control(client_id, account):
         raise PortalError(404, "Account not found")
     if rename:
         name = " ".join((display_name or "").split())
@@ -267,19 +267,33 @@ def update_own_account_settings(
                 422, f"A name can be at most {DISPLAY_NAME_MAX} characters"
             )
         account.display_name = name or None
-    if is_private is not None:
-        account.is_private = is_private
     db.commit()
     return account
 
 
 class PortalService:
-    def __init__(self, db: Session, client_id: str):
+    def __init__(
+        self, db: Session, client_id: str, advisor_user_id: Optional[str] = None
+    ):
         self.db = db
         self.client_id = client_id
         self.stats = PerformanceStatsService(db)
         self.calc = PortfolioCalculationService(db)
         self.visible = AuthService(db).accounts_for_client(client_id)
+        # An advisor's preview: only what an owner shared with the advisor; the
+        # rest is a count, never a name or a figure.
+        self.not_shared_with_advisor = 0
+        if advisor_user_id:
+            shared = {
+                row[0]
+                for row in db.query(AccountAccess.account_id).filter(
+                    AccountAccess.user_id == advisor_user_id
+                )
+            }
+            self.not_shared_with_advisor = sum(
+                1 for a, viewed in self.visible if not viewed and a.id not in shared
+            )
+            self.visible = [(a, v) for a, v in self.visible if a.id in shared]
         self._matched_sleeves: Dict[str, Dict] = {}
 
     def narrow(self, account_ids: Optional[Sequence[str]]) -> "PortalService":
@@ -355,7 +369,13 @@ class PortalService:
                 "kind": kind_of(account),
                 "owed": kind_of(account) in OWED,
                 "institution": account.institution,
-                "is_private": bool(account.is_private),
+                "owners": [
+                    {"id": o.id, "name": o.name}
+                    for o in self.db.query(Client)
+                    .filter(Client.id.in_(AuthService(self.db).owner_ids(account)))
+                    .order_by(Client.name)
+                ],
+                "held_for": account.beneficiary.name if account.beneficiary_id else None,
                 "needs_sign_in": account.id in links
                 and links[account.id].status == "mapped"
                 and links[account.id].connection.status == "broken",

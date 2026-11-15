@@ -1,5 +1,5 @@
 import type { PortalAccount } from '@/api/types'
-import { usePortalOverview, usePortalPositions, usePortalRealized } from '@/hooks/usePortal'
+import { usePortalOverview, usePortalPeople, usePortalPositions, usePortalRealized } from '@/hooks/usePortal'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
@@ -15,6 +15,8 @@ const tone = (n: number | null | undefined) => (n == null ? '' : n < 0 ? 'text-l
 /** Every account chosen: what it holds, its cash, this year's return, and where the figures come from. */
 export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount[]; accountIds?: string[] }) {
   const { data } = usePortalOverview({ account_ids: accountIds })
+  const { data: people } = usePortalPeople()
+  const seenBy = new Map((people?.your_accounts ?? []).map((a) => [a.id, a.seen_by]))
   const ytd = new Map((data?.accounts ?? []).map((a) => [a.id, a]))
   const total = accounts.reduce((t, a) => t + (a.value ?? 0), 0)
   return (
@@ -28,7 +30,7 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
             <th scope="col" className={th}>Account</th><th scope="col" className={th}>Owner</th><th scope="col" className={th}>Kind</th>
             <th scope="col" className={thNum}>Value</th><th scope="col" className={thNum}>Cash</th>
             <th scope="col" className={thNum}>This year</th><th scope="col" className={th}>Figures from</th>
-            <th scope="col" className={th}>Spouse sees it</th>
+            <th scope="col" className={th}>Also seen by</th>
           </tr></thead>
           <tbody>
             {accounts.map((a) => {
@@ -42,7 +44,10 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
                       {accountName(a)}{a.number_last4 ? <span className="text-stone"> ··{a.number_last4}</span> : null}
                     </span>
                   </td>
-                  <td className={td}>{a.owner_name}</td>
+                  <td className={td}>
+                    {a.owners && a.owners.length > 1 ? a.owners.map((o) => o.name).join(' and ') : a.owner_name}
+                    {a.held_for ? <span className="block text-[13px] text-stone">held for {a.held_for}</span> : null}
+                  </td>
                   <td className={td}>{k.label}</td>
                   <td className={tdNum}>{a.value == null ? '—' : formatCurrency(a.value)}</td>
                   <td className={tdNum}>{a.cash == null ? '—' : formatCurrency(a.cash)}</td>
@@ -50,8 +55,8 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
                   <td className={`${td} text-[14px] text-stone`}>
                     {a.source ?? '—'}{a.as_of ? `, ${formatDate(a.as_of)}` : ''}
                   </td>
-                  <td className={`${td} text-[14px] ${a.is_private ? 'text-summit-ink' : 'text-stone'}`}>
-                    {a.shared ? '—' : a.is_private ? 'No, private' : 'Yes'}
+                  <td className={`${td} text-[14px] ${seenBy.get(a.id)?.length ? 'text-summit-ink' : 'text-stone'}`}>
+                    {a.shared ? '—' : seenBy.get(a.id)?.join(', ') || 'Nobody'}
                   </td>
                 </tr>
               )
@@ -61,7 +66,7 @@ export function AccountsView({ accounts, accountIds }: { accounts: PortalAccount
       </div>
       {accounts.some((a) => !a.shared) && (
         <p className="text-[13px] text-stone">
-          To keep one of your own accounts private from your spouse, choose it, or open Family from the menu under your name. A minor’s guardians always see a minor’s accounts.
+          Nobody sees an account until you share it. To change who sees one, choose it, or open Manage Access from the menu under your name.
         </p>
       )}
     </section>

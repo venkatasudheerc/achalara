@@ -11,6 +11,8 @@ class PortalViewerResponse(BaseModel):
     preview: bool  # an admin or advisor looking at this client's portal
     # A minor sees only their own accounts and cannot add family members.
     is_minor: bool = False
+    # An advisor's preview: accounts the client has not shared with the advisor.
+    not_shared_with_you: int = 0
 
 
 class PortalSleeve(BaseModel):
@@ -42,8 +44,9 @@ class PortalAccount(BaseModel):
     kind: str
     owed: bool = False  # a card or loan: its value is what is owed, negative
     institution: Optional[str] = None
-    # The owner keeps it from their spouse (a minor's guardians still see it).
-    is_private: bool = False
+    # Every owner (joint accounts have several), and the minor it is held for.
+    owners: List["AccountPerson"] = []
+    held_for: Optional[str] = None
     # Its Plaid login needs the owner to sign in again (repair it with
     # /portal/links/plaid/{login_id}/repair); login_id is set only for the owner.
     needs_sign_in: bool = False
@@ -85,17 +88,19 @@ class PortalConnectionsResponse(BaseModel):
     needs_sign_in: int  # the viewer's own logins waiting on them
 
 
-class PortalAccountUpdate(BaseModel):
-    """What an account's owner may change: keep it from their spouse (never from
-    a minor's guardians), and give it a name of their own. A field left out is
-    left as it is; an empty name clears it."""
+class AccountPerson(BaseModel):
+    id: str
+    name: str
 
-    is_private: Optional[bool] = None
+
+class PortalAccountUpdate(BaseModel):
+    """What an account's owner may change: a name of their own. A field left
+    out is left as it is; an empty name clears it. Sharing has its own routes."""
+
     display_name: Optional[str] = Field(None, max_length=200)
 
 
 class PortalAccountSettings(BaseModel):
-    is_private: bool
     display_name: Optional[str] = None
 
 
@@ -575,3 +580,86 @@ class PortalOverviewResponse(BaseModel):
     accounts: List[OverviewAccount]
     timeseries: List[ValuePoint]
     recent: List[ActivityItem]
+
+
+class SharingPerson(BaseModel):
+    kind: str  # person | advisor
+    id: str
+    name: str
+    level: str = "view"
+
+
+class AccountOwnerOut(BaseModel):
+    id: str
+    name: str
+    has_login: bool
+
+
+class AccountSharing(BaseModel):
+    account_id: str
+    name: str
+    can_manage: bool
+    owners: List[AccountOwnerOut]
+    held_for: Optional[AccountPerson] = None
+    shared_with: List[SharingPerson]
+    advisor: Optional[AccountPerson] = None
+
+
+class ShareRequest(BaseModel):
+    person_id: Optional[str] = None
+    advisor: bool = False
+
+
+class OwnersRequest(BaseModel):
+    owner_ids: List[str]
+    keep_view: bool = True
+
+
+class HoldForRequest(BaseModel):
+    minor_id: Optional[str] = None
+
+
+class HandOverRequest(BaseModel):
+    keep_view: bool = True
+
+
+class PersonRow(BaseModel):
+    id: str
+    name: str
+    relation: str
+    group: str  # family | others
+    has_login: bool
+    is_minor: bool
+    you_share: int
+    shares_with_you: int
+    own_together: int
+    you_hold_for: int
+
+
+class AdvisorRow(BaseModel):
+    id: str
+    name: str
+    you_share: int
+    not_shared: int
+
+
+class OwnAccountRow(BaseModel):
+    id: str
+    name: str
+    owners: List[str]
+    seen_by: List[str]
+
+
+class SharedWithYouRow(BaseModel):
+    id: str
+    name: str
+    owner: str
+    level: str
+
+
+class PeopleResponse(BaseModel):
+    people: List[PersonRow]
+    advisor: Optional[AdvisorRow] = None
+    notice: bool
+    your_accounts: List[OwnAccountRow]
+    shared_with_you: List[SharedWithYouRow]

@@ -124,10 +124,21 @@ erDiagram
 | guardian_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — set for a minor: the adult client responsible for them |
 | brokerage_link_started_at | DateTime(tz) | nullable — left from the retired SnapTrade linking; unused |
 
-Relationships: `accounts` (1→N, cascade delete). Who sees which accounts follows from
-`spouse_id` and `guardian_id` (`AuthService.accounts_for_client`): see `backend/CLAUDE.md`
-§ "Sign-in and Access Rules". `accounts.is_private` (Boolean, default false) keeps an owner's
-account from their spouse; a minor's guardians always see the minor's accounts.
+Relationships: `accounts` (1→N, cascade delete). `spouse_id` and `guardian_id` are relations
+only: who sees which accounts follows from ownership (`account_owners`) and explicit shares
+(`account_access`), see `backend/CLAUDE.md` § "Sign-in and Access Rules". `sharing_notice`
+(Boolean, default false) is set by the migration that turned the old visibility into shares, until
+the client dismisses the note.
+
+### `person_links`
+How a client describes a person they added: `client_id`, `person_id` (both CASCADE),
+`relation` (`spouse`, `minor`, `child_grown`, `parent`, `friend`, `other`),
+`UNIQUE(client_id, person_id)`. Adding someone shares nothing.
+
+### `account_owners`
+One row per owner of an account (a joint account has several, with equal rights):
+`account_id`, `client_id` (both CASCADE), `UNIQUE(account_id, client_id)`. `accounts.client_id`
+stays the first owner. A flush hook gives every new account its owner row.
 
 ### `invitation_requests`
 What a visitor leaves on the public page's form. Written by anyone, so it holds only the form's
@@ -157,7 +168,8 @@ fields within length limits and has no foreign keys; becoming a client is done b
 | kind | String(20) | nullable — chosen when added: `taxable`, `retirement`, `kids`, `cash`, `checking`, `savings`, `credit_card`, `mortgage`, `car_loan`, `loan`; NULL = read from the name (`account_kind.kind_of`) |
 | institution | String(255) | nullable — who holds it, e.g. "Vanguard" |
 | last_four | String(4) | nullable — the last four of the institution's own number (not a feed's numbering) |
-| is_private | Boolean | not null, default false — the owner keeps it from their spouse (see `clients` above) |
+| beneficiary_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — the minor a custodial account is held for (they do not own it; they see it read-only) |
+| linked_by_id | String(36) FK→clients.id | nullable, ON DELETE SET NULL — who linked it; controls it until one of its owners has a sign-in |
 | display_name | String(60) | nullable — the owner's own name for it ("Pat's trading account"), shown in place of `name`, which stays the custodian's; set by the owner through `PATCH /portal/accounts/{id}`, trimmed, empty clears it |
 
 Relationships: `client` (N→1), `sleeves` (1→N, cascade delete).
@@ -629,9 +641,11 @@ A one-time link: `user_id` (CASCADE), `purpose` (`invite` | `reset`), `token_has
 once, when it is created. A new link replaces an earlier unused one of the same purpose.
 
 ### `account_access`
-`client_id`, `account_id` (both CASCADE), `UNIQUE(client_id, account_id)`. Lets a client view an
-account that belongs to **another** client, read-only (for example someone acting as agent on a
-relative's account). The owner (`accounts.client_id`) needs no row.
+What an owner has shared. Exactly one grantee: `client_id` (a client) or `user_id` (an advisor's
+login), `account_id` (CASCADE), `UNIQUE` per grantee and account. `level` is `view` (the only
+value now; transact authority is to come), `hidden` is the grantee's own "Stop seeing" (the owner
+is not told). Nobody else sees an account: owners need no row, and being a spouse or guardian
+gives none.
 
 ### `account_groups` and `account_group_members`
 A client's own named groups of accounts, which the landing page's account list can be grouped

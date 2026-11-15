@@ -197,6 +197,7 @@ def get_client_performance(
     client_id: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Client-level roll-up of MWR/TWR computed on the merged cash-flow stream
@@ -210,16 +211,21 @@ def get_client_performance(
         raise HTTPException(status_code=404, detail="Client not found")
 
     svc = PerformanceService(db)
-    all_sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    only = AuthService(db).staff_account_ids(user, client_id)
+    all_sleeve_ids = svc.sleeve_ids_for_client(client_id, only)
 
     perf = svc.performance(
         all_sleeve_ids,
         start_date,
         end_date,
-        cash_account_ids=svc.account_ids_for_client(client_id),
+        cash_account_ids=svc.account_ids_for_client(client_id, only),
     )
 
-    accounts = db.query(Account).filter(Account.client_id == client_id).all()
+    accounts = [
+        a
+        for a in db.query(Account).filter(Account.client_id == client_id).all()
+        if only is None or a.id in only
+    ]
     children = []
     for account in accounts:
         acct_sleeve_ids = svc.sleeve_ids_for_account(account.id)
@@ -258,6 +264,7 @@ def get_client_returns_series(
         description="market: holdings at each day's prices. realized: at cost, "
         "so unrealised gains are left out",
     ),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Weekly TWR + MWR timeseries for a client (aggregated from sleeve snapshots)."""
@@ -267,12 +274,13 @@ def get_client_returns_series(
     from app.services.weekly_snapshot_service import WeeklySnapshotService
 
     svc = PerformanceService(db)
-    sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    only = AuthService(db).staff_account_ids(user, client_id)
+    sleeve_ids = svc.sleeve_ids_for_client(client_id, only)
     series = WeeklySnapshotService(db).returns_series(
         sleeve_ids,
         start_date,
         end_date,
-        cash_account_ids=svc.account_ids_for_client(client_id),
+        cash_account_ids=svc.account_ids_for_client(client_id, only),
         basis=basis,
     )
     return {"level": "client", "id": client_id, "series": series}
@@ -287,6 +295,7 @@ def get_client_monthly_returns(
         description="market: holdings at each day's prices. realized: at cost, "
         "so unrealised gains are left out",
     ),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Month-on-month return breakdown since inception for a client."""
@@ -294,9 +303,10 @@ def get_client_monthly_returns(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     svc = PerformanceService(db)
-    sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    only = AuthService(db).staff_account_ids(user, client_id)
+    sleeve_ids = svc.sleeve_ids_for_client(client_id, only)
     months = svc.monthly_returns(
-        sleeve_ids, cash_account_ids=svc.account_ids_for_client(client_id), basis=basis
+        sleeve_ids, cash_account_ids=svc.account_ids_for_client(client_id, only), basis=basis
     )
     cumulative = None
     non_none = [m["return_pct"] for m in months if m["return_pct"] is not None]
@@ -312,14 +322,16 @@ def get_client_monthly_returns(
 
 
 @router.get("/{client_id}/positions")
-def get_client_positions(client_id: str, db: Session = Depends(get_db)):
+def get_client_positions(
+    client_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     """Get all positions merged across all sleeves for a client"""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
     svc = PerformanceService(db)
-    sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    sleeve_ids = svc.sleeve_ids_for_client(client_id, AuthService(db).staff_account_ids(user, client_id))
     payload = svc.positions_payload(sleeve_ids)
     return {"client_id": client_id, **payload}
 
@@ -329,6 +341,7 @@ def get_client_trades(
     client_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get all trades across all sleeves for a client, with pagination"""
@@ -342,6 +355,9 @@ def get_client_trades(
         .join(Account, Sleeve.account_id == Account.id)
         .filter(Account.client_id == client_id)
     )
+    only = AuthService(db).staff_account_ids(user, client_id)
+    if only is not None:
+        base_query = base_query.filter(Account.id.in_(only))
     total = base_query.count()
     trades = (
         base_query.order_by(Trade.trade_date.desc()).offset(skip).limit(limit).all()

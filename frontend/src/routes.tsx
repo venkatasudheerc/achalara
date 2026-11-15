@@ -20,7 +20,7 @@ import { RequireAuth } from '@/features/auth/RequireAuth'
 import { HomeShell, MorePage } from '@/features/home/HomeShell'
 import { LandingPage } from '@/features/home/LandingPage'
 import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
-import { FamilyPage } from '@/features/home/FamilyPage'
+import { AccessPage } from '@/features/home/AccessPage'
 import { ConnectionsPage } from '@/features/home/ConnectionsPage'
 
 /** Where each of the old portal's pages now lives in the new app. */
@@ -94,7 +94,9 @@ export function AppRoutes() {
           <Route path="plan" element={<PlanPage />} />
           <Route path="tax" element={<TaxPage />} />
           <Route path="research" element={<HomeResearch />} />
-          <Route path="family" element={<FamilyPage />} />
+          <Route path="access" element={<AccessPage />} />
+          <Route path="people" element={<Navigate to="/home/access" replace />} />
+          <Route path="family" element={<Navigate to="/home/access" replace />} />
           <Route path="connections" element={<ConnectionsPage />} />
           <Route path="more" element={<MorePage />} />
         </Route>
