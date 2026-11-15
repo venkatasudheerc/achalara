@@ -4767,6 +4767,15 @@ paths:
         - {name: as_client, in: query, required: false, schema: {type: string}}
       responses:
         '204': {description: Dismissed}
+  /api/v1/portal/people/make-private:
+    post:
+      tags: [portal]
+      summary: Make every account the viewer controls private again
+      operationId: makePortalAccountsPrivate
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '204': {description: Every share on the viewer's accounts removed}
   /api/v1/portal/accounts/{account_id}/sharing:
     get:
       tags: [portal]
@@ -5909,13 +5918,20 @@ components:
 
     OwnAccountRow:
       type: object
-      required: [id, name, owners, seen_by]
+      required: [id, name, owners, owner_ids, seen_by, seen_by_ids, advisor_sees]
       properties:
         id: {type: string}
         name: {type: string}
         owners:
           type: array
           items: {type: string}
+        owner_ids:
+          type: array
+          items: {type: string}
+        seen_by_ids:
+          type: array
+          items: {type: string}
+        advisor_sees: {type: boolean}
         seen_by:
           type: array
           items: {type: string}

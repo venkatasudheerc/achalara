@@ -427,7 +427,10 @@ export interface PeopleResponse {
   advisor: { id: string; name: string; you_share: number; not_shared: number } | null
   /** True once, after earlier visibility became explicit shares */
   notice: boolean
-  your_accounts: { id: string; name: string; owners: string[]; seen_by: string[] }[]
+  your_accounts: {
+    id: string; name: string; owners: string[]; owner_ids: string[]
+    seen_by: string[]; seen_by_ids: string[]; advisor_sees: boolean
+  }[]
   shared_with_you: { id: string; name: string; owner: string; level: string }[]
 }
 /** One of the client's own named groups of accounts */

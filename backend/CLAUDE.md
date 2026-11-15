@@ -214,6 +214,10 @@ Live tests must stay **read-only** and never loop a third-party API.
   once (`clients.sharing_notice`, `POST /portal/people/notice/dismiss`). Linking asks, per new
   account, whose it is, who else sees it (default nobody) and its cost basis
   (`PlaidLinkService._ownership`).
+- **Private is the default, and the screen says so.** Manage Access lists each account the viewer controls
+  with a switch per person (`/portal/people`'s `your_accounts` carries `owner_ids`, `seen_by_ids`,
+  `advisor_sees`) and `POST /portal/people/make-private` removes every share on them
+  (`SharingService.unshare_all`). Nothing may add a share on its own.
 - Never return a full account number to a client user; use `auth_service.display_name` and
   `last_four`.
 - **A link may be emailed** (`services/mailer.py`, Resend, when `RESEND_API_KEY` and `MAIL_FROM`

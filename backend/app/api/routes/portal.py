@@ -193,6 +193,13 @@ def portal_dismiss_notice(viewer: PortalViewer = Depends(portal_viewer), db: Ses
     _sharing(viewer, db).dismiss_notice()
 
 
+@router.post("/people/make-private", status_code=204)
+def portal_make_private(viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
+    """Remove every share on the accounts the viewer controls: all of them private again."""
+    with _share_errors():
+        _sharing(viewer, db).unshare_all()
+
+
 @router.get("/accounts/{account_id}/sharing", response_model=AccountSharing)
 def portal_account_sharing(account_id: str, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)):
     with _share_errors():

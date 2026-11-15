@@ -200,6 +200,7 @@ export function useSharingChanges() {
     handOver: useMutation({ mutationFn: (v: { accountId: string; keepView: boolean }) =>
       portalApi.handOver(v.accountId, v.keepView, asClient), onSuccess: refresh }),
     stopSeeing: useMutation({ mutationFn: (accountId: string) => portalApi.stopSeeing(accountId, asClient), onSuccess: refresh }),
+    makePrivate: useMutation({ mutationFn: () => portalApi.makePrivate(asClient), onSuccess: refresh }),
     dismissNotice: useMutation({ mutationFn: () => portalApi.dismissNotice(asClient), onSuccess: refresh }),
   }
 }
