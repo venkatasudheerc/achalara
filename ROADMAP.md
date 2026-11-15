@@ -42,7 +42,7 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
 
 ## Deferred
 
-- **Portfolio, Risk and Grow** screens show "coming soon" and have no backend.
+- **Portfolio, Risk and Grow**: no backend; their "coming soon" screens were taken out of the staff site.
 - **Trading** waits until Grow is on the active roadmap.
 - **Markets outside the US**: the model is ready; which markets and sources is decided later.
 

@@ -50,8 +50,8 @@ function AdvisorsSection() {
         )}
       </div>
       <p className="text-sm text-stone mb-16">
-        An advisor manages only the clients assigned to them: their accounts, logins and family. Assign a client
-        on the client's page. System status, market data, imports, requests and strategies stay with you.
+        An advisor looks after only the people assigned to them: their accounts, logins and family. Assign someone
+        on their page. System status, market data, imports, requests and strategies stay with you.
       </p>
 
       {open && (
@@ -88,7 +88,7 @@ function AdvisorsSection() {
           Could not load the advisors. <button onClick={() => refetch()} className="underline underline-offset-2">Try again</button>
         </p>
       )}
-      {users && advisors.length === 0 && <p className="text-stone text-sm py-1">No advisors yet. Every client is yours.</p>}
+      {users && advisors.length === 0 && <p className="text-stone text-sm py-1">No advisors yet. You look after everyone.</p>}
       {advisors.length > 0 && (
         <ul className="divide-y divide-stone/10 mt-2">
           {advisors.map((a) => (
@@ -100,7 +100,7 @@ function AdvisorsSection() {
               <div className="text-right">
                 <p className="text-xs text-summit-ink">{signInState(a)}</p>
                 <p className="text-xs text-stone">
-                  <span className="font-mono">{clientCount(a.id)}</span> {clientCount(a.id) === 1 ? 'client' : 'clients'}
+                  <span className="font-mono">{clientCount(a.id)}</span> {clientCount(a.id) === 1 ? 'person' : 'people'}
                 </p>
               </div>
             </li>
@@ -113,21 +113,25 @@ function AdvisorsSection() {
 
 /** Settings: the admin's alone (the route is guarded). */
 export function SettingsPage() {
-  const { data: clients = [], isLoading } = useClientsList()
+  const { data: clients = [], isLoading, isError, refetch } = useClientsList()
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
         <h1 className="font-display text-2xl text-summit-ink">Settings</h1>
-        <p className="text-stone text-sm mt-1">Platform configuration.</p>
+        <p className="text-stone text-sm mt-1">Advisors, and how everyone signs in.</p>
       </div>
 
       <AdvisorsSection />
 
       <section className="border border-stone/20 rounded-card p-6">
-        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Clients</h2>
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">People</h2>
         {isLoading ? (
           <p className="text-stone text-sm">Loading…</p>
+        ) : isError ? (
+          <p className="text-loss text-sm">
+            Could not load the people. <button onClick={() => refetch()} className="underline underline-offset-2">Try again</button>
+          </p>
         ) : clients.length ? (
           <ul className="space-y-2">
             {clients.map((c) => (
@@ -137,15 +141,15 @@ export function SettingsPage() {
             ))}
           </ul>
         ) : (
-          <p className="text-stone text-sm">No clients found.</p>
+          <p className="text-stone text-sm">No one yet.</p>
         )}
       </section>
 
       <section className="border border-stone/20 rounded-card p-6">
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Sign-in</h2>
         <p className="text-sm text-stone">
-          The admin, advisors and clients sign in with an email and password. Invite an advisor above. Invite a
-          client, or send a password-reset link, from that client's page.
+          The admin, advisors and family members sign in with an email and password. Invite an advisor above. Invite a
+          person, or send them a password-reset link, from their page under People.
         </p>
       </section>
     </div>

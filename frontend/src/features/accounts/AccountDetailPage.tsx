@@ -10,6 +10,7 @@ import { ShortBadge } from '@/components/ShortBadge'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
+import { QueryState } from '@/components/QueryState'
 import { formatCurrency } from '@/lib/formatters'
 import type { SleeveResponse, AggregatedPosition, CostBasisMethod } from '@/api/types'
 import { GainBadge } from '@/components/StatCard'
@@ -24,8 +25,9 @@ export function AccountDetailPage() {
   const { data: account, isLoading, isError, refetch } = useAccount(clientId!, accountId!)
   const [importing, setImporting] = useState(false)
   const setMethod = useSetCostBasisMethod(clientId!, accountId!)
-  const { data: sleeves } = useSleeves(clientId!, accountId!)
-  const { data: positions } = useAccountPositions(clientId!, accountId!)
+  const sleevesQuery = useSleeves(clientId!, accountId!)
+  const positionsQuery = useAccountPositions(clientId!, accountId!)
+  const positions = positionsQuery.data
   const { data: strategies } = useStrategies()
   const createSleeve = useCreateSleeve()
   const { data: client } = useClient(clientId!)
@@ -39,7 +41,7 @@ export function AccountDetailPage() {
   const [formError, setFormError] = useState('')
 
   if (isLoading) return <SkeletonCard />
-  if (isError || !account) return <ErrorState message="Account not found." onRetry={() => refetch()} />
+  if (isError || !account) return <ErrorState message="Could not open this account. It may have been removed, or the connection dropped." onRetry={() => refetch()} />
 
   const handleCreateSleeve = async (e: FormEvent) => {
     e.preventDefault()
@@ -80,18 +82,19 @@ export function AccountDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-16">
         <div>
-          <p className="text-xs text-stone font-mono mb-1">
-            <Link to={`/app/clients/${clientId}`} className="hover:text-pine">{scope.clientName ?? 'Client'}</Link>
-            {' / '}ACCOUNT
+          <p className="text-xs text-stone mb-1">
+            <Link to="/app/clients" className="hover:text-pine">People</Link>
+            {' / '}
+            <Link to={`/app/clients/${clientId}`} className="hover:text-pine">{client?.name ?? scope.clientName ?? 'This person'}</Link>
           </p>
           <h1 className="font-display text-3xl text-summit-ink">{account.name}</h1>
           {account.account_number && (
             <p className="text-stone text-sm font-mono mt-1"># {account.account_number}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <a
             href={performanceApi.reportUrl(clientId!, accountId!)}
             className="whitespace-nowrap px-3 py-2 text-sm border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine transition-colors"
@@ -137,7 +140,7 @@ export function AccountDetailPage() {
       {/* Sleeves */}
       <section className="border border-stone/20 rounded-card p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Sleeves (strategies in this account)</h2>
+          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">Strategies in this account</h2>
           <button
             onClick={() => setShowSleeveForm(!showSleeveForm)}
             className="text-xs border border-pine text-pine px-3 py-1.5 rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
@@ -173,18 +176,21 @@ export function AccountDetailPage() {
           </form>
         )}
 
-        <DataTable
-          columns={sleeveCols}
-          rows={sleeves ?? []}
-          getKey={(r) => r.id}
-          emptyMessage="No sleeves yet. Apply a strategy to this account to get started."
-        />
+        <QueryState query={sleevesQuery} error="Could not load this account's strategies.">
+          <DataTable
+            columns={sleeveCols}
+            rows={sleevesQuery.data ?? []}
+            getKey={(r) => r.id}
+            emptyMessage="No strategy applied yet. Its trades and holdings are kept under a strategy; apply one to see them here."
+          />
+        </QueryState>
       </section>
 
       {/* Positions */}
       <section className="border border-stone/20 rounded-card p-6">
-        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Positions (all sleeves)</h2>
-        {positions ? (
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Positions (all strategies)</h2>
+        <QueryState query={positionsQuery} error="Could not load the positions.">
+        {positions && (
           <>
             <div className="flex gap-6 mb-4 text-sm font-mono">
               <span className="text-stone">Market value: <span className="text-summit-ink">{formatCurrency(positions.total_market_value)}</span></span>
@@ -194,7 +200,8 @@ export function AccountDetailPage() {
             </div>
             <DataTable columns={posCols} rows={positions.positions} getKey={(r) => r.symbol} emptyMessage="No positions." />
           </>
-        ) : <p className="text-stone text-sm">Loading…</p>}
+        )}
+        </QueryState>
       </section>
       <ImportDialog open={importing} onClose={() => setImporting(false)}
         door={{ kind: 'advisor', clientId: clientId!, accountId: accountId! }} accountName={account.name} />

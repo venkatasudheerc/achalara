@@ -53,7 +53,7 @@ function PerformanceHero({
       <div>
         <div className="flex items-start justify-between gap-4">
           <p className="text-xs font-mono tracking-widest text-on-dark/60 uppercase mb-1">
-            {level} · {name}
+            {level === 'client' ? 'person' : level} · {name}
           </p>
           {level !== 'strategy' && <SleeveFilter />}
         </div>
@@ -289,9 +289,9 @@ export function PerformancePage() {
   if (!scope.level || gone) {
     return (
       <EmptyState
-        title="Select a client or strategy"
-        message="Choose a client from the Clients tab to view their performance, or browse Strategies to see firm-wide roll-ups."
-        action={{ label: 'Browse clients', onClick: () => navigate('/app/clients') }}
+        title="Choose a person or a strategy"
+        message="Open a person from People to see their performance, or a strategy from Strategies to see every account that follows it together."
+        action={{ label: 'Open People', onClick: () => navigate('/app/clients') }}
       />
     )
   }
@@ -315,8 +315,8 @@ export function PerformancePage() {
     if (scope.level === 'strategy' && child.client_id && child.account_id) {
       return `/app/clients/${child.client_id}/accounts/${child.account_id}/sleeves/${child.id}`
     }
-    if (scope.level === 'strategy') return `/app/strategies/${scope.strategyId}`
-    return '#'
+    // A strategy's sleeve with no account named has no page to open.
+    return null
   }
 
   return (
@@ -463,7 +463,7 @@ export function PerformancePage() {
           <LevelBreakdown
             children={perf.children}
             makeHref={makeChildHref}
-            label={scope.level === 'client' ? 'accounts' : 'sleeves'}
+            label={scope.level === 'account' ? 'strategies' : 'accounts'}
           />
         </section>
       )}

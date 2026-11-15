@@ -15,9 +15,6 @@ import { RequestsPage } from '@/features/invitations/RequestsPage'
 import { HomePage } from '@/features/HomePage'
 import { RequestInvitationPage } from '@/features/invitations/RequestInvitationPage'
 import { ConfirmInvitationPage } from '@/features/invitations/ConfirmInvitationPage'
-import { PortfolioPage } from '@/features/PortfolioPage'
-import { RiskPage } from '@/features/RiskPage'
-import { GrowPage } from '@/features/GrowPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AcceptLinkPage } from '@/features/auth/AcceptLinkPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
@@ -84,9 +81,10 @@ export function AppRoutes() {
             <Route path="market-data" element={<MarketDataPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-          <Route path="portfolio" element={<PortfolioPage />} />
-          <Route path="risk" element={<RiskPage />} />
-          <Route path="grow" element={<GrowPage />} />
+          {/* Retired "coming soon" pages: their old addresses open the workspace. */}
+          <Route path="portfolio" element={<Navigate to="/app" replace />} />
+          <Route path="risk" element={<Navigate to="/app" replace />} />
+          <Route path="grow" element={<Navigate to="/app" replace />} />
         </Route>
       </Route>
       <Route element={<RequireAuth role="client" />}>

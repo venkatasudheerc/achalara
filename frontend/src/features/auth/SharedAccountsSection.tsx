@@ -34,9 +34,9 @@ export function SharedAccountsSection({ clientId }: { clientId: string }) {
 
   return (
     <section className="border border-stone/20 rounded-card p-6">
-      <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Accounts shared with this client</h2>
+      <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Accounts shared with this person</h2>
       <p className="text-sm text-stone mb-16">
-        Accounts owned by other clients that this client may view in their portal. Viewing only; the owner still sees
+        Other people's accounts this person may view in their app. Viewing only; the owner still sees
         the account as their own.
       </p>
 
@@ -65,7 +65,7 @@ export function SharedAccountsSection({ clientId }: { clientId: string }) {
           <label htmlFor="share-owner" className="text-xs text-stone block mb-1">Owner</label>
           <select id="share-owner" value={ownerId} className={select}
             onChange={(e) => { setOwnerId(e.target.value); setAccountId('') }}>
-            <option value="">Choose a client…</option>
+            <option value="">Choose a person…</option>
             {others.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>

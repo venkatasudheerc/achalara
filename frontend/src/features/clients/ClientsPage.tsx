@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useCreateClient, useClientsList } from '@/hooks/useClients'
 import { useScope } from '@/context/ScopeContext'
 import { useIsAdmin, useUsers } from '@/hooks/useAuth'
+import { ErrorState } from '@/components/ErrorState'
+import { EmptyState } from '@/components/EmptyState'
 import type { ClientResponse } from '@/api/types'
 
 type Mode = 'list' | 'create'
@@ -13,7 +15,7 @@ export function ClientsPage() {
   const { setClient } = useScope()
   const createClient = useCreateClient()
 
-  const { data: apiClients, isLoading } = useClientsList()
+  const { data: apiClients, isLoading, isError, refetch } = useClientsList()
   const clients: ClientResponse[] = apiClients ?? []
   // The admin assigns clients to advisors; an advisor's list is only their own.
   const isAdmin = useIsAdmin()
@@ -53,11 +55,11 @@ export function ClientsPage() {
   return (
     <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-16 mb-6">
         <div>
-          <h1 className="font-display text-2xl text-summit-ink">Clients</h1>
+          <h1 className="font-display text-2xl text-summit-ink">People</h1>
           <p className="text-stone text-sm mt-1">
-            {isAdmin ? 'Everyone you look after.' : 'The clients assigned to you.'} Open one to manage its accounts, its login and its family.
+            {isAdmin ? 'Everyone you look after.' : 'The people assigned to you.'} Open someone to see their accounts, their sign-in and their family.
           </p>
         </div>
         <div className="flex gap-2">
@@ -69,7 +71,7 @@ export function ClientsPage() {
                 : 'border-stone/30 text-stone hover:border-gold hover:text-summit-ink'
             }`}
           >
-            + New client
+            + Add a person
           </button>
         </div>
       </div>
@@ -80,14 +82,14 @@ export function ClientsPage() {
           onSubmit={handleCreate}
           className="mb-6 border border-stone/20 rounded-card p-6 bg-mist/30"
         >
-          <h2 className="font-medium text-summit-ink mb-1">Create a new client</h2>
+          <h2 className="font-medium text-summit-ink mb-1">Add a person</h2>
           <p className="text-xs text-stone mb-4">
-            The email is what the client will sign in with once you invite them. Leave it empty for a minor
+            The email is what they will sign in with once you invite them. Leave it empty for a minor
             without one; you can invite them later with any address.
           </p>
           <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             <div>
-              <label className="text-xs text-stone block mb-1">Client name</label>
+              <label className="text-xs text-stone block mb-1">Name</label>
               <input
                 required
                 autoFocus
@@ -128,7 +130,7 @@ export function ClientsPage() {
               disabled={createClient.isPending}
               className="px-4 py-2 bg-gold text-on-gold text-sm rounded-btn hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              {createClient.isPending ? 'Creating…' : 'Create client'}
+              {createClient.isPending ? 'Adding…' : 'Add'}
             </button>
             <button
               type="button"
@@ -155,16 +157,20 @@ export function ClientsPage() {
         </div>
       )}
 
-      {/* Client list */}
-      {!isLoading && clients.length > 0 && mode === 'list' && (
+      {isError && mode === 'list' && (
+        <ErrorState message="Could not load the people you look after." onRetry={() => refetch()} />
+      )}
+
+      {/* The list */}
+      {!isLoading && !isError && clients.length > 0 && mode === 'list' && (
         <div className="divide-y divide-stone/10 border border-stone/20 rounded-card overflow-hidden">
           {clients.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between px-6 py-4 hover:bg-mist/40 transition-colors"
+              className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 hover:bg-mist/40 transition-colors"
             >
-              <div>
-                <p className="font-medium text-summit-ink">{c.name}</p>
+              <div className="min-w-0">
+                <Link to={`/app/clients/${c.id}`} className="font-medium text-summit-ink hover:text-pine no-underline">{c.name}</Link>
                 <p className="text-xs text-stone">
                   <span className="font-mono">{c.email ?? 'No email'}</span>
                   {isAdmin && <span> · {advisorName(c.advisor_id) ? `Advisor: ${advisorName(c.advisor_id)}` : 'No advisor'}</span>}
@@ -173,15 +179,15 @@ export function ClientsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => selectClient(c)}
-                  className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
+                  className="px-3 py-1.5 text-xs border border-stone/30 text-stone rounded-btn hover:border-summit-ink hover:text-summit-ink transition-colors"
                 >
-                  View performance
+                  Performance
                 </button>
                 <Link
                   to={`/app/clients/${c.id}`}
-                  className="px-3 py-1.5 text-xs border border-stone/30 text-stone rounded-btn hover:border-summit-ink hover:text-summit-ink transition-colors"
+                  className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-on-dark transition-colors"
                 >
-                  Manage
+                  Open
                 </Link>
               </div>
             </div>
@@ -190,13 +196,14 @@ export function ClientsPage() {
       )}
 
       {/* Empty list with no form shown */}
-      {!isLoading && clients.length === 0 && mode === 'list' && (
-        <p className="text-center py-16 text-stone text-sm">
-          No clients yet.{' '}
-          <button onClick={() => setMode('create')} className="text-pine underline underline-offset-2">
-            Create one
-          </button>.
-        </p>
+      {!isLoading && !isError && clients.length === 0 && mode === 'list' && (
+        <EmptyState
+          title={isAdmin ? "You don't look after anyone yet" : 'No one is assigned to you yet'}
+          message={isAdmin
+            ? 'Add a person, then invite them to sign in. They link their own accounts from their app.'
+            : 'The admin assigns people to you. You can also add someone yourself; they become yours.'}
+          action={{ label: 'Add a person', onClick: () => setMode('create') }}
+        />
       )}
     </div>
   )
