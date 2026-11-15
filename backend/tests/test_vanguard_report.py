@@ -273,3 +273,61 @@ def test_splits_and_mergers_are_read_as_the_feed_read_them(db, account):
     # Read again, the split is on file and nothing is added twice.
     again = importer.plan(ba, rows)
     assert again.splits == [] and again.held_splits == 1 and again.trades == []
+
+
+def _undone_split_rows():
+    """Shares sold on the day a split was entered, which the broker then took back."""
+    return parse_rows(
+        _sheet(
+            _row("7/6/2021", "QQQ", "QQQ CORP", "Buy", "CASH", "3.0000", "$825.0000", "Free", "-$2,475.0000"),
+            _row("7/19/2021", "QQQ", "QQQ CORP", "Stock split", "CASH", "9.0000"),
+            _row("7/20/2021", "QQQ", "QQQ CORP", "Stock split", "CASH", "-9.0000"),
+            _row("7/19/2021", "QQQ", "QQQ CORP", "Sell", "CASH", "-3.0000", "$754.0000", "Free", "$2,262.0000"),
+        )
+    )
+
+
+def _shares_held(db, symbol):
+    from app.services.corporate_actions import adjusted_trades
+
+    held = D(0)
+    for t in adjusted_trades(db, [t for t in db.query(Trade) if t.symbol == symbol]):
+        held += D(str(t.quantity)) if str(getattr(t.action, "value", t.action)) == "BUY" else -D(str(t.quantity))
+    return held
+
+
+def test_a_split_the_broker_took_back_is_dated_by_the_taking_back(db, account):
+    """The sale on the entry's day came before the split took effect, so it is
+    read in the old shares and the position closes to nothing."""
+    from app.models.perf import CorporateAction
+
+    importer = _importer(db)
+    plan = importer.plan(account, _undone_split_rows())
+    assert plan.needs_a_look == []
+    importer.apply(account, plan)
+    (split,) = db.query(CorporateAction).filter(CorporateAction.symbol == "QQQ").all()
+    assert (split.effective_date, split.ratio) == (date(2021, 7, 20), D(4))
+    assert _shares_held(db, "QQQ") == 0
+
+
+def test_a_split_already_recorded_a_day_off_is_not_recorded_again(db, account):
+    """Another source dated the same split the day the taking back was entered;
+    the report's entry a day earlier is that split, not a second one."""
+    from app.models.perf import CorporateAction
+
+    db.add(CorporateAction(symbol="QQQ", effective_date=date(2021, 7, 20), action_type="SPLIT",
+                           ratio=D(4), source="brokerage"))
+    db.commit()
+    importer = _importer(db)
+    plan = importer.plan(account, _undone_split_rows())
+    assert plan.splits == [] and plan.held_splits == 2
+    importer.apply(account, plan)
+    assert db.query(CorporateAction).filter(CorporateAction.symbol == "QQQ").count() == 1
+    assert _shares_held(db, "QQQ") == 0
+
+
+def test_a_negative_split_row_with_nothing_to_undo_is_set_aside(db, account):
+    plan = _importer(db).plan(account, parse_rows(
+        _sheet(_row("7/20/2021", "QQQ", "QQQ CORP", "Stock split", "CASH", "-9.0000"))
+    ))
+    assert plan.splits == [] and len(plan.needs_a_look) == 1

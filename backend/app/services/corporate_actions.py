@@ -34,6 +34,18 @@ from app.models.trade import Trade
 
 # A split entry undone within this long was never held through.
 _REVERSAL_WINDOW = timedelta(days=7)
+# Two sources date the same split a day or two apart (the brokerage's entry, its
+# reversal, the market's own date): a split of the same symbol this near one on
+# file is that split, not another.
+_SAME_SPLIT_DAYS = 3
+
+
+def split_on_file(known, symbol: str, day: date) -> bool:
+    """Whether a split of ``symbol`` within a few days of ``day`` is already
+    recorded. ``known`` is a set of (symbol, effective date)."""
+    return any(
+        s == symbol and abs((d - day).days) <= _SAME_SPLIT_DAYS for s, d in known
+    )
 # Starts the notes of a trade made from a merger row (set by the connector).
 MERGER_NOTE = "Merger: "
 # Start the notes of the trade that ends an option without a price, as the
@@ -389,7 +401,7 @@ def record_splits(db: Session, brokerage_account_id: str) -> int:
     factors = split_factors(db)
     for row in rows:
         effective = reversed_on.get(row.id, row.activity_date)
-        if (row.symbol, effective) in known:
+        if split_on_file(known, row.symbol, effective):
             continue
         try:
             added = Decimal(str((row.payload or {}).get("units")))
