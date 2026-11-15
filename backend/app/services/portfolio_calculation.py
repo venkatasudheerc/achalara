@@ -11,7 +11,7 @@ from app.models.position import Position
 from app.models.account import Account
 from app.models.perf import MANUAL_SOURCE, DailyPrice
 from app.models.sleeve import Sleeve
-from app.services.corporate_actions import MERGER_NOTE, adjusted_trades
+from app.services.corporate_actions import MERGER_NOTE, adjusted_trades, day_order
 from app.services.tax_lots import FIFO, carried_lots, is_index_option, match_lots
 
 
@@ -124,7 +124,7 @@ class PortfolioCalculationService:
         views = adjusted_trades(self.db, trades)
         # Buys before sells within a day: the source reports dates, not times,
         # so a same-day round trip must not see its sell first.
-        views.sort(key=lambda t: (t.trade_date, t.action != "BUY"))
+        views.sort(key=day_order)
         method = (
             self.db.query(Account.cost_basis_method)
             .join(Sleeve, Sleeve.account_id == Account.id)

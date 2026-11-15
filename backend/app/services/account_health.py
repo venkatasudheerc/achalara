@@ -127,7 +127,13 @@ def account_health(db: Session, account: Account, today: Optional[date] = None) 
     holdings = AccountImportService(db).holdings_check(account)
     if holdings and holdings["differences"]:
         since = holdings["first_differed"]
-        recent = since is not None and since >= today - timedelta(days=SETTLE_DAYS)
+        # Recent only if they agreed before: a difference since the very first
+        # record is history missing, not trades still arriving.
+        recent = (
+            since is not None
+            and holdings.get("last_agreed") is not None
+            and since >= today - timedelta(days=SETTLE_DAYS)
+        )
         states.append(PROVISIONAL if recent else INCOMPLETE)
         reasons.append(
             "Recent trades are still arriving." if recent

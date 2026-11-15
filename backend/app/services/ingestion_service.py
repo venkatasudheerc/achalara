@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Iterable, List, Optional
 
@@ -45,26 +45,61 @@ _ID_AUTHORITATIVE_SOURCES = {"plaid", "vanguard"}
 _MAX_SAME_TRADES = 50
 
 
-def _is_duplicate(trade: NormalizedTrade, keys: set) -> bool:
-    """Whether ``trade`` is already represented in ``keys``, and record it if not."""
+# A feed's date for a trade is worked back from settlement; around a day markets
+# trade but banks do not settle, it can be a day or two from the report's.
+_TWIN_WEEKDAYS = 2
+_TWIN_PRICE = Decimal("0.01")
+
+
+def _weekdays_apart(a, b) -> int:
+    low, high = (a, b) if a <= b else (b, a)
+    days, apart = low, 0
+    while days < high:
+        days += timedelta(days=1)
+        if days.weekday() < 5:
+            apart += 1
+    return apart
+
+
+def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[tuple]:
+    """The report trade in ``keys`` that ``trade`` is: same side, symbol and
+    quantity, price within a cent a share, within two weekdays; the nearest."""
+    day = trade.executed_at.date()
+    quantity = _exact(trade.quantity)
+    price = Decimal(str(trade.price))
+    symbol = str(trade.symbol).upper()
+    best = None
+    for key in keys:
+        if not (isinstance(key, tuple) and len(key) == 7 and key[0] == "report"):
+            continue
+        _, action, on, sym, qty, at, _number = key
+        if action != trade.action.value or sym != symbol or qty != quantity:
+            continue
+        if abs(at - price) > _TWIN_PRICE or _weekdays_apart(on, day) > _TWIN_WEEKDAYS:
+            continue
+        rank = (abs((on - day).days), abs(at - price))
+        if best is None or rank < best[0]:
+            best = (rank, key)
+    return best[1] if best else None
+
+
+def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = None) -> bool:
+    """Whether ``trade`` is already represented in ``keys``, and record it if not.
+    A feed trade found to be a report's trade is added to ``twins`` (its id)."""
     if trade.source in _ID_AUTHORITATIVE_SOURCES and trade.external_id:
         if trade.external_id in keys:
             return True
         if not trade.external_id.startswith(REPORT_ID_PREFIX):
             # A trade a custodian's report added shares no id with the feed:
-            # it is the same trade when the day, side, symbol, quantity and
-            # price agree. Each report trade answers for one feed trade only.
-            report = _report_key(
-                trade.executed_at.date(),
-                trade.action.value,
-                trade.symbol,
-                trade.quantity,
-                trade.price,
-            )
-            for number in range(1, _MAX_SAME_TRADES + 1):
-                if report + (number,) in keys:
-                    keys.discard(report + (number,))
-                    return True
+            # it is the same trade when the side, symbol and quantity agree,
+            # the price within a cent and the day within two weekdays. Each
+            # report trade answers for one feed trade only.
+            twin = _report_twin(trade, keys)
+            if twin is not None:
+                keys.discard(twin)
+                if twins is not None:
+                    twins.append(trade.external_id)
+                return True
         keys.add(trade.external_id)
         return False
     # Either identity matching means we already have this trade: the source's
@@ -185,8 +220,10 @@ class IngestionService:
         for sid in dedup_sleeve_ids or [sleeve_id]:
             existing_keys |= self._existing_keys(sid)
         to_import: List[NormalizedTrade] = []
+        twins: List[str] = []
+        result["report_twins"] = twins
         for t in trades:
-            if _is_duplicate(t, existing_keys):
+            if _is_duplicate(t, existing_keys, twins):
                 result["duplicates"] += 1
                 continue
             to_import.append(t)

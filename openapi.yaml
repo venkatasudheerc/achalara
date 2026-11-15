@@ -3709,6 +3709,20 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/PlaidLinkStart'}
         '404': {description: Not one of the viewer's logins}
+  /api/v1/portal/links/plaid/refresh:
+    post:
+      tags: [portal]
+      summary: Refresh my linked accounts now
+      description: The morning refresh now, for the viewer's own Plaid logins only (never a spouse's or a shared one). A login checked in the last ten minutes, or one that needs signing in again, is left as it is.
+      operationId: plaidRefreshMine
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: How each of the viewer's logins fared
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlaidRefreshed'}
   /api/v1/portal/links/plaid/{connection_id}/repaired:
     post:
       tags: [portal]
@@ -5722,6 +5736,15 @@ components:
           format: email
           nullable: true
 
+    PlaidRefreshed:
+      type: object
+      required: [refreshed, up_to_date, needs_sign_in, failed, at]
+      properties:
+        refreshed: {type: integer}
+        up_to_date: {type: integer, description: Checked in the last ten minutes; left as it is}
+        needs_sign_in: {type: integer}
+        failed: {type: integer}
+        at: {type: string, format: date-time}
     PlaidRepaired:
       type: object
       required: [status]

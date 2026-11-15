@@ -35,6 +35,7 @@ from app.api.schemas.portal import (
     PortalTradesResponse,
 )
 from app.api.schemas.plaid import (
+    PlaidRefreshed,
     PlaidRepaired,
     PlaidConfirm,
     PlaidConfirmed,
@@ -616,6 +617,17 @@ def portal_plaid_finish(
     """Keep the login Plaid Link made, and say what each of its accounts may be."""
     with _plaid_errors():
         return PlaidLinkService(db).finish(viewer.client_id, body.public_token)
+
+
+@router.post("/links/plaid/refresh", response_model=PlaidRefreshed)
+def portal_plaid_refresh(
+    viewer: PortalViewer = Depends(portal_viewer),
+    db: Session = Depends(get_db),
+):
+    """Bring the viewer's own linked accounts up to date now, as the morning
+    refresh would. A login refreshed in the last few minutes is left alone."""
+    with _plaid_errors():
+        return PlaidLinkService(db).refresh_mine(viewer.client_id)
 
 
 @router.post("/links/plaid/{connection_id}/repair", response_model=PlaidLinkStart)

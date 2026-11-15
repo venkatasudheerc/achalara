@@ -1331,3 +1331,46 @@ def test_an_account_without_a_daily_report_is_rebuilt_to_today(db):
         for r in db.query(DailyValuation).filter(DailyValuation.sleeve_id == sleeve.id)
     ]
     assert max(days) == date(2025, 1, 9)
+
+
+def test_a_trade_far_from_the_close_does_not_revalue_a_holding():
+    """A delivery the source did not mark (shares at a $20 strike while the
+    market is at $10) leaves the holding valued at the market."""
+    from app.services.performance_build_service import PerformanceBuildService as B
+
+    assert B._anchor(D(1), D(20), D(10), True) == D(1)
+    assert B._anchor(D(1), D("10.5"), D(10), True) == D("1.05")  # an ordinary trade still ties it
+    assert B._anchor(None, D(20), D(10), True) == D(2)  # nothing to compare with yet
+
+
+def test_a_price_history_that_stops_short_carries_its_last_close():
+    from app.services.performance_build_service import _Series
+
+    series = _Series([(date(2026, 10, 1), D(8)), (date(2026, 10, 9), D(9))])
+    assert series.on(date(2026, 10, 30)) is None  # too stale to call that day's close
+    assert series.last_on(date(2026, 10, 30)) == D(9)
+
+
+def test_an_option_assigned_the_day_it_was_written_closes_the_contracts_that_day(db):
+    """Written and assigned on one day: the assignment (at no price) closes the
+    contracts written that morning, so the premium goes to the shares and the
+    option shows no gain of its own."""
+    account = _account(db)
+    sleeve = _sleeve(db, account)
+    contract = "ABC261218P00020000"
+    day = date(2026, 9, 15)
+    for action, qty, price, symbol, notes in (
+        ("BUY", 2, 0, contract, "Assignment: ABC put"),  # listed first, as buys are
+        ("SELL", 2, 150, contract, "Sell to open"),
+        ("BUY", 200, 20, "ABC", "Assigned shares"),
+    ):
+        db.add(Trade(sleeve_id=sleeve.id, trade_date=day, symbol=symbol, action=action,
+                     quantity=D(qty), price=D(price), notes=notes))
+    db.commit()
+
+    positions = PortfolioCalculationService(db).calculate_positions(sleeve.id)
+    assert [p["symbol"] for p in positions["open"]] == ["ABC"]
+    shares = positions["open"][0]
+    # 200 shares at the $20 strike less the $300 premium received.
+    assert shares["cost_basis"] == pytest.approx(D(3700))
+    assert all(c["realized_gain"] == 0 for c in positions["closed"] if c["symbol"] == contract)

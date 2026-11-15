@@ -36,7 +36,7 @@ class FakePlaid:
 
     def __init__(self, accounts=None, holdings=None):
         self.accounts_list = accounts or [
-            {"account_id": "p-brk", "name": "Brokerage Account", "mask": "8069",
+            {"account_id": "p-brk", "name": "Brokerage Account", "mask": "4321",
              "type": "investment", "subtype": "brokerage", "balances": {"current": 1600.0}},
             {"account_id": "p-chk", "name": "Everyday Checking", "mask": "1111",
              "type": "depository", "subtype": "checking", "balances": {"current": 2500.0}},
@@ -196,7 +196,7 @@ def test_an_access_key_is_stored_sealed(plaid_keys):
 def test_finishing_a_link_keeps_the_key_sealed_and_proposes_for_each_account(db, owner, plaid_keys):
     # Already here: the brokerage (its name carries the real number) with the
     # same holdings, and an unrelated account that happens to end 1111.
-    _existing(db, owner, "Pat Example — Brokerage Account — 12348069", {"AAA": 100})
+    _existing(db, owner, "Pat Example — Brokerage Account — 12344321", {"AAA": 100})
     _existing(db, owner, "Pat Example — Old Savings — 99991111")
 
     found = PlaidLinkService(db, FakePlaid()).finish(owner.id, "public-token")
@@ -205,7 +205,7 @@ def test_finishing_a_link_keeps_the_key_sealed_and_proposes_for_each_account(db,
     assert connection.institution == INSTITUTION
     assert connection.access_token_enc and "access-secret-123" not in connection.access_token_enc
     by_mask = {a["mask"]: a for a in found["accounts"]}
-    assert by_mask["8069"]["proposal"] == "same"  # last four + institution + holdings
+    assert by_mask["4321"]["proposal"] == "same"  # last four + institution + holdings
     assert by_mask["1111"]["proposal"] == "choose"  # last four alone is not enough
     assert by_mask["2222"]["proposal"] == "new"
     assert (by_mask["1111"]["kind"], by_mask["2222"]["kind"], by_mask["2222"]["owed"]) == (
@@ -214,9 +214,9 @@ def test_finishing_a_link_keeps_the_key_sealed_and_proposes_for_each_account(db,
 
 
 def test_holdings_that_disagree_leave_the_choice_to_the_person(db, owner, plaid_keys):
-    _existing(db, owner, "Pat Example — Brokerage Account — 12348069", {"ZZZ": 5})
+    _existing(db, owner, "Pat Example — Brokerage Account — 12344321", {"ZZZ": 5})
     found = PlaidLinkService(db, FakePlaid()).finish(owner.id, "public-token")
-    brokerage = next(a for a in found["accounts"] if a["mask"] == "8069")
+    brokerage = next(a for a in found["accounts"] if a["mask"] == "4321")
     assert brokerage["proposal"] == "choose"
     assert brokerage["candidates"][0]["same_holdings"] is False
 
@@ -227,7 +227,7 @@ def test_a_new_account_is_added_of_its_kind_and_pulled(db, owner, plaid_keys):
     links = {a["mask"]: a["link_id"] for a in found["accounts"]}
 
     done = service.confirm(owner.id, found["connection_id"], [
-        {"link_id": links["8069"], "action": "new", "kind": "taxable"},
+        {"link_id": links["4321"], "action": "new", "kind": "taxable"},
         {"link_id": links["1111"], "action": "new"},
         {"link_id": links["2222"], "action": "new"},
     ])
@@ -235,10 +235,10 @@ def test_a_new_account_is_added_of_its_kind_and_pulled(db, owner, plaid_keys):
 
     accounts = {a.last_four: a for a in db.query(Account).filter(Account.client_id == owner.id)}
     assert {k: a.kind for k, a in accounts.items()} == {
-        "8069": "taxable", "1111": "checking", "2222": "credit_card",
+        "4321": "taxable", "1111": "checking", "2222": "credit_card",
     }
-    brokerage = accounts["8069"]
-    assert accounts["8069"].institution == INSTITUTION
+    brokerage = accounts["4321"]
+    assert accounts["4321"].institution == INSTITUTION
     # A feed's sales take the oldest shares first, never round-trip pairing.
     assert {s.accounting_method for s in db.query(Sleeve).filter(Sleeve.account_id == brokerage.id)} == {"FIFO"}
     trades = db.query(Trade).join(Sleeve).filter(Sleeve.account_id == brokerage.id).all()
@@ -261,10 +261,10 @@ def test_a_new_account_is_added_of_its_kind_and_pulled(db, owner, plaid_keys):
 def test_an_account_another_link_already_feeds_is_not_linked_again(db, owner, plaid_keys):
     """Two feeds never write to one account: a second link would count its
     transactions twice, under ids of its own."""
-    existing = _existing(db, owner, "Pat Example — Brokerage Account — 12348069", {"AAA": 100}, fed=True)
+    existing = _existing(db, owner, "Pat Example — Brokerage Account — 12344321", {"AAA": 100}, fed=True)
     service = PlaidLinkService(db, FakePlaid())
     found = service.finish(owner.id, "public-token")
-    brokerage = next(a for a in found["accounts"] if a["mask"] == "8069")
+    brokerage = next(a for a in found["accounts"] if a["mask"] == "4321")
 
     with pytest.raises(PlaidLinkError) as refused:
         service.confirm(owner.id, found["connection_id"], [
@@ -278,10 +278,10 @@ def test_an_account_of_another_client_cannot_be_chosen(db, owner, plaid_keys):
     stranger = Client(name="Lee Example", email="lee@example.com")
     db.add(stranger)
     db.commit()
-    theirs = _existing(db, stranger, "Lee Example — Brokerage — 55558069")
+    theirs = _existing(db, stranger, "Lee Example — Brokerage — 55554321")
     service = PlaidLinkService(db, FakePlaid())
     found = service.finish(owner.id, "public-token")
-    brokerage = next(a for a in found["accounts"] if a["mask"] == "8069")
+    brokerage = next(a for a in found["accounts"] if a["mask"] == "4321")
     assert brokerage["proposal"] == "new"  # never a candidate
     with pytest.raises(PlaidLinkError) as refused:
         service.confirm(owner.id, found["connection_id"], [
@@ -329,7 +329,7 @@ def test_money_already_in_a_bank_account_is_its_opening_value_not_a_gain(db, own
     found = service.finish(owner.id, "public-token")
     links = {a["mask"]: a["link_id"] for a in found["accounts"]}
     service.confirm(owner.id, found["connection_id"], [
-        {"link_id": links["8069"], "action": "skip"},
+        {"link_id": links["4321"], "action": "skip"},
         {"link_id": links["1111"], "action": "new"},
         {"link_id": links["2222"], "action": "skip"},
     ])
@@ -360,15 +360,18 @@ HELD_BEFORE = [
 
 
 def _link_brokerage(db, owner):
-    service = PlaidLinkService(db, FakePlaid(holdings=HELD_BEFORE))
+    # The balance is what the holdings and cash add up to, as Plaid reports it.
+    accounts = FakePlaid().accounts_list
+    accounts[0] = dict(accounts[0], balances={"current": 3150.0})
+    service = PlaidLinkService(db, FakePlaid(accounts=accounts, holdings=HELD_BEFORE))
     found = service.finish(owner.id, "public-token")
     links = {a["mask"]: a["link_id"] for a in found["accounts"]}
     service.confirm(owner.id, found["connection_id"], [
-        {"link_id": links["8069"], "action": "new", "kind": "taxable"},
+        {"link_id": links["4321"], "action": "new", "kind": "taxable"},
         {"link_id": links["1111"], "action": "skip"},
         {"link_id": links["2222"], "action": "skip"},
     ])
-    return db.query(Account).filter(Account.client_id == owner.id, Account.last_four == "8069").one()
+    return db.query(Account).filter(Account.client_id == owner.id, Account.last_four == "4321").one()
 
 
 def _account_rows(db, account):

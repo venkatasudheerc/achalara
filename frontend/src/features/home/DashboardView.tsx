@@ -3,7 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, Responsiv
 import type { PortalAccount } from '@/api/types'
 import { usePortalPerformance } from '@/hooks/usePortal'
 import { useChartColours } from '@/context/ThemeContext'
-import { usePlaidRepair } from '@/hooks/usePlaid'
+import { usePlaidRefresh, usePlaidRepair } from '@/hooks/usePlaid'
 import { loadPlaid } from '@/lib/plaid'
 import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/formatters'
 import { SkeletonCard } from '@/components/Skeleton'
@@ -79,9 +79,12 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
   return (
     <div className="flex flex-col gap-[28px]">
       <section aria-label="Summary" className="flex flex-col gap-[10px]">
-        <span className="text-[14px] text-stone">
-          {priced ? `At prices of ${formatTime(priced)}` : 'At the last reported prices'}
-          {latest ? ` · holdings and cash as ${one?.source ?? 'your institution'} reported them on ${formatDate(latest)}` : ''}
+        <span className="text-[14px] text-stone flex flex-wrap items-center gap-x-[10px] gap-y-[4px]">
+          <span>
+            {priced ? `At prices of ${formatTime(priced)}` : 'At the last reported prices'}
+            {latest ? ` · holdings and cash as ${one?.source ?? 'your institution'} reported them on ${formatDate(latest)}` : ''}
+          </span>
+          {accounts.some((a) => !a.shared && a.source) && <RefreshNow />}
         </span>
         <h1 className="font-display text-[30px] md:text-[40px] leading-[1.15]">
           {lead} <span className="text-pine tabular-nums">{formatCurrency(total)}</span>
@@ -200,6 +203,32 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
 }
 
 /** Which accounts' records are missing a transaction, and how to repair them. */
+/** Ask the viewer's own institutions for what is new, now. Plaid updates
+ * investment accounts about once a day, so it often has nothing newer. */
+function RefreshNow() {
+  const refresh = usePlaidRefresh()
+  const r = refresh.data
+  const said = r
+    ? r.refreshed
+      ? 'Updated just now'
+      : r.up_to_date
+        ? 'Already up to date'
+        : r.needs_sign_in
+          ? 'Sign in again first'
+          : 'Could not update; it will try again in the morning'
+    : null
+  return (
+    <span className="inline-flex items-center gap-[8px]">
+      <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending}
+        className="h-[32px] px-[12px] rounded-[16px] border border-stone/40 text-[13px] font-semibold text-summit-ink hover:bg-line disabled:opacity-60">
+        {refresh.isPending ? 'Updating…' : 'Refresh'}
+      </button>
+      {said && <span role="status">{said}</span>}
+      {refresh.isError && <span role="alert" className="text-loss">{refresh.error.message}</span>}
+    </span>
+  )
+}
+
 function Incomplete({ accounts, one }: { accounts: PortalAccount[]; one?: PortalAccount }) {
   const from = (a: PortalAccount) => a.health?.download_from
   return (

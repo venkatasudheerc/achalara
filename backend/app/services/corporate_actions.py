@@ -80,6 +80,14 @@ def split_factors(db: Session) -> Dict[str, List[Tuple[date, Decimal]]]:
     return factors
 
 
+def day_order(trade) -> tuple:
+    """The order lot matching reads a day's trades in: buys before sells, and
+    an option leaving at no price (assigned, exercised or expired) after
+    everything else that day, so it closes the contracts the day opened."""
+    closes_at_no_price = is_option_symbol(trade.symbol) and Decimal(str(trade.price)) == 0
+    return (trade.trade_date, closes_at_no_price, trade.action != "BUY")
+
+
 def renames(db: Session) -> Dict[str, List[Tuple[date, str]]]:
     """Every recorded ticker change, by the symbol it changed from, oldest first."""
     changes: Dict[str, List[Tuple[date, str]]] = {}
@@ -235,8 +243,8 @@ def assignment_adjustments(
         .filter(Trade.sleeve_id.in_(account_sleeves), Trade.symbol.in_(symbols))
         .all()
     )
-    # The order the lot matching itself uses: by day, buys before sells.
-    option_trades.sort(key=lambda t: (t.trade_date, t.action != "BUY", t.id))
+    # The order the lot matching itself uses (``day_order``).
+    option_trades.sort(key=lambda t: day_order(t) + (t.id,))
     days = {t.trade_date for t in closes}
     share_trades = [
         t

@@ -358,7 +358,15 @@ performance tables go there, with `__table_args__ = (..., {"schema": "perf"})`. 
   realised-gains screens do. Add a tax rule in `tax_lots.py`, never in a route or the portal.
 - **Which lots a sale closes** is the account's `cost_basis_method` (`FIFO` or `MIN_TAX`), set
   to match the brokerage. The source gives days, not times: a same-day purchase is read as
-  bought after the sale.
+  bought after the sale. Positions and the assignment rule read a day's trades in one order
+  (`corporate_actions.day_order`): buys before sells, and an option leaving at no price
+  (assigned, exercised, expired) after everything else that day, so it closes the contracts
+  the day opened.
+- **A rebuilt day's price is tied to the trades, but never to one far from the market:** a
+  trade more than 25% from that day's close does not reset a holding's price scale (a delivery
+  the source did not mark as one would revalue every share). When the price history stops short,
+  the last close is carried, not the last trade's price, and the day counts as unpriced. A
+  record's first written day never carries a return.
 - **A year-end price for an index option is entered by hand** (`set-price`, stored as a
   `manual` row in `perf.daily_price`); no feed prices options. Without one the lot is left
   unmarked and says so. Never estimate it.
@@ -427,7 +435,11 @@ through Plaid (below), their earlier history from the custodian's own files.
   assignment matches its own contract only; cash matches on amount within 3 days. Sweeps and
   same-day transfer pairs between the account's cash and margin sides are not activity. Added
   rows are stored under ids starting `vanguard:` (`REPORT_ID_PREFIX`), and ingestion recognises a
-  Plaid trade or cash row that matches one, so a day is never counted twice. **One holdings
+  Plaid trade or cash row that matches one, so a day is never counted twice: a trade on side,
+  symbol and quantity with the price within a cent a share and the day within two weekdays (a
+  feed's day is worked back from settlement, which a bank holiday moves), cash on amount within
+  three days. The feed's row is then marked `connection_service.REPORT_TWIN` and keeps no cash,
+  so the report's row alone counts it. **One holdings
   check** (`AccountImportService.holdings_check`) compares every day the custodian recorded
   holdings with what the trades add up to and says which differ, when they last agreed and first
   differed, and where a report should start (`download_from`). Options and "~" names are not
@@ -488,6 +500,10 @@ its accounts are `brokerage_accounts` rows. Rules:
   pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
   `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
   and skipped until repaired; one failing login never stops the rest.
+- **Refresh now** (`PlaidLinkService.refresh_mine`, `POST /portal/links/plaid/refresh`): the
+  morning refresh for the viewer's own logins only, never a spouse's or a shared one; a login
+  checked in the last ten minutes (`REFRESH_AFTER`) or one that needs signing in again is left as
+  it is. Plaid updates investment accounts about once a day, so it often brings nothing newer.
 - **Repairing a login** (`PlaidLinkService.repair_start` / `repaired`, routes
   `/portal/links/plaid/{id}/repair` and `/repaired`): Plaid Link opens in update mode for the
   same login (a link token made with its access key), so no new place on the plan is used and its
@@ -502,7 +518,8 @@ its accounts are `brokerage_accounts` rows. Rules:
 `services/account_health.py` gives every account one state, on `/portal/accounts` as `health`:
 **complete**, **provisional** (a difference in the last `SETTLE_DAYS` that may clear as
 transactions post) or **incomplete** (a transaction is missing), with plain reasons and
-`download_from`. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
+`download_from`. A holdings difference is provisional only when holdings agreed before it and it
+began in the last `SETTLE_DAYS`; one there since the very first record is history missing. Three checks feed it: the opening (`reconciliation["opening_problems"]`,
 written by `OpeningPositionService.refresh`), the holdings check, and `cash_check`, which compares
 each day the institution recorded cash with what the history works back to. The record is worked
 back from today, so the latest day always agrees and an earlier day that differs means a movement
@@ -516,9 +533,15 @@ changes a figure, but **no figure over time is shown from an incomplete record**
 past year and the Performance tab say why instead), and **no nudge may be built on an account
 that is not complete.**
 
-**Accounts added together are measured from the day the last of them joined the record**
-(`PortalService._all_on_record_from`), when they joined holding something already: an account
-whose record starts later would otherwise count what it already held as a gain.
+**Accounts added together keep their whole record.** An account joining a set on a later day
+brings what it held (`Day.brought`, part of `net_flow`): money in for the set, never a gain or a
+loss, in the returns and the summary's gain alike (`PerformanceStatsService.daily`).
+
+**Options the custodian values on an account's first recorded day that no trade on file holds
+open** (opened before the history, or sent without a symbol) cannot be valued on any earlier
+day, so its record starts on that day (`PerformanceBuildService._options_unexplained_from`).
+Every rebuild works this out again: history added later that names the options (a custodian's
+file) gives the account its full record back.
 
 ## Market data: the `md` schema
 

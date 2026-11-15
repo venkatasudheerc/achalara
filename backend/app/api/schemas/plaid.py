@@ -1,4 +1,5 @@
 """Linking an institution through Plaid."""
+from datetime import datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -79,6 +80,16 @@ class PlaidConfirmed(BaseModel):
     skipped: int
     # Linked to an account another feed still writes to: moved over later.
     waiting: int
+
+
+class PlaidRefreshed(BaseModel):
+    """How the viewer's own logins fared when refreshed now."""
+
+    refreshed: int
+    up_to_date: int
+    needs_sign_in: int
+    failed: int
+    at: datetime
 
 
 class PlaidRepaired(BaseModel):

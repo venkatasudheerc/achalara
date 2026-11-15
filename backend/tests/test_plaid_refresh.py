@@ -236,3 +236,28 @@ def test_a_history_worth_less_than_nothing_is_incomplete(db, owner, plaid_keys):
     health = account_health(db, account, date(2026, 12, 1))
     assert health["state"] == "incomplete"
     assert "less than nothing on 1 Oct 2026" in " ".join(health["reasons"])
+
+
+def test_a_client_refreshes_their_own_logins_now_and_not_again_within_minutes(db, owner, plaid_keys):
+    from app.services.plaid_link_service import PlaidLinkService as Links
+
+    _, login = _link_checking(db, owner)
+    login.status_checked_at = None
+    db.commit()
+    first = Links(db, NextDay()).refresh_mine(owner.id, TUESDAY)
+    assert (first["refreshed"], first["up_to_date"]) == (1, 0)
+    assert login.transactions_cursor == "c2"
+    again = Links(db, NextDay()).refresh_mine(owner.id, TUESDAY)
+    assert (again["refreshed"], again["up_to_date"]) == (0, 1)
+
+
+def test_refresh_now_reaches_only_the_viewers_own_logins(db, owner, plaid_keys):
+    from app.models.client import Client
+    from app.services.plaid_link_service import PlaidLinkService as Links
+
+    _link_checking(db, owner)
+    stranger = Client(name="Sam Other", email="sam.other@example.com")
+    db.add(stranger)
+    db.commit()
+    outcome = Links(db, NextDay()).refresh_mine(stranger.id, TUESDAY)
+    assert outcome["refreshed"] + outcome["up_to_date"] + outcome["failed"] == 0

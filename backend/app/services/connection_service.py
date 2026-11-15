@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 # A feed's trade it could not name, whose cash a custodian's file now counts.
 ON_FILE = "skipped:unreadable, on file"
+# A feed's trade or cash row found to be one a custodian's report added.
+REPORT_TWIN = "on file from a report"
 
 # Strategy a linked account's trades land in until they are split out.
 DEFAULT_STRATEGY_NAME = "Unallocated"
@@ -65,6 +67,7 @@ class ConnectionService:
         earliest date newly written. Does not commit the cash rows; the caller
         does, along with its own bookkeeping.
         """
+        twins: List[str] = []
         account_sleeves = [
             row[0]
             for row in self.db.query(Sleeve.id).filter(
@@ -95,6 +98,7 @@ class ConnectionService:
                 raise RuntimeError("; ".join(ingest["errors"]) or "Ingestion failed")
             result["imported"] += ingest["imported"]
             result["duplicates"] += ingest["duplicates"]
+            twins.extend(ingest.get("report_twins") or [])
             touched(sleeve_id, ingest["earliest_trade_date"])
 
         cash_service = CashActivityService(self.db)
@@ -103,8 +107,18 @@ class ConnectionService:
                 activities, sleeve_id, dedup_sleeve_ids=account_sleeves
             )
             result["cash_imported"] += cash["imported"]
+            twins.extend(cash.get("report_twins") or [])
             touched(sleeve_id, cash["earliest_activity_date"])
 
+        # A feed row that is a custodian's report row already on file: the
+        # report's row counts its cash, so the feed's row keeps none.
+        if twins:
+            for record in self.db.query(BrokerageActivity).filter(
+                BrokerageActivity.brokerage_account_id == ba.id,
+                BrokerageActivity.source_activity_id.in_(twins),
+            ):
+                record.outcome = REPORT_TWIN
+                record.cash_amount = Decimal(0)
         return earliest
 
     def ingest_batch(

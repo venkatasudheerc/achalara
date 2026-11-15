@@ -121,6 +121,11 @@ class _Series:
         # history has stopped (delisted) or does not reach this far.
         return close if (day - found).days <= 7 else None
 
+    def last_on(self, day: date) -> Optional[Decimal]:
+        """The latest close on or before ``day`` however old (after ``on``)."""
+        self.on(day)
+        return self._points[self._index][1] if self._index >= 0 else None
+
 
 class _Holding:
     __slots__ = ("quantity", "scale", "last_price", "longs", "shorts", "cost")
@@ -178,6 +183,51 @@ class PerformanceBuildService:
             account_id: self.rebuild_account(account_id) for account_id in account_ids
         }
 
+    def _options_unexplained_from(
+        self, account_id: str, trades, observed_days: List[date]
+    ) -> Optional[date]:
+        """The account's first recorded day, when on it the custodian values
+        securities beyond the holdings it listed (options, which it never lists)
+        and the trades on file hold no option open that day. Else None."""
+        if not observed_days:
+            return None
+        first_seen = min(observed_days)
+        row = (
+            self.db.query(DailyValuation.securities_value)
+            .filter(
+                DailyValuation.account_id == account_id,
+                DailyValuation.sleeve_id.is_(None),
+                DailyValuation.as_of_date == first_seen,
+            )
+            .first()
+        )
+        if row is None or row[0] is None:
+            return None
+        # Each listed holding at the price the day's total was worked out with.
+        listed = sum(
+            (
+                Decimal(str(h.quantity)) * Decimal(str(h.price))
+                if h.price is not None
+                else Decimal(str(h.market_value or 0))
+                for h in self.db.query(DailyHolding).filter(
+                    DailyHolding.account_id == account_id, DailyHolding.as_of_date == first_seen
+                )
+            ),
+            Decimal(0),
+        )
+        beyond = Decimal(str(row[0])) - listed
+        if abs(beyond) < 1:
+            return None
+        held: Dict[str, Decimal] = {}
+        for t in trades:
+            if t.trade_date <= first_seen and is_option_symbol(t.symbol):
+                held[t.symbol] = held.get(t.symbol, Decimal(0)) + (
+                    t.quantity if t.action == "BUY" else -t.quantity
+                )
+        if any(abs(q) > 0 for q in held.values()):
+            return None
+        return first_seen
+
     def rebuild_account(self, account_id: str, today: Optional[date] = None) -> int:
         """Rebuild one account and its sleeves. Returns the rows written."""
         sleeve_ids = [
@@ -226,6 +276,14 @@ class PerformanceBuildService:
         # nothing moved in: that is its opening value, never a gain.
         if opening.day is not None:
             first = min(first, opening.day)
+        # Options the custodian values on its first recorded day that the trades
+        # on file do not show open (opened before the history, or sent with no
+        # symbol) cannot be valued on any day before it: the record starts
+        # there. History added later that names them lifts this on the next
+        # rebuild, which every upload and refresh runs.
+        unexplained_from = self._options_unexplained_from(account_id, trades, observed_days)
+        if unexplained_from is not None and unexplained_from > first:
+            first = unexplained_from
         days = self.prices.market_days(first, end)
         if not days:
             self.db.commit()
@@ -323,11 +381,21 @@ class PerformanceBuildService:
                 if holding.quantity == 0:
                     continue
                 close = series[symbol].on(day) if symbol in series else None
+                carried = (
+                    series[symbol].last_on(day)
+                    if close is None and symbol in series and holding.scale is not None
+                    else None
+                )
                 if close is not None and holding.scale is not None:
                     price = close * holding.scale
                 elif day == days[-1] and symbol in on_file:
                     # No history for it, but a current price is on file.
                     price = on_file[symbol]
+                elif carried is not None:
+                    # The price history stopped short: carry its last close,
+                    # not the last trade's price, and count the day unpriced.
+                    price = carried * holding.scale
+                    unpriced[sleeve_id] += abs(holding.quantity * price)
                 else:
                     price = holding.last_price
                     unpriced[sleeve_id] += abs(holding.quantity * price)
@@ -432,7 +500,7 @@ class PerformanceBuildService:
                 account_in,
                 account_out,
                 sum(unpriced.values(), ZERO),
-                None if day == opening.day else previous_account_total,
+                None if day in (opening.day, days[0]) else previous_account_total,
                 provisional,
                 now,
             )
@@ -533,7 +601,13 @@ class PerformanceBuildService:
         if not close:
             return None
         if at_market and traded_at > 0:
-            return traded_at / close
+            tied = traded_at / close
+            # Within one run of a holding the scale only drifts with dividends;
+            # a trade far from the day's close (a delivery the source did not
+            # mark as one) would revalue every share, so it is not taken.
+            if scale is not None and abs(tied / scale - 1) > Decimal("0.25"):
+                return scale
+            return tied
         return scale if scale is not None else Decimal(1)
 
     @staticmethod

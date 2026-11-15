@@ -201,6 +201,10 @@ def test_when_even_the_first_record_differs_the_whole_history_is_asked_for(db, a
     assert check["last_agreed"] is None and check["first_differed"] == date(2026, 10, 9)
     # Never a guessed date: what is missing is somewhere before the first record.
     assert check["download_from"] is None
+    # And not "recent trades still arriving", even the day after: history is missing.
+    from app.services.account_health import account_health
+
+    assert account_health(db, acct, date(2026, 10, 10))["state"] == "incomplete"
 
 
 def test_the_check_can_be_asked_for_before_any_upload(client, db, account):
@@ -244,3 +248,36 @@ def test_a_file_naming_a_trade_the_feed_could_not_takes_its_cash_back(client, db
         account, ActivityBatch(trades=[], cash=[], raw=[unnamed], skipped={}, security_type_sources={}))
     db.refresh(feed)
     assert (feed.outcome, feed.cash_amount) == (ON_FILE, D("0"))
+
+
+def test_a_feed_trade_a_day_off_from_the_reports_is_the_same_trade_and_its_cash_counts_once(
+    client, db, account
+):
+    """The report has the buy on the 5th; the feed, working back from settlement
+    around a bank holiday, dates it the 6th and prices it a fraction differently.
+    It is the report's trade: not added again, and its row keeps no cash."""
+    from datetime import datetime, timezone
+    from decimal import Decimal as D
+
+    from app.connectors.models import ActivityBatch, NormalizedTrade, RawActivity, TradeAction
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.connection_service import REPORT_TWIN, ConnectionService
+
+    content = _report_xlsx(("10/6/2026", "10/5/2026", "EEE", "EEE ETF", "Buy", "MARGIN",
+                            "4.0000", "$25.0000", "Free", "-$100.0000"))
+    assert client.post(_base(account, db), files=_files(content, "report.xlsx")).status_code == 200
+    before = db.query(Trade).count()
+
+    feed = NormalizedTrade(external_id="plaid:t1", symbol="EEE", action=TradeAction.BUY,
+                           quantity=D(4), price=D("25.004"),
+                           executed_at=datetime(2026, 10, 6, tzinfo=timezone.utc),
+                           commission=D(0), source="plaid", security_type="ETF", notes="EEE ETF")
+    raw = RawActivity(source_id="plaid:t1", type="PLAID BUY/BUY", occurred_on=feed.executed_at.date(),
+                      symbol="EEE", outcome="trade", cash_amount=D("-100.02"),
+                      is_external_flow=False, payload={"amount": 100.02})
+    ConnectionService(db, connector=object()).ingest_batch(
+        account, ActivityBatch(trades=[feed], cash=[], raw=[raw], skipped={}, security_type_sources={}))
+
+    assert db.query(Trade).count() == before
+    row = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:t1").one()
+    assert (row.outcome, row.cash_amount) == (REPORT_TWIN, D("0"))

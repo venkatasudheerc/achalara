@@ -27,6 +27,17 @@ export function usePlaidLink() {
   }
 }
 
+/** Bring the viewer's own linked accounts up to date now; every view is then
+ * fetched again. */
+export function usePlaidRefresh() {
+  const qc = useQueryClient()
+  const asClient = usePreviewClient()
+  return useMutation({
+    mutationFn: () => plaidApi.refreshMine(asClient),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal'] }),
+  })
+}
+
 /** Sign in again to a login Plaid has stopped reading. Afterwards every view of
  * the accounts is fetched again, since the login was brought up to date. */
 export function usePlaidRepair() {
