@@ -50,7 +50,8 @@ class FakePlaid:
              "institution_price": 1.0, "institution_value": 500.0},
         ]
 
-    def link_token(self, client_user_id, redirect_uri="", webhook="", access_token=""):
+    def link_token(self, client_user_id, redirect_uri="", webhook="", access_token="", select_accounts=False):
+        self.last_link_token = {"access_token": access_token, "select_accounts": select_accounts}
         return {"link_token": f"link-{client_user_id}", "expiration": "2026-11-13T20:00:00Z"}
 
     def exchange(self, public_token):
@@ -498,3 +499,130 @@ def test_a_trade_it_cannot_name_is_set_aside_but_its_cash_still_counts():
     assert batch.trades == [] and batch.skipped == {"unreadable": 1}
     (raw,) = batch.raw
     assert (raw.outcome, raw.cash_amount) == ("skipped:unreadable", D("-3100"))
+
+
+# -- Checking a login for accounts not seen before ---------------------------
+
+
+def _bare_login(db, owner, status="active"):
+    """A login whose key is stored but which has no account rows yet, as when
+    it was copied from another database or the link dialog was left half way."""
+    login = BrokerageConnection(
+        client_id=owner.id, source="plaid", external_user_id=owner.id,
+        external_connection_id="item-1", institution=INSTITUTION, status=status,
+        access_token_enc=seal("access-secret-123"),
+    )
+    db.add(login)
+    db.commit()
+    return login
+
+
+def test_checking_a_login_with_no_accounts_offers_each_one(db, owner, plaid_keys):
+    login = _bare_login(db, owner)
+    found = PlaidLinkService(db, FakePlaid()).discover(owner.id, login.id)
+    assert sorted(a["mask"] for a in found["accounts"]) == ["1111", "2222", "4321"]
+    assert {l.status for l in db.query(BrokerageAccount)} == {"unmapped"}
+    assert db.query(Account).count() == 0  # nothing is added until the client chooses
+
+
+def test_checking_again_adds_only_what_is_new_and_leaves_the_rest_alone(db, owner, plaid_keys):
+    plaid = FakePlaid()
+    service = PlaidLinkService(db, plaid)
+    found = service.finish(owner.id, "public-token")
+    links = {a["mask"]: a["link_id"] for a in found["accounts"]}
+    service.confirm(owner.id, found["connection_id"], [
+        {"link_id": links["4321"], "action": "new", "kind": "taxable"},
+        {"link_id": links["1111"], "action": "skip"},
+        {"link_id": links["2222"], "action": "skip"},
+    ])
+    before = {l.id: (l.name, l.status, l.account_id, l.default_sleeve_id) for l in db.query(BrokerageAccount)}
+    # The institution now shares a fourth account, and has renamed the first.
+    plaid.accounts_list = [
+        {**plaid.accounts_list[0], "name": "Renamed Brokerage"}, *plaid.accounts_list[1:],
+        {"account_id": "p-sav", "name": "Rainy Day Savings", "mask": "3333",
+         "type": "depository", "subtype": "savings", "balances": {"current": 900.0}},
+    ]
+
+    assert service.discover_new(owner.id, found["connection_id"]) == 1
+    db.commit()
+    after = {l.id: (l.name, l.status, l.account_id, l.default_sleeve_id) for l in db.query(BrokerageAccount)}
+    assert all(after[i] == row for i, row in before.items())  # known accounts are untouched
+    new = [l for l in db.query(BrokerageAccount) if l.id not in before]
+    assert [(l.name, l.status, l.account_id) for l in new] == [("Rainy Day Savings", "unmapped", None)]
+    assert db.query(Account).count() == 1
+    assert service.discover_new(owner.id, found["connection_id"]) == 0  # repeating is safe
+
+
+def test_checking_every_login_counts_and_never_stops_at_one_that_cannot_be_read(db, owner, plaid_keys):
+    good = _bare_login(db, owner)
+    db.add(BrokerageConnection(
+        client_id=owner.id, source="plaid", external_user_id=owner.id,
+        external_connection_id="item-2", institution="Other Bank", status="broken",
+        access_token_enc=seal("access-secret-123"),
+    ))
+    db.commit()
+    out = PlaidLinkService(db, FakePlaid()).discover_mine(owner.id)
+    assert out == {"checked": 1, "new_accounts": 3, "needs_sign_in": 1, "failed": 0}
+    assert db.query(BrokerageAccount).filter(BrokerageAccount.connection_id == good.id).count() == 3
+
+
+def test_a_login_plaid_says_needs_signing_in_is_not_read(db, owner, plaid_keys):
+    from app.connectors.plaid_connector import PlaidError
+
+    class Refusing(FakePlaid):
+        def accounts(self, access_token):
+            raise PlaidError("ITEM_LOGIN_REQUIRED", "Sign in again", 400)
+
+    login = _bare_login(db, owner)
+    with pytest.raises(PlaidLinkError) as raised:
+        PlaidLinkService(db, Refusing()).discover(owner.id, login.id)
+    assert raised.value.status_code == 409
+
+
+def test_a_saved_key_that_does_not_open_is_said_plainly(db, owner, plaid_keys, monkeypatch):
+    login = _bare_login(db, owner)
+    monkeypatch.setattr(settings, "plaid_token_key", Fernet.generate_key().decode())
+    with pytest.raises(PlaidLinkError) as raised:
+        PlaidLinkService(db, FakePlaid()).discover(owner.id, login.id)
+    assert raised.value.status_code == 503
+    assert "access-secret-123" not in str(raised.value.detail)
+
+
+def test_only_the_owner_can_check_a_login(db, owner, plaid_keys):
+    login = _bare_login(db, owner)
+    other = Client(name="Sam Example", email="sam@example.com")
+    db.add(other)
+    db.commit()
+    with pytest.raises(PlaidLinkError) as raised:
+        PlaidLinkService(db, FakePlaid()).discover(other.id, login.id)
+    assert raised.value.status_code == 404
+
+
+def test_choosing_accounts_to_share_opens_link_in_update_mode_with_selection(db, owner, plaid_keys):
+    login = _bare_login(db, owner)
+    plaid = FakePlaid()
+    PlaidLinkService(db, plaid).repair_start(owner.id, login.id, select_accounts=True)
+    assert plaid.last_link_token == {"access_token": "access-secret-123", "select_accounts": True}
+
+
+def test_update_mode_asks_for_account_selection_only_when_told_to():
+    from app.connectors.plaid_connector import PlaidClient
+
+    sent = {}
+    client = PlaidClient(env="sandbox")
+    client._post = lambda path, body: sent.update(path=path, body=body) or {}
+    client.link_token("client-1", access_token="access-sandbox-x")
+    assert "update" not in sent["body"]
+    client.link_token("client-1", access_token="access-sandbox-x", select_accounts=True)
+    assert sent["body"]["update"] == {"account_selection_enabled": True}
+    client.link_token("client-1", select_accounts=True)  # a first link has no update mode
+    assert "update" not in sent["body"]
+
+
+def test_a_login_lists_how_many_accounts_wait_to_be_chosen(db, owner, plaid_keys):
+    from app.services.portal_service import PortalService
+
+    login = _bare_login(db, owner)
+    PlaidLinkService(db, FakePlaid()).discover(owner.id, login.id)
+    listed = PortalService(db, owner.id).connections()["connections"]
+    assert [(c["id"], c["waiting_accounts"]) for c in listed] == [(login.id, 3)]

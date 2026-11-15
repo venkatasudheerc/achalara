@@ -152,6 +152,7 @@ export type PlaidChoice = S['PlaidChoice']
 export type PlaidRefreshed = S['PlaidRefreshed']
 export type PlaidConfirmed = S['PlaidConfirmed']
 export type PlaidRepaired = S['PlaidRepaired']
+export type PlaidDiscovered = S['PlaidDiscovered']
 // ── Names for parts of a schema ──
 export type UserRole = S['MeResponse']['role']
 export type Relation = S['Relative']['relation']

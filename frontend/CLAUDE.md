@@ -147,7 +147,7 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   titled "Where your data comes from": one sentence first (all up to date, or how many logins
   need the viewer to sign in again), then a card per Plaid login from `/portal/connections`
   (`usePortalConnections`): institution, state in plain words, last refreshed, the accounts it
-  feeds with kind, value and record health. **Sign in again** (`usePlaidRepair`) on the viewer's
+  feeds with kind, value and record health. **Check for new accounts** (one button, `usePlaidDiscover().all`) checks all the viewer's own logins; a card whose login has accounts waiting (`waiting_accounts`) says so with **Review**, which opens `AddAccountDialog` with `review` set: it checks that login and offers only the accounts not yet added (already linked ones stay as they are), and when nothing is new offers "Share another account at <institution>" (Plaid update mode with account selection, `select_accounts`). **Sign in again** (`usePlaidRepair`) on the viewer's
   own login only; another's reads "<Name>'s login · <Name> signs in to it". "+ Connect another
   institution" opens `AddAccountDialog`. Read-only otherwise; a staff preview sees the same.
 - **An account's own name** (`AccountNameEditor`, the same `PATCH` with `display_name`): the

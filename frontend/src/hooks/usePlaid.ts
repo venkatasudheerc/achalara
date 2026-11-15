@@ -38,6 +38,21 @@ export function usePlaidRefresh() {
   })
 }
 
+/** Check logins for accounts not seen before: all the viewer's own at once, or
+ * one with what is proposed for each of its accounts. The connections list is
+ * fetched again, since it says how many accounts wait. */
+export function usePlaidDiscover() {
+  const qc = useQueryClient()
+  const asClient = usePreviewClient()
+  const refetch = () => qc.invalidateQueries({ queryKey: ['portal'] })
+  return {
+    all: useMutation({ mutationFn: () => plaidApi.discoverMine(asClient), onSuccess: refetch }),
+    one: useMutation({ mutationFn: (connectionId: string) => plaidApi.discover(connectionId, asClient), onSuccess: refetch }),
+    /** A token for Plaid Link in update mode where the client may share more accounts. */
+    select: useMutation({ mutationFn: (connectionId: string) => plaidApi.repair(connectionId, asClient, true) }),
+  }
+}
+
 /** Sign in again to a login Plaid has stopped reading. Afterwards every view of
  * the accounts is fetched again, since the login was brought up to date. */
 export function usePlaidRepair() {

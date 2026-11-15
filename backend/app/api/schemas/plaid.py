@@ -100,6 +100,15 @@ class PlaidRefreshed(BaseModel):
     at: datetime
 
 
+class PlaidDiscovered(BaseModel):
+    """What checking the viewer's own logins for accounts not seen before found."""
+
+    checked: int  # logins Plaid answered for
+    new_accounts: int  # accounts shared that had no row here, now waiting to be chosen
+    needs_sign_in: int  # logins that must be signed in to again first
+    failed: int
+
+
 class PlaidRepaired(BaseModel):
     """``active`` once Plaid reads the login again; ``needs signing in`` if not yet."""
 
