@@ -218,8 +218,11 @@ are in `deploy/.env`, are no longer read and can be deleted.
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one
 needs a restart the server restarts at 2:30am Eastern; the site is back within about a minute.
 The app's own daily jobs keep their UTC times (price history at 23:30 UTC on weekdays), except the Plaid refresh, which runs at 6:30 AM
-Eastern Tuesday to Saturday and records the day before. A server down at that time misses that
-day's record for Plaid accounts; the next run brings their transactions up to date. Ticker changes
+Eastern Tuesday to Saturday and records the day before. A server down at that time makes the
+run up when it starts, if it is back by 9:30 AM Eastern (after that the balances are no longer
+where the day before ended, and that day's record for Plaid accounts is missed; the next run
+brings their transactions up to date). The other daily jobs are made up the same way for most of
+a day. System status keeps each job's last run across restarts. Ticker changes
 market data has seen are copied at 6:15 AM Eastern every day; one it has not seen is confirmed on
 System status ("Ticker changes to confirm") or entered with
 `docker compose exec backend python -m app.cli add-ticker-change --from OLD --to NEW --date YYYY-MM-DD`.

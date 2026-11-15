@@ -1,7 +1,9 @@
 """What the running process has done since it started: job runs and warnings.
 
-Kept in memory only, for the status page. It starts empty with each restart;
-the container's own log is the lasting record.
+Kept in memory, for the status page, and empty again at each restart. A
+finished job run is also handed to whoever asked to keep it (``keep_runs``:
+the scheduler stores it through ``job_history``), so the last run of each job
+outlives a restart. Warnings do not: the container's own log is their record.
 """
 import functools
 import logging
@@ -21,6 +23,10 @@ _webhooks: Deque[Dict] = deque(maxlen=50)
 _webhook_ids: Deque[str] = deque(maxlen=500)
 _current = threading.local()
 _lock = threading.Lock()
+# Jobs running now, and where a finished run is sent to be kept (nowhere until
+# the scheduler says: tests and one-off commands keep runs in memory only).
+_running: set = set()
+_keep: Optional[Callable[[str, Dict], None]] = None
 
 
 class _Recorder(logging.Handler):
@@ -70,6 +76,8 @@ def tracked(job_id: str) -> Callable:
             outer_job = getattr(_current, "job", None)
             outer_error = getattr(_current, "error", None)
             _current.job, _current.error = job_id, None
+            with _lock:
+                _running.add(job_id)
             try:
                 return work(*args, **kwargs)
             except Exception as exc:
@@ -77,18 +85,43 @@ def tracked(job_id: str) -> Callable:
                 raise
             finally:
                 error = _current.error
+                finished = {
+                    "started_at": started,
+                    "finished_at": datetime.now(timezone.utc),
+                    "ok": error is None,
+                    "error": error,
+                }
                 with _lock:
-                    _runs[job_id] = {
-                        "started_at": started,
-                        "finished_at": datetime.now(timezone.utc),
-                        "ok": error is None,
-                        "error": error,
-                    }
+                    _runs[job_id] = finished
+                    _running.discard(job_id)
+                    keep = _keep
+                if keep is not None:
+                    # Keeping the run must never fail the job it describes.
+                    try:
+                        keep(job_id, dict(finished))
+                    except Exception as exc:
+                        logging.getLogger(__name__).warning(
+                            "Could not keep the run of %s: %s",
+                            job_id,
+                            type(exc).__name__,
+                        )
                 _current.job, _current.error = outer_job, outer_error or error
 
         return run
 
     return decorate
+
+
+def keep_runs(keep: Optional[Callable[[str, Dict], None]]) -> None:
+    """Send every finished run to ``keep`` as well; ``None`` stops doing so."""
+    global _keep
+    with _lock:
+        _keep = keep
+
+
+def is_running(job_id: str) -> bool:
+    with _lock:
+        return job_id in _running
 
 
 def started_at() -> datetime:
