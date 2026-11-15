@@ -58,11 +58,14 @@ class Day:
         "unpriced",
         "observed",
         "provisional",
+        "brought",
     )
 
     @property
     def net_flow(self) -> Decimal:
-        return self.flow_in - self.flow_out
+        """Money moved in less money moved out, counting what an account brought
+        with it the day it joined a set added together: never a gain."""
+        return self.flow_in - self.flow_out + (getattr(self, "brought", None) or 0)
 
 
 def _annualise(
@@ -142,6 +145,7 @@ class PerformanceStatsService:
             day.observed = True
             day.provisional = False
             day.factor = None
+            day.brought = ZERO
             present = set()
             # What a member arriving today brought with it. An account's first
             # row can open on a balance it already held (cash from before the
@@ -180,6 +184,8 @@ class PerformanceStatsService:
             # A member with no row today (its history ended earlier, or a gap)
             # is carried at its last known value so the total does not drop.
             day.total = sum(last_total.values(), ZERO)
+            if not single:
+                day.brought = carried_in
             if not single or realized:
                 measure = realized_factor if realized else dietz_factor
                 day.factor = measure(

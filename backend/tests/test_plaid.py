@@ -360,7 +360,10 @@ HELD_BEFORE = [
 
 
 def _link_brokerage(db, owner):
-    service = PlaidLinkService(db, FakePlaid(holdings=HELD_BEFORE))
+    # The balance is what the holdings and cash add up to, as Plaid reports it.
+    accounts = FakePlaid().accounts_list
+    accounts[0] = dict(accounts[0], balances={"current": 3150.0})
+    service = PlaidLinkService(db, FakePlaid(accounts=accounts, holdings=HELD_BEFORE))
     found = service.finish(owner.id, "public-token")
     links = {a["mask"]: a["link_id"] for a in found["accounts"]}
     service.confirm(owner.id, found["connection_id"], [

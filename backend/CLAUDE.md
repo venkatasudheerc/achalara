@@ -525,9 +525,15 @@ changes a figure, but **no figure over time is shown from an incomplete record**
 past year and the Performance tab say why instead), and **no nudge may be built on an account
 that is not complete.**
 
-**Accounts added together are measured from the day the last of them joined the record**
-(`PortalService._all_on_record_from`), when they joined holding something already: an account
-whose record starts later would otherwise count what it already held as a gain.
+**Accounts added together keep their whole record.** An account joining a set on a later day
+brings what it held (`Day.brought`, part of `net_flow`): money in for the set, never a gain or a
+loss, in the returns and the summary's gain alike (`PerformanceStatsService.daily`).
+
+**Options the custodian values on an account's first recorded day that no trade on file holds
+open** (opened before the history, or sent without a symbol) cannot be valued on any earlier
+day, so its record starts on that day (`PerformanceBuildService._options_unexplained_from`).
+Every rebuild works this out again: history added later that names the options (a custodian's
+file) gives the account its full record back.
 
 ## Market data: the `md` schema
 

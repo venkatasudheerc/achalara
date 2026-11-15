@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
@@ -262,29 +262,6 @@ class PortalService:
         return self
 
     # -- what is in view -----------------------------------------------
-
-    def _all_on_record_from(self, account_ids: Set[str]) -> Optional[date]:
-        """The first day every one of ``account_ids`` is on record, when two or
-        more of them joined it holding something already (their first day moved
-        no money in). None when that is not so: one account, or accounts that
-        started from nothing and were paid into."""
-        if len(account_ids) < 2:
-            return None
-        joined: List[date] = []
-        for account_id in account_ids:
-            first = (
-                self.db.query(DailyValuation.as_of_date, DailyValuation.flow_in)
-                .filter(
-                    DailyValuation.account_id == account_id,
-                    DailyValuation.sleeve_id.is_(None),
-                    or_(DailyValuation.total_value != 0, DailyValuation.flow_in != 0),
-                )
-                .order_by(DailyValuation.as_of_date)
-                .first()
-            )
-            if first is not None and not first.flow_in:
-                joined.append(first.as_of_date)
-        return max(joined) if joined else None
 
     def _refs(
         self, account_id: Optional[str] = None, strategy_id: Optional[str] = None
@@ -1418,13 +1395,6 @@ class PortalService:
         # The record starts when there is first something to measure.
         while series and series[0].total == 0 and series[0].flow_in == 0:
             series = series[1:]
-        # Accounts added together that joined the record on different days: an
-        # account joining with what it already held is not a gain, so the total
-        # is measured from the day the last of them joined.
-        if strategy_id is None and series:
-            joined = self._all_on_record_from({ref.account.id for ref in refs})
-            if joined and joined > series[0].date:
-                series = [d for d in series if d.date >= joined]
         if not series:
             return {
                 "first_date": None,
