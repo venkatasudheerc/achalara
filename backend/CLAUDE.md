@@ -590,6 +590,18 @@ its accounts are `brokerage_accounts` rows. Rules:
   added yet, a `note`: "Same account as one <Name>'s login updates" (the same institution and last
   four as a mapped entry of another login) or "New: waiting for <Name> to add it". Nothing is
   merged or hidden by it; only mapped entries feed an account. Repairing a login that needs signing in again is to come (update mode).
+- **A holding Plaid names but gives no ticker is kept under its name** (`plaid_reader.security_symbol`,
+  `utils/symbols.named_symbol`): `#TARGET RETIRE 2050 TRUST`, capitals, letters, digits and single
+  spaces, at most 50 characters. Plaid gives such a fund (a 401k's target-date trust, a 529
+  portfolio) a name and no ticker, CUSIP or ISIN, and it was skipped, so its value showed up as
+  "options". It is now a holding like any other, counted in the opening, the holdings check and
+  the record, but never asked of a price source or market data: `live_quotes.quotable` and
+  `held_symbols` leave a name out, and `PortalService._place_in_sectors` puts it with the funds
+  (no sector, not looked through). Not for an option, cash (`is_cash_equivalent`) or a settlement
+  fund, which is the account's cash. A file names it the same way: use the symbol Plaid reports
+  (`python -m app.cli plaid-securities` shows the name), or one other name and a ticker change
+  (`add-ticker-change --from OLD --to "#NAME" --date …`) to read earlier rows under it. `~` is a
+  different mark (a security that no longer trades, which is not compared).
 - **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
   the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
   day late) with the total moved to match; same-day internal transfer pairs and sweeps are not

@@ -87,9 +87,15 @@ export function formatStoredPrice(symbol: string, value: number | null | undefin
 
 /**
  * A security's name for a reader: an option contract symbol in words
- * ("ABC261002P00033000" → "ABC $33 put, Oct 2, 2026"), anything else as it is.
+ * ("ABC261002P00033000" → "ABC $33 put, Oct 2, 2026"), a holding kept under its
+ * name in words, anything else as it is.
  */
 export function securityLabel(symbol: string): string {
+  // A holding the institution names but gives no ticker is kept under its name in
+  // capitals behind a "#": "#TARGET RETIRE 2050 TRUST" reads "Target Retire 2050 Trust".
+  if (symbol.startsWith('#')) {
+    return symbol.slice(1).split(' ').map((w) => (/\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ')
+  }
   const option = /^([A-Z.]+)\d?(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(symbol)
   if (!option) return symbol
   const [, root, yy, mm, dd, kind, strike] = option

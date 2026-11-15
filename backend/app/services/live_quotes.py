@@ -18,6 +18,7 @@ from decimal import Decimal
 from typing import Dict, Iterable, List, Optional
 
 from app.connectors.models import is_option_symbol
+from app.utils.symbols import is_named_symbol
 from app.services.webull_market_data import WebullMarketDataService
 
 # How long a quote is served before it is fetched again.
@@ -41,7 +42,12 @@ _unknown: Dict[str, datetime] = {}
 
 def quotable(symbol: str) -> bool:
     """Whether the source can price it: not an option, not a name-only symbol."""
-    return bool(symbol) and not symbol.startswith("~") and not is_option_symbol(symbol)
+    return (
+        bool(symbol)
+        and not symbol.startswith("~")
+        and not is_named_symbol(symbol)
+        and not is_option_symbol(symbol)
+    )
 
 
 def _fetch(symbols: List[str]) -> Dict[str, object]:

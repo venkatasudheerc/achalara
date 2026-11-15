@@ -34,6 +34,7 @@ from app.connectors.models import (
     is_option_symbol,
 )
 from app.models.cash_activity import MARGIN_INTEREST
+from app.utils.symbols import named_symbol
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE
 
 SOURCE = "plaid"
@@ -92,6 +93,25 @@ def _money(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
+def security_symbol(security: Dict) -> Optional[str]:
+    """What the app calls a security: its ticker, else (for a holding Plaid names
+    but gives no ticker, such as a target-date trust) its name, marked as one
+    (``utils.symbols.named_symbol``). Not for an option (``option_symbol``), cash,
+    or a settlement fund, which is the account's cash and has no ticker."""
+    ticker = security.get("ticker_symbol")
+    if ticker:
+        return ticker
+    name = security.get("name") or ""
+    if (
+        not name
+        or security.get("type") in ("derivative", "cash")
+        or security.get("is_cash_equivalent")
+        or "settlement fund" in name.lower()
+    ):
+        return None
+    return named_symbol(name)
+
+
 def option_symbol(security: Dict) -> Optional[str]:
     """An option's contract symbol (``ABC270115P00020000``), from Plaid's ticker
     where it is one already, else from its contract fields."""
@@ -127,7 +147,7 @@ def read_investment_transactions(
         kind = (t.get("type") or "").lower()
         subtype = (t.get("subtype") or "").lower()
         name = t.get("name") or ""
-        ticker = security.get("ticker_symbol")
+        ticker = security_symbol(security)
         is_cash_security = security.get("type") == "cash" or security.get("is_cash_equivalent")
         holder = -_money(t.get("amount"))  # Plaid: positive is money out
         reinvest = any(word in subtype for word in _REINVEST) or name.startswith("Reinvestment")
@@ -333,12 +353,13 @@ def read_holdings(account: Dict, holdings: List[Dict], securities: Dict[str, Dic
             price = _money(close)
             if security.get("type") != "derivative":
                 days.append(_day(security["close_price_as_of"]))
-        if security.get("type") == "derivative" or not security.get("ticker_symbol"):
+        symbol = security_symbol(security)
+        if security.get("type") == "derivative" or not symbol:
             continue
         cost = _money(h.get("cost_basis")) / quantity if h.get("cost_basis") is not None and quantity else Decimal(0)
         positions.append(
             NormalizedPosition(
-                symbol=security["ticker_symbol"], quantity=quantity, avg_cost=cost, market_price=price,
+                symbol=symbol, quantity=quantity, avg_cost=cost, market_price=price,
                 security_type=SECURITY_TYPES.get(security.get("type") or "", "OTHER"),
             )
         )
