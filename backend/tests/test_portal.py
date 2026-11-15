@@ -979,3 +979,14 @@ def test_activity_lists_trades_and_money_movements_together(db, maya, world):
     ).text
     assert csv_text.splitlines()[0].startswith("Date,Activity,Symbol,Detail")
     assert "90000000001" not in csv_text
+
+
+def test_an_option_past_its_expiry_is_not_an_open_position(maya, db, world):
+    """A contract whose expiry the feed never reported still looks open in the
+    trades; past its date it is not held."""
+    for symbol in ("ZZZ241220C00060000", "ZZZ301220C00060000"):
+        _trade(db, world["brokerage_growth"], date(2024, 11, 1), "SELL", 1, 2.0, symbol, "OPTION")
+    db.commit()
+    symbols = {p["symbol"] for p in maya.get("/api/v1/portal/positions").json()["positions"]}
+    assert "ZZZ301220C00060000" in symbols
+    assert "ZZZ241220C00060000" not in symbols

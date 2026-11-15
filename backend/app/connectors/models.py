@@ -32,6 +32,18 @@ def is_option_symbol(symbol: str) -> bool:
     return bool(_OCC_SYMBOL.match(symbol or ""))
 
 
+def option_expiry(symbol: str):
+    """The day an option contract expires, read from its symbol, or None for a
+    symbol that is not one (``ABC270115P00020000`` expires 15 Jan 2027)."""
+    if not is_option_symbol(symbol):
+        return None
+    digits = symbol[-15:-9]
+    try:
+        return date(2000 + int(digits[:2]), int(digits[2:4]), int(digits[4:6]))
+    except ValueError:
+        return None
+
+
 class TradeAction(str, Enum):
     """Canonical trade action for the connector layer."""
 

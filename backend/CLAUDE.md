@@ -327,6 +327,7 @@ Live tests must stay **read-only** and never loop a third-party API.
   and deposits come from the daily record and run through `record_through`. `_matched` holds
   each sleeve's matched lots for the request, so positions, realised gains and Home's notes
   do the matching once between them.
+- **An option past its expiry is not an open position** (`connectors.models.option_expiry`, read from the symbol): `positions` leaves it out whatever the trades on file say, since an expiry the feed never reported would otherwise leave it looking open, with its premium counted in the options' cost.
 - **The positions and home screens, and the accounts list's `value`, show live prices; nothing else does.** `PortalService.positions(live=True)`
   reprices each holding from `services/live_quotes.py`: one batched Webull request for every
   symbol in view, kept for a minute. Only the price is live. Quantity and cost stay the

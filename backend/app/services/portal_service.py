@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
-from app.connectors.models import is_option_symbol
+from app.connectors.models import is_option_symbol, option_expiry
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.card_detail import CardDetail
@@ -804,9 +804,15 @@ class PortalService:
         option_costs: Dict[str, Optional[float]] = {}
         # Accounts holding shares (or funds) as well as any options.
         with_shares: set = set()
+        today = date.today()
         for account_refs in self._by_account(refs):
             for position in self._account_positions(account_refs):
                 symbol = position["symbol"]
+                # A contract past its expiry is not open, whatever the trades on
+                # file say (an expiry the feed never reported leaves it looking so).
+                expiry = option_expiry(symbol)
+                if expiry is not None and expiry < today:
+                    continue
                 group = type_group(kinds.get((position["sleeve_id"], symbol)), symbol)
                 if group != "option":
                     with_shares.add(position["account_id"])
