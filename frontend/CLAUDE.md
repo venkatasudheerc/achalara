@@ -236,7 +236,10 @@ Each feature directory contains its page component(s). Implemented:
   and the advisor's preview): "Link with Plaid" loads Plaid's script from `cdn.plaid.com` only
   when chosen, opens Plaid's window, then "What we found": each account with what is proposed
   (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
-  Nothing is added until "Add these". "Upload files" is shown as coming later. Hooks in
+  Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
+  a setting on the server (linking not set up, a 503; Plaid refusing the OAuth redirect address)
+  is said in plain words, to ask the person who runs Achalara, with Plaid's own text beneath
+  under "Details" (`explainLinkError`). Hooks in
   `usePlaid.ts`. The kinds (`selection.ts` `KINDS`) include checking, savings, credit card,
   mortgage, car loan and loan (colours `k-bank`, `k-owed`); `INVESTED` kinds alone offer
   Holdings, Cost basis and Analysis. An owed account's value is negative, so totals are net worth.
