@@ -4,6 +4,8 @@ import type { Selection, View } from './selection'
 import { useViewAction } from './actions'
 import { useSignInAgain } from './repair'
 import { VisualFor } from './InsightVisuals'
+import { RecordGaps } from './RecordGaps'
+import { usePortalAccounts } from '@/hooks/usePortal'
 
 export const CHIP: Record<string, string> = {
   link: 'bg-k-owed-bg text-k-owed',
@@ -32,6 +34,13 @@ function useDo(onSelect: (s: Selection, view?: View) => void, onUpdateFromFile: 
   return { run, ...again }
 }
 
+/** "Show what is missing" for a record to repair; nothing where the account is not in the list. */
+function GapsFor({ accountId }: { accountId: string }) {
+  const account = usePortalAccounts().data?.accounts.find((a) => a.id === accountId)
+  // The card's own button already offers the upload.
+  return account ? <RecordGaps account={account} upload={false} /> : null
+}
+
 function Slide({ n, working, run }: { n: InsightFinding; working: string | null; run: (a: InsightAction) => void }) {
   const busy = n.action?.kind === 'repair_login' && working === n.action.login_id
   return (
@@ -45,6 +54,7 @@ function Slide({ n, working, run }: { n: InsightFinding; working: string | null;
         </div>
         <h3 className="text-[18px] leading-[1.3] font-semibold mt-[4px]">{n.title}</h3>
         <p className={`text-[14px] leading-[1.5] ${n.must ? 'text-summit-ink/80' : 'text-stone'}`}>{n.detail}</p>
+        {n.rule === 'record_incomplete' && n.account_ids[0] && <GapsFor accountId={n.account_ids[0]} />}
       </div>
       {n.visual && <div className="min-w-0"><VisualFor visual={n.visual} /></div>}
       {n.action && (

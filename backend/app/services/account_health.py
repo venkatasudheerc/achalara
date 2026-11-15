@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -65,11 +65,14 @@ def cash_check(db: Session, account: Account, today: Optional[date] = None) -> O
     if not recorded:
         return None
     differing: List[date] = []
+    figures: Dict[date, Tuple[Decimal, Decimal]] = {}
     for day, cash in recorded:
         at_close = ledger.balance_on(day) - ledger.pending
         before = ledger.balance_on(day - timedelta(days=1)) - ledger.pending
         if min(abs(cash - at_close), abs(cash - before)) > _CENT:
             differing.append(day)
+            # The nearer of the two readings is the one the difference is stated against.
+            figures[day] = (cash, min(at_close, before, key=lambda ours: abs(cash - ours)))
     if not differing:
         return {"state": COMPLETE, "last_differed": None, "agrees_from": None}
     last = max(differing)
@@ -78,6 +81,8 @@ def cash_check(db: Session, account: Account, today: Optional[date] = None) -> O
         "state": PROVISIONAL if last >= today - timedelta(days=SETTLE_DAYS) else INCOMPLETE,
         "last_differed": last,
         "agrees_from": agrees_from,
+        "custodian_cash": figures[last][0],
+        "our_cash": figures[last][1],
     }
 
 
@@ -159,4 +164,33 @@ def account_health(db: Session, account: Account, today: Optional[date] = None) 
         "state": state,
         "reasons": reasons,
         "download_from": min(starts) if starts else None,
+    }
+
+
+def gap_details(db: Session, account: Account, today: Optional[date] = None) -> Dict:
+    """What is behind an account's health, for a person who asks: the holdings
+    that differ, the cash that differs, and what the start of the history could
+    not be worked back from. Read only; the same checks as ``account_health``."""
+    from app.services.account_import_service import AccountImportService
+
+    links = db.query(BrokerageAccount).filter(BrokerageAccount.account_id == account.id).all()
+    opening = [p for link in links for p in (link.reconciliation or {}).get("opening_problems") or []]
+    holdings = AccountImportService(db).holdings_check(account)
+    cash = cash_check(db, account, today)
+    cash_gap = None
+    if cash and cash["state"] != COMPLETE:
+        cash_gap = {
+            "last_differed": cash["last_differed"],
+            "custodian_cash": float(cash["custodian_cash"]),
+            "our_cash": float(cash["our_cash"]),
+            "difference": float(cash["custodian_cash"] - cash["our_cash"]),
+        }
+    return {
+        "account_id": account.id,
+        "holdings_as_of": holdings["as_of"] if holdings else None,
+        "holdings": holdings["differences"] if holdings else [],
+        "first_differed": holdings["first_differed"] if holdings else None,
+        "last_agreed": holdings["last_agreed"] if holdings else None,
+        "cash": cash_gap,
+        "opening": opening,
     }

@@ -42,6 +42,7 @@ from app.api.schemas.portal import (
     PortalPositionsResponse,
     PortalRealizedResponse,
     PortalTradesResponse,
+    RecordGaps,
 )
 from app.api.schemas.plaid import (
     PlaidDiscovered,
@@ -64,6 +65,7 @@ from app.services.account_import_service import (
     AccountImportError,
     AccountImportService,
 )
+from app.services.account_health import gap_details
 from app.services.account_group_service import AccountGroupService
 from app.services.insights.service import InsightService
 from app.services.sharing_service import SharingService
@@ -139,6 +141,18 @@ def portal_accounts(
         },
         "accounts": service.accounts(),
     }
+
+
+@router.get("/accounts/{account_id}/record-gaps", response_model=RecordGaps)
+def portal_record_gaps(
+    account_id: str, viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """What is behind an account's health (holdings and cash that differ from the
+    institution's record), for any account in view. Asked for only when the
+    viewer opens the details."""
+    with _http_errors():
+        service = _service(viewer, db, [account_id])
+    return gap_details(db, service.visible[0][0])
 
 
 @router.get("/connections", response_model=PortalConnectionsResponse)

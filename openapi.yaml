@@ -3224,6 +3224,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/portal/accounts/{account_id}/record-gaps:
+    get:
+      tags: [portal]
+      summary: What is behind an account's record health
+      description: The holdings and cash that differ from the institution's record, and what the start of the history could not be worked back from. For any account in view, shared ones included; asked for only when the viewer opens the details.
+      operationId: portalRecordGaps
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: as_client
+          in: query
+          required: false
+          schema:
+            type: string
+            nullable: true
+          description: An advisor previewing this client
+      responses:
+        "200":
+          description: The details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordGaps"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/portal/accounts/{account_id}/imports/check:
     get:
       tags: [portal]
@@ -7536,6 +7568,36 @@ components:
           format: date
           nullable: true
           description: Where a download from the institution should start to repair it
+    CashGap:
+      type: object
+      description: The last day the institution's cash and the history's disagreed
+      required: [last_differed, custodian_cash, our_cash, difference]
+      properties:
+        last_differed: {type: string, format: date}
+        custodian_cash: {type: number}
+        our_cash: {type: number}
+        difference: {type: number, description: "The institution's less ours: what a missing movement would have to add up to"}
+    RecordGaps:
+      type: object
+      description: What is behind an account's health, asked for on request
+      required: [account_id, holdings_as_of, holdings, first_differed, last_agreed, cash, opening]
+      properties:
+        account_id: {type: string}
+        holdings_as_of: {type: string, format: date, nullable: true}
+        holdings:
+          type: array
+          description: Holdings that differ on the latest recorded day
+          items:
+            $ref: '#/components/schemas/ImportDifference'
+        first_differed: {type: string, format: date, nullable: true}
+        last_agreed: {type: string, format: date, nullable: true}
+        cash:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/CashGap'}]
+        opening:
+          type: array
+          description: What the start of the history could not be worked back from
+          items: {type: string}
     CardDetails:
       type: object
       description: A credit card's limits and what is due, as its institution last reported them through Plaid. Any figure may be missing; a card with nothing owed has no payment due.

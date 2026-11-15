@@ -645,6 +645,13 @@ changes a figure, but **no figure over time is shown from an incomplete record**
 past year and the Performance tab say why instead), and **no nudge may be built on an account
 that is not complete.**
 
+**The details are asked for, never sent with the list.** `GET /portal/accounts/{id}/record-gaps`
+(`account_health.gap_details`, any account in view, shared ones included) gives the holdings that
+differ (symbol, the institution's shares against ours), the cash that differs on its last day (the
+institution's figure, ours and the difference) and what the start of the history could not be worked
+back from. It is read only and reuses the same checks as `health`, so the two never disagree; the
+screens fetch it only when the viewer opens "Show what is missing".
+
 **Accounts added together keep their whole record.** An account joining a set on a later day
 brings what it held (`Day.brought`, part of `net_flow`): money in for the set, never a gain or a
 loss, in the returns and the summary's gain alike (`PerformanceStatsService.daily`). The summary
