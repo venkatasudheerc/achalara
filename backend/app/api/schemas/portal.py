@@ -651,7 +651,10 @@ class OwnAccountRow(BaseModel):
     id: str
     name: str
     owners: List[str]
+    owner_ids: List[str] = []
     seen_by: List[str]
+    seen_by_ids: List[str] = []
+    advisor_sees: bool = False
 
 
 class SharedWithYouRow(BaseModel):

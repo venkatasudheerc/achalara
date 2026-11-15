@@ -253,18 +253,35 @@ class SharingService:
             "people": sorted(out, key=lambda p: (p["group"], p["name"])),
             "advisor": advisor_row,
             "notice": bool(me and me.sharing_notice),
-            "your_accounts": [
-                {"id": a.id, "name": display_name(a), "owners": [
-                    self.db.get(Client, i).name for i in self.auth.owner_ids(a)],
-                 "seen_by": [s["name"] for s in self.sharing(a.id)["shared_with"]]}
-                for a in mine.values()
-            ],
+            "your_accounts": [self._own_row(a) for a in mine.values()],
             "shared_with_you": [
                 {"id": a.id, "name": display_name(a), "owner": self.db.get(Client, a.client_id).name,
                  "level": LEVEL_VIEW}
                 for a in seen_by_me.values() if a.beneficiary_id != self.client_id
             ],
         }
+
+    def _own_row(self, account: Account) -> Dict:
+        shared = self.sharing(account.id)["shared_with"]
+        owner_ids = self.auth.owner_ids(account)
+        return {
+            "id": account.id, "name": display_name(account),
+            "owners": [self.db.get(Client, i).name for i in owner_ids],
+            "owner_ids": list(owner_ids),
+            "seen_by": [s["name"] for s in shared],
+            "seen_by_ids": [s["id"] for s in shared if s["kind"] == "person"],
+            "advisor_sees": any(s["kind"] == "advisor" for s in shared),
+        }
+
+    def unshare_all(self) -> int:
+        """Make every account the viewer controls private again: remove every share."""
+        count = 0
+        for account, shared in self.auth.accounts_for_client(self.client_id):
+            if shared or not self.auth.can_control(self.client_id, account):
+                continue
+            count += self.db.query(AccountAccess).filter(AccountAccess.account_id == account.id).delete()
+        self.db.commit()
+        return count
 
     def dismiss_notice(self) -> None:
         me = self.db.get(Client, self.client_id)

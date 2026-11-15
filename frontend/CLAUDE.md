@@ -122,6 +122,10 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 - Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
 - An admin or advisor opens it as a client with "Preview <first name>'s view" on the person's page (`/home?as=<clientId>`);
   the banner says "Admin preview" or "Advisor preview".
+- **Manage Access is account first and private by default**: each of the viewer's accounts is a row
+  (Private, or Shared with N) with a view-only switch per person and the advisor, "Make everything
+  private" (with a confirmation) and "Owners and more" (`SharingPanel`); the people to share with come
+  below the accounts. Never switch anyone on for the viewer.
 - **Manage Access** (`/home/access`, `AccessPage`; `/home/people` and `/home/family` redirect): everyone the viewer added or
   shares with, grouped Family, Others and Your advisor, each saying what is shared both ways
   (`/portal/people`); "Add a person" (name, relation incl. "Child, grown up", email optional);

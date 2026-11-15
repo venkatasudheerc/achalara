@@ -275,3 +275,20 @@ def test_everyone_added_is_listed_in_a_group_with_what_is_shared(db, people):
     sam = next(p for p in body["people"] if p["name"] == "Sam Example")
     assert sam["you_share"] == 2 and sam["shares_with_you"] == 1
     assert body["advisor"]["not_shared"] >= 1
+
+
+def test_make_private_removes_every_share_and_the_people_list_carries_who_sees_what(db, people):
+    pat = _browser("login-pat@example.com")
+    acct = people["Pat private"].id
+    assert pat.post(f"/api/v1/portal/accounts/{acct}/shares", json={"person_id": people["sam"].id}).status_code == 200
+    assert pat.post(f"/api/v1/portal/accounts/{acct}/shares", json={"advisor": True}).status_code == 200
+    row = next(a for a in pat.get("/api/v1/portal/people").json()["your_accounts"] if a["id"] == acct)
+    assert row["seen_by_ids"] == [people["sam"].id] and row["advisor_sees"] is True
+    assert people["pat"].id in row["owner_ids"]
+    assert pat.post("/api/v1/portal/people/make-private").status_code == 204
+    row = next(a for a in pat.get("/api/v1/portal/people").json()["your_accounts"] if a["id"] == acct)
+    assert row["seen_by_ids"] == [] and row["advisor_sees"] is False and row["seen_by"] == []
+    sam = _browser("login-sam@example.com")
+    assert acct not in {a["id"] for a in sam.get("/api/v1/portal/accounts").json()["accounts"]}
+    # Sam does not control Pat's account, so Sam's call changes nothing of Pat's.
+    assert sam.post("/api/v1/portal/people/make-private").status_code == 204
