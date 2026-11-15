@@ -32,6 +32,7 @@ JOBS = (
     ("plaid_refresh", "Plaid refresh"),
     ("ticker_changes", "Ticker changes"),
     ("sector_copy", "Sector copy"),
+    ("market_pattern_copy", "Market pattern copy"),
     ("price_history", "Price history"),
     ("index_history", "Index history"),
 )

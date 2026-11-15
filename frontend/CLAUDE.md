@@ -103,12 +103,13 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   (`/portal/groups`, edited in `GroupsDialog`, in an advisor's preview too: it is exactly what
   the client sees).
   An account whose Plaid login needs signing in again (`account.needs_sign_in`) carries the same
-  "!", and the Dashboard opens with "<Institution> has stopped sharing … until you sign in again"
-  and **Sign in again** for the owner (`login_id`; Plaid Link in update mode, `usePlaidRepair`,
-  the script loaded by `lib/plaid.ts`), or "until <owner> signs in again" for anyone else.
-  An account whose record is incomplete (`account.health`) carries a clay "!" beside its figure,
-  and the Dashboard opens with which accounts to repair and from when (an owner's own account:
-  download from that date and use Update from a file; a shared one: its owner repairs it).
+  "!", and the Dashboard's Next best action says "<Institution> has stopped sharing … until you sign
+  in again" with **Sign in again** for the owner (`login_id`; Plaid Link in update mode,
+  `usePlaidRepair` through `useSignInAgain`, the script loaded by `lib/plaid.ts`), or "until
+  <owner> signs in again" for anyone else. An account whose record is incomplete
+  (`account.health`) carries a clay "!" beside its figure, and the same slot says which to repair
+  and from when (an owner's own account: download from that date and use Update from a file; a
+  shared one: its owner repairs it).
   Each account's figure, and every total built from them (the rail, the Dashboard's headline and
   kind tiles, the Accounts view), is `account.value`: the account now, exactly as the Holdings
   view's tile adds it up, so the two never disagree. The Dashboard says both clocks: the live
@@ -124,6 +125,21 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   A record younger than a year says "since <date>".
 - **Assets and liabilities.** An account is a liability when it is `owed` (a card, mortgage, car loan or loan; stored negative); everything else is an asset. `netWorth()` (`selection.ts`) gives assets, owed and net worth (the plain sum), for the linked accounts only, so the screens say "net worth of the accounts linked here". The rail's All accounts shows the figure with "Net worth · assets $X, owed $Y"; the Dashboard for everything reads "Your net worth is" with "Assets $X, less $Y owed" under it (and "You owe $Y" when only cards and loans are in view). The Accounts view, with both sides in view, opens with one line (net worth, assets less owed) and two sections, **Assets** (the table) and **Liabilities**; with one side only, that side alone with no headings. A credit card is shown **once**, as a lean tile (`CardTile`, from `account.card`), never as a table row too; other loans are rows. A tile shows what is owed (or "No balance") with the limit and available credit once, a bar only when something is owed (clay above half), then Due ("In 9 days" and the minimum, clay within a week, "Nothing" when none), Cash limit and Last paid; an Overdue badge, the owner's first name on a shared card, and a line only when the figures are over three days old. The note that a dash means the institution does not send a figure is written once under the tiles. Tiles are ordered overdue first, then the soonest due, then the most owed. A card's Cash column in the table is a dash (its balance is not cash).
 - Analysis opens with **What the stocks are in**: the 11 GICS sectors as bars of the whole (stocks by `sector`, from each position's `sector_group`), then a "Not in a sector" group for funds and ETFs (one row: not looked through), options, cash and stocks with no sector. Every row adds to the whole, and the card says how many holdings have no sector yet. Sector names wrap, never truncate.
+- **The Dashboard's "Next best action" and "Insights"** come from `GET /portal/insights`
+  (`usePortalInsights`, narrowed to the selection). `NextBestAction`: a must-do (a login to sign in
+  to again, a record to repair) stays in place; every other nudge takes turns in one slot, the
+  most pressing first, rolling by itself (7 seconds, a bar shows the time; paused while the pointer
+  or focus is on the card; not rolling under reduced motion, the dots still work; "2 of 4"). There
+  is no "Not now": a nudge goes when it is no longer true. Its one button is data
+  (`action.kind`: `view` goes to a selection and view in one step, `repair_login` opens Plaid Link
+  in update mode through `useSignInAgain`, `update_from_file` opens the account's upload). A
+  card's button opens its own Dashboard: with one account chosen the Accounts tab does not
+  exist. `InsightTiles`: facts, no buttons, ending "These describe what is on record. They are not
+  advice." Both sections are **absent** when empty, with no line saying so, and a failure of the
+  call leaves the Dashboard as it was. Visuals live in `InsightVisuals` (`meter`, `split`,
+  `countdown`, `figure`, `record`); a new rule needs no new component. The market tile is a wide
+  `record`: a square per year (green rose, clay fell) for this week and this month, with a link to
+  Research (`view: research`).
 - Views: Dashboard (`DashboardView`), Accounts, Income and Analysis (`MoreViews.tsx`) are new;
   Holdings, Transactions, Performance and Cost basis are the portal's own pages, rendered inside
   `HomeSelection` (`portal/ui.tsx`), which narrows their account filter to the selection and

@@ -29,7 +29,7 @@ export function LandingPage() {
   const preview = usePreviewClient()
   const { data: portal, isLoading, isError, error, refetch } = usePortalAccounts()
   const { data: groups = [] } = usePortalGroups()
-  const { selection, view, select, setView } = useHomeSelection()
+  const { selection, view, select, setView, go } = useHomeSelection()
   const [groupBy, setGroupBy] = useGroupBy()
   const [railOpen, setRailOpen] = useState(() => !narrowScreen())
   const [editing, setEditing] = useState(false)
@@ -121,7 +121,8 @@ export function LandingPage() {
       case 'cost-basis': return <PortalRealizedPage />
       case 'income': return <IncomeView accountIds={accountIds} />
       case 'analysis': return <AnalysisView accountIds={accountIds} />
-      default: return <DashboardView accounts={chosen} selection={selection} lead={lead} onKind={pick} />
+      default: return <DashboardView accounts={chosen} selection={selection} lead={lead} onKind={pick} onGo={go}
+        onUpdateFromFile={(id) => { go({ type: 'account', id }); setImporting(true) }} />
     }
   })()
 

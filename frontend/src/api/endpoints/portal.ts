@@ -4,7 +4,7 @@ import type {
   PeopleResponse,
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
-  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse,
+  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse, InsightsResponse,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -55,6 +55,10 @@ export const portalApi = {
     apiClient
       .get<PortalConnectionsResponse>(`${base}/connections`, { params: clean({ as_client: asClient }) })
       .then((r) => r.data),
+
+  /** What is worth a look: next best actions and insights for the accounts in view. */
+  insights: (params: PortalScope) =>
+    apiClient.get<InsightsResponse>(`${base}/insights`, { params: clean(params) }).then((r) => r.data),
 
   home: (params: PortalScope) =>
     apiClient.get<PortalHomeResponse>(`${base}/home`, { params: clean(params) }).then((r) => r.data),
