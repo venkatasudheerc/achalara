@@ -7,14 +7,14 @@ were), and ``sync_logs`` stays: the shared ingestion still writes it.
 Downgrade puts the empty table back as it was, with its cascade to sleeves.
 
 Revision ID: a3f8c1e6d2b9
-Revises: c4e7a2d9f1b5
+Revises: e2a7c5d9b3f1
 Create Date: 2026-11-14
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "a3f8c1e6d2b9"
-down_revision = "c4e7a2d9f1b5"
+down_revision = "e2a7c5d9b3f1"
 branch_labels = None
 depends_on = None
 
