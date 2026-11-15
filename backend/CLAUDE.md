@@ -529,7 +529,14 @@ through Plaid (below), their earlier history from the custodian's own files.
   holdings with what the trades add up to and says which differ, when they last agreed and first
   differed, and where a report should start (`download_from`). Options and "~" names are not
   compared. It is asked before an upload (`GET …/imports/check`), shown after one, and read by
-  System status and the account's health. The file itself is never kept. A shared account takes
+  System status and the account's health. **A file says how far it is complete**
+  (`account_import_service.read_upload`): a Vanguard report's own "settled from … to <date>" line, or a
+  `Through` row (a date, no amount) in the template. Applying it raises the link's
+  `transactions_synced_through` to that day (never lowers it, never past today), which is what lets
+  `OpeningPositionService` work the opening back from the holdings recorded on or before it: an
+  account whose institution gives holdings and no transactions (a 401k) gets no opening otherwise.
+  An account with **holdings and no transactions at all, and no feed watermark**, has nothing to
+  check them against: `holdings_check` returns None (the holdings are the record). The file itself is never kept. A shared account takes
   no uploads. An admin or advisor previewing a client (`as_client`) sees and may use exactly what the
   client does.
 - **Splits and mergers are read from the custodian's file** (`vanguard_report.read_rows`). A

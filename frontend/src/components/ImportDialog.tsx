@@ -55,6 +55,7 @@ function Preview({ p }: { p: ImportPreview }) {
       <p className="text-[14px] text-stone leading-relaxed">
         The file covers {p.first_date ? `${formatDate(p.first_date)} to ${formatDate(p.last_date)}` : 'no dates'}.
         {onFile && ` Already here: ${onFile}.`}
+        {p.complete_through && ` It says it is complete through ${formatDate(p.complete_through)}.`}
       </p>
       {p.first_date && p.history_starts && p.first_date < p.history_starts && (p.to_add_trades + p.to_add_cash) > 0 && (
         <p className="text-[14px] leading-relaxed border border-line rounded-[14px] p-[16px]">

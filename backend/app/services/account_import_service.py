@@ -120,8 +120,9 @@ def _cells(filename: str, content: bytes) -> List[tuple]:
     return [tuple(row) for row in csv.reader(io.StringIO(text))]
 
 
-def _template_rows(cells: List[tuple]) -> List[ReportRow]:
-    """Achalara's template, as the report's rows."""
+def _template_rows(cells: List[tuple]) -> Tuple[List[ReportRow], Optional[date]]:
+    """Achalara's template, as the report's rows, and the day the file says it
+    is complete through (a ``Through`` row, which is not activity)."""
     names = [str(c or "").strip().lower() for c in cells[0]]
     missing = [c for c in ("Date", "Type") if c.lower() not in names]
     if missing:
@@ -132,6 +133,7 @@ def _template_rows(cells: List[tuple]) -> List[ReportRow]:
         )
     at = {name: names.index(name.lower()) for name in TEMPLATE_COLUMNS if name.lower() in names}
     rows = []
+    through: Optional[date] = None
     for line, row in enumerate(cells[1:], start=2):
         value = lambda name: (  # noqa: E731
             str(row[at[name]]).strip() if name in at and at[name] < len(row) and row[at[name]] is not None else ""
@@ -142,12 +144,15 @@ def _template_rows(cells: List[tuple]) -> List[ReportRow]:
             traded = _template_day(value("Date"))
         except ValueError:
             raise AccountImportError(422, f"Line {line}: the date {value('Date')!r} is not a date.")
+        if value("Type").lower() == "through":
+            through = max(through, traded) if through else traded
+            continue
         kind = TEMPLATE_TYPES.get(value("Type").lower())
         if kind is None:
             raise AccountImportError(
                 422,
                 f"Line {line}: the type {value('Type')!r} is not one of "
-                f"{', '.join(t.capitalize() for t in TEMPLATE_TYPES)}.",
+                f"{', '.join(t.capitalize() for t in (*TEMPLATE_TYPES, 'through'))}.",
             )
         try:
             quantity, price = _number(value("Quantity")), _number(value("Price"))
@@ -180,7 +185,7 @@ def _template_rows(cells: List[tuple]) -> List[ReportRow]:
                 amount=amount,
             )
         )
-    return rows
+    return rows, through
 
 
 def _template_day(text: str) -> date:
@@ -192,8 +197,26 @@ def _template_day(text: str) -> date:
     raise ValueError(text)
 
 
-def read_upload(filename: str, content: bytes) -> Tuple[str, List[ReportRow]]:
-    """The file's rows and which kind of file it was."""
+_REPORT_THROUGH = re.compile(r"\bto\s+(\d{1,2}/\d{1,2}/\d{4})")
+
+
+def _report_through(cells: List[tuple]) -> Optional[date]:
+    """Vanguard's report says which days it holds ("settled from: 01/01/2019 to
+    11/15/2026"): it is complete through the last."""
+    for row in cells[:5]:
+        for cell in row:
+            found = _REPORT_THROUGH.search(str(cell or ""))
+            if found:
+                try:
+                    return datetime.strptime(found.group(1), "%m/%d/%Y").date()
+                except ValueError:
+                    return None
+    return None
+
+
+def read_upload(filename: str, content: bytes) -> Tuple[str, List[ReportRow], Optional[date]]:
+    """The file's rows, which kind of file it was, and the day it says it is
+    complete through (None when it does not say)."""
     cells = _cells(filename, content)
     if not cells:
         raise AccountImportError(422, "The file is empty.")
@@ -202,10 +225,11 @@ def read_upload(filename: str, content: bytes) -> Tuple[str, List[ReportRow]]:
     )
     if is_report:
         try:
-            return "vanguard_activity", parse_rows(cells)
+            return "vanguard_activity", parse_rows(cells), _report_through(cells)
         except ReportError as error:
             raise AccountImportError(422, str(error))
-    return "template", _template_rows(cells)
+    rows, through = _template_rows(cells)
+    return "template", rows, through
 
 
 # ----------------------------------------------------------------------
@@ -256,12 +280,15 @@ class AccountImportService:
         self, account: Account, filename: str, content: bytes
     ) -> Tuple[BrokerageAccount, str, Plan]:
         ba = self._feed(account)
-        kind, rows = read_upload(filename, content)
+        kind, rows, through = read_upload(filename, content)
         if kind == "vanguard_activity":
             self._check_names_account(filename, ba, account)
         if not rows:
             raise AccountImportError(422, "The file has no rows to read.")
-        return ba, kind, self.importer.plan(ba, rows)
+        plan = self.importer.plan(ba, rows)
+        # A day in the future is not a day anything is complete through.
+        plan.through = min(through, date.today()) if through else None
+        return ba, kind, plan
 
     def _history_starts(self, account: Account) -> Optional[date]:
         """The first day of the account's transactions on file (an opening
@@ -287,14 +314,32 @@ class AccountImportService:
     def apply(self, account: Account, filename: str, content: bytes) -> Dict:
         ba, kind, plan = self._plan(account, filename, content)
         summary = self._summary(account, kind, plan)
+        raised = self._record_through(ba, plan.through)
         if plan.trades or plan.cash or plan.splits:
             result = self.importer.apply(ba, plan, self.last_holdings(account.id))
             summary["added_trades"] = result["imported"]
             summary["added_cash"] = result["cash_imported"]
         else:
             summary["added_trades"] = summary["added_cash"] = 0
+            if raised:
+                # Nothing to add, but the account is now known complete further on:
+                # its opening is worked out again and the record rebuilt.
+                from app.services.performance_build_service import PerformanceBuildService
+
+                PerformanceBuildService(self.db).rebuild_account(account.id)
         summary["check"] = self.holdings_check(account)
         return summary
+
+    def _record_through(self, ba: BrokerageAccount, through: Optional[date]) -> bool:
+        """Remember the file says the account's transactions are complete through
+        ``through``, where that is later than what is known (a feed's own day
+        stands). It is what lets the opening be worked back from the holdings the
+        institution recorded on or before it. Returns whether it moved."""
+        if through is None or (ba.transactions_synced_through and ba.transactions_synced_through >= through):
+            return False
+        ba.transactions_synced_through = through
+        self.db.commit()
+        return True
 
     # ------------------------------------------------------------------
 
@@ -319,6 +364,20 @@ class AccountImportService:
             )
         ]
 
+    def _holdings_only(self, account: Account, sleeve_ids: List[str]) -> bool:
+        """An account whose institution gives holdings and no transactions, and
+        none has been added: there is nothing for the holdings to be checked
+        against, so the holdings are the record."""
+        if self.db.query(func.max(BrokerageAccount.transactions_synced_through)).filter(
+            BrokerageAccount.account_id == account.id
+        ).scalar() is not None:
+            return False
+        if not sleeve_ids:
+            return True
+        has_trade = self.db.query(Trade.id).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).first()
+        has_cash = self.db.query(CashActivity.id).filter(CashActivity.sleeve_id.in_(sleeve_ids)).first()
+        return has_trade is None and has_cash is None
+
     def holdings_check(self, account: Account) -> Optional[Dict]:
         """Our holdings against the custodian's record, and what to download.
 
@@ -328,7 +387,8 @@ class AccountImportService:
         day they differed after it (None while they agree now), and the date a
         report should start from to cover what is missing: the last day they
         agreed, or a few weeks before the first record when even that differs.
-        None when the custodian has never recorded the account's holdings.
+        None when the custodian has never recorded the account's holdings, or
+        when it gives no transactions and none are on file (the holdings are the record).
 
         Options are left out (the record never lists them), as is anything the
         feed names by its company with a leading "~" (a security that no longer
@@ -339,6 +399,8 @@ class AccountImportService:
         sleeve_ids = [
             row[0] for row in self.db.query(Sleeve.id).filter(Sleeve.account_id == account.id)
         ]
+        if self._holdings_only(account, sleeve_ids):
+            return None
         recorded: Dict[date, Dict[str, Decimal]] = defaultdict(dict)
         changes = renames(self.db)
         for day, symbol, quantity in self.db.query(
@@ -458,6 +520,7 @@ class AccountImportService:
             "rows": plan.rows,
             "first_date": plan.first,
             "last_date": plan.last,
+            "complete_through": plan.through,
             "history_starts": self._history_starts(account),
             "on_file_trades": plan.held_trades,
             "on_file_cash": plan.held_cash,

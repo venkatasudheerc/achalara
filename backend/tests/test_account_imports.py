@@ -194,6 +194,7 @@ def test_when_even_the_first_record_differs_the_whole_history_is_asked_for(db, a
     from app.services.account_import_service import AccountImportService
 
     acct = db.get(Account, account.account_id)
+    account.transactions_synced_through = date(2026, 10, 9)  # a feed that gives transactions
     db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
                         quantity=D(4), price=D(50), market_value=D(200)))
     db.commit()
@@ -290,6 +291,7 @@ def test_record_gaps_name_the_holdings_that_differ(client, db, account):  # noqa
     from app.models.perf import DailyHolding
 
     acct = db.get(Account, account.account_id)
+    account.transactions_synced_through = date(2026, 10, 9)  # a feed that gives transactions
     db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
                         quantity=D(4), price=D(50), market_value=D(200)))
     db.commit()
@@ -303,3 +305,76 @@ def test_record_gaps_name_the_holdings_that_differ(client, db, account):  # noqa
     # An account that is not in view is a 404, as everywhere in the portal.
     assert client.get("/api/v1/portal/accounts/nope/record-gaps",
                       params={"as_client": acct.client_id}).status_code == 404
+
+
+TEMPLATE_THROUGH = (
+    "Date,Type,Symbol,Quantity,Price,Fees,Amount\n"
+    "2026-10-05,Buy,EEE,4,25,,\n"
+    "2026-10-05,Deposit,,,,,100.00\n"
+    "2026-11-01,Through,,,,,\n"
+)
+
+
+def test_a_file_says_how_far_it_is_complete():
+    from datetime import date
+
+    from app.services.account_import_service import read_upload
+
+    kind, rows, through = read_upload("mine.csv", TEMPLATE_THROUGH.encode())
+    assert kind == "template" and through == date(2026, 11, 1)
+    assert [r.kind for r in rows] == ["Buy", "Funds Received"]  # a Through row is not activity
+    _, _, none = read_upload("mine.csv", TEMPLATE_THROUGH.replace("2026-11-01,Through,,,,,\n", "").encode())
+    assert none is None
+    report = _report_xlsx(("10/5/2026", "10/5/2026", "EEE", "EEE CORP", "Buy", "MARGIN", "4", "$25.00", "Free", "-$100.00"))
+    from openpyxl import load_workbook
+    import io
+
+    book = load_workbook(io.BytesIO(report))
+    book.active["A2"] = "This report only includes transactions that were settled from: 01/01/2019 to 11/15/2026."
+    out = io.BytesIO()
+    book.save(out)
+    kind, _, through = read_upload("customActivityReport_12345678.xlsx", out.getvalue())
+    assert kind == "vanguard_activity" and through == date(2026, 11, 15)
+
+
+def test_a_file_complete_through_a_recorded_day_lets_the_opening_be_worked_back(db, account):
+    """The institution lists 10 shares on 8 Nov; the file shows 4 bought and says
+    it is complete through 9 Nov, so the account opened holding 6."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+    from app.models.trade import Trade
+    from app.services.account_health import account_health
+    from app.services.account_import_service import AccountImportService
+
+    acct = db.get(Account, account.account_id)
+    db.add(DailyHolding(account_id=acct.id, sleeve_id=account.default_sleeve_id, as_of_date=date(2026, 11, 8),
+                        symbol="EEE", quantity=D(10), price=D(25), market_value=D(250)))
+    db.commit()
+    assert account.transactions_synced_through is None
+    service = AccountImportService(db)
+    preview = service.preview(acct, "mine.csv", TEMPLATE_THROUGH.replace("2026-11-01", "2026-11-09").encode())
+    assert preview["complete_through"] == date(2026, 11, 9)
+    service.apply(acct, "mine.csv", TEMPLATE_THROUGH.replace("2026-11-01", "2026-11-09").encode())
+    db.refresh(account)
+    assert account.transactions_synced_through == date(2026, 11, 9)
+    opening = [t for t in db.query(Trade) if (t.notes or "").startswith("Opening")]
+    assert [(t.symbol, t.quantity) for t in opening] == [("EEE", D(6))]
+    assert service.holdings_check(acct)["differences"] == []
+    assert account_health(db, acct, date(2026, 11, 10))["state"] != "incomplete"
+
+
+def test_an_account_with_holdings_and_no_transactions_at_all_has_nothing_to_check(db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+    from app.services.account_import_service import AccountImportService
+
+    acct = db.get(Account, account.account_id)
+    db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 11, 8), symbol="EEE",
+                        quantity=D(10), price=D(25), market_value=D(250)))
+    db.commit()
+    assert account.transactions_synced_through is None
+    assert AccountImportService(db).holdings_check(acct) is None  # the holdings are the record

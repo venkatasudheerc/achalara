@@ -152,6 +152,8 @@ class Plan:
     # Splits not on file yet: each kept as a SPLIT source row for record_splits.
     splits: List[ReportRow] = field(default_factory=list)
     held_splits: int = 0
+    # The day the file says it is complete through, where it says (set by the importer).
+    through: Optional[date] = None
     # Rows this cannot represent (kinds not seen before, a row missing a part).
     needs_a_look: List[ReportRow] = field(default_factory=list)
 
