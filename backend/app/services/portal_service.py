@@ -238,6 +238,37 @@ def _matches(symbol: str, query: Optional[str]) -> bool:
     return not query or query.strip().lower() in symbol.lower()
 
 
+# The longest name an owner may give an account.
+DISPLAY_NAME_MAX = 60
+
+
+def update_own_account_settings(
+    db: Session,
+    client_id: str,
+    account_id: str,
+    is_private: Optional[bool] = None,
+    display_name: Optional[str] = None,
+    rename: bool = False,
+) -> Account:
+    """Change what an account's owner may change: whether it is private, and
+    (when ``rename``) its own name, trimmed; empty clears it. Anyone but the
+    owner gets the same 404 as an account that is not there."""
+    account = db.get(Account, account_id)
+    if account is None or account.client_id != client_id:
+        raise PortalError(404, "Account not found")
+    if rename:
+        name = " ".join((display_name or "").split())
+        if len(name) > DISPLAY_NAME_MAX:
+            raise PortalError(
+                422, f"A name can be at most {DISPLAY_NAME_MAX} characters"
+            )
+        account.display_name = name or None
+    if is_private is not None:
+        account.is_private = is_private
+    db.commit()
+    return account
+
+
 class PortalService:
     def __init__(self, db: Session, client_id: str):
         self.db = db
@@ -310,6 +341,7 @@ class PortalService:
             "client_id": account.client_id,
             "owner_name": account.client.name,
             "name": display_name(account),
+            "display_name": account.display_name or None,
             "number_last4": last_four(account),
             "shared": shared,
         }

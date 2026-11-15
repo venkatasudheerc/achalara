@@ -201,7 +201,9 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - **Who sees which accounts is decided by guardrails**, in one place
   (`AuthService.accounts_for_client`), from `clients.spouse_id` and `guardian_id`: (1) everyone
   sees what they own; (2) spouses see each other's accounts except those the owner marks private
-  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only); (3) a minor's guardian and
+  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only, which also sets the owner's
+  own name for it, `accounts.display_name`, returned on `/portal/accounts` beside the
+  custodian's `name`; a staff preview may change both, as the client can); (3) a minor's guardian and
   the guardian's spouse see every account of the minor, which a minor cannot hide; (4) a minor sees
   only their own; (5) anything else only when shared (`account_access`). A spouse pair is kept on
   both sides; a minor has no spouse and cannot add anyone. An admin or advisor sets these

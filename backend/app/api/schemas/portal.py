@@ -32,7 +32,9 @@ class PortalAccount(BaseModel):
     id: str
     client_id: str  # the owner; not the viewer when ``shared``
     owner_name: str
-    name: str
+    name: str  # the custodian's name, without any full account number
+    # The owner's own name for it, shown in place of ``name`` when set.
+    display_name: Optional[str] = None
     number_last4: Optional[str] = None
     shared: bool
     # taxable | retirement | kids | cash | checking | savings | credit_card |
@@ -60,10 +62,18 @@ class PortalAccount(BaseModel):
     sleeves: List[PortalSleeve] = []
 
 
-class PortalAccountPrivacy(BaseModel):
-    """An owner's own account kept from their spouse (never from a minor's guardians)."""
+class PortalAccountUpdate(BaseModel):
+    """What an account's owner may change: keep it from their spouse (never from
+    a minor's guardians), and give it a name of their own. A field left out is
+    left as it is; an empty name clears it."""
 
+    is_private: Optional[bool] = None
+    display_name: Optional[str] = Field(None, max_length=200)
+
+
+class PortalAccountSettings(BaseModel):
     is_private: bool
+    display_name: Optional[str] = None
 
 
 class PortalAccountsResponse(BaseModel):

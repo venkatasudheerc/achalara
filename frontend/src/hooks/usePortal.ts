@@ -128,6 +128,17 @@ export function useSetAccountPrivate() {
   })
 }
 
+/** Give one of the viewer's own accounts a name of their own, or clear it. */
+export function useRenameAccount() {
+  const asClient = usePreviewClient()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { accountId: string; displayName: string }) =>
+      portalApi.renameAccount(v.accountId, v.displayName, asClient),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', 'accounts'] }),
+  })
+}
+
 /** The viewer's spouse and minors, with whether each has a login. */
 export function usePortalRelatives(enabled = true) {
   const asClient = usePreviewClient()

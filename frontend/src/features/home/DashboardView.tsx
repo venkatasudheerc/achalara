@@ -11,6 +11,7 @@ import { ErrorState } from '@/components/ErrorState'
 import { KINDS, accountName, type Selection } from './selection'
 import { dateTicks } from '@/lib/chartTicks'
 import { PrivateToggle } from './PrivateToggle'
+import { AccountNameEditor } from './AccountNameEditor'
 
 type Chart = 'balances' | 'activity' | 'returns'
 
@@ -185,6 +186,7 @@ export function DashboardView({ accounts, selection, lead, onKind }: {
         <section aria-labelledby="about" className="flex flex-col gap-[12px]">
           <h2 id="about" className="font-display text-[20px]">About this account</h2>
           <dl className="border border-line rounded-[18px] p-[18px] grid grid-cols-1 sm:grid-cols-2 gap-[14px] text-[15px]">
+            <div className="sm:col-span-2"><dt className="text-[13px] text-stone">Name</dt><dd><AccountNameEditor account={one} /></dd></div>
             <div><dt className="text-[13px] text-stone">Owner</dt><dd>{one.owner_name}{one.shared ? ' (shared with you)' : ''}</dd></div>
             <div><dt className="text-[13px] text-stone">Kind</dt><dd>{KINDS.find((k) => k.kind === one.kind)?.label}</dd></div>
             <div><dt className="text-[13px] text-stone">Cash in it</dt><dd className="tabular-nums">{one.cash == null ? '—' : formatCurrency(one.cash)}</dd></div>

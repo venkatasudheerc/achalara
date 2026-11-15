@@ -4895,8 +4895,12 @@ paths:
   /api/v1/portal/accounts/{account_id}:
     patch:
       tags: [portal]
-      summary: Keep one of the viewer's own accounts private
-      description: Their spouse no longer sees it; a minor's guardians always do. Only the owner may change it.
+      summary: Change one of the viewer's own accounts (private, its own name)
+      description: >-
+        Keep it private (their spouse no longer sees it; a minor's guardians always do) or give
+        it a name of the owner's own, shown in place of the custodian's. A field left out is
+        left as it is; an empty name clears it. Only the owner may change it (an admin or
+        advisor previewing the owner, as_client, may too).
       operationId: setPortalAccountPrivate
       parameters:
         - {name: account_id, in: path, required: true, schema: {type: string}}
@@ -4905,14 +4909,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+            schema: {$ref: '#/components/schemas/PortalAccountUpdate'}
       responses:
         '200':
-          description: The account's setting
+          description: The account's settings
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+              schema: {$ref: '#/components/schemas/PortalAccountSettings'}
         '404': {description: Not one of the viewer's own accounts}
+        '422': {description: A name longer than 60 characters}
   /api/v1/portal/relatives/{relative_id}/invite:
     post:
       tags: [portal]
@@ -5730,13 +5735,28 @@ components:
           type: string
           enum: [active, needs signing in]
 
-    PortalAccountPrivacy:
+    PortalAccountUpdate:
       type: object
-      required: [is_private]
-      description: An owner's own account kept from their spouse (never from a minor's guardians).
+      description: What an account's owner may change. A field left out is left as it is.
       properties:
         is_private:
           type: boolean
+          nullable: true
+          description: Keep it from their spouse (never from a minor's guardians).
+        display_name:
+          type: string
+          nullable: true
+          description: The owner's own name for it, at most 60 characters once trimmed; empty or null clears it.
+
+    PortalAccountSettings:
+      type: object
+      required: [is_private]
+      properties:
+        is_private:
+          type: boolean
+        display_name:
+          type: string
+          nullable: true
 
     ClientResponse:
       type: object
@@ -7281,6 +7301,11 @@ components:
           type: string
         name:
           type: string
+          description: The custodian's name, without any full account number
+        display_name:
+          type: string
+          nullable: true
+          description: The owner's own name for it, shown in place of name when set
         number_last4:
           type: string
           nullable: true

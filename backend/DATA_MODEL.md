@@ -167,6 +167,8 @@ fields within length limits and has no foreign keys; becoming a client is done b
 | kind | String(20) | nullable — chosen when added: `taxable`, `retirement`, `kids`, `cash`, `checking`, `savings`, `credit_card`, `mortgage`, `car_loan`, `loan`; NULL = read from the name (`account_kind.kind_of`) |
 | institution | String(255) | nullable — who holds it, e.g. "Vanguard" |
 | last_four | String(4) | nullable — the last four of the institution's own number (not a feed's numbering) |
+| is_private | Boolean | not null, default false — the owner keeps it from their spouse (see `clients` above) |
+| display_name | String(60) | nullable — the owner's own name for it ("Pat's trading account"), shown in place of `name`, which stays the custodian's; set by the owner through `PATCH /portal/accounts/{id}`, trimmed, empty clears it |
 
 Relationships: `client` (N→1), `sleeves` (1→N, cascade delete).
 

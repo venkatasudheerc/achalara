@@ -31,9 +31,11 @@ export const TYPE_LABEL: Record<SecurityGroup, string> = {
 }
 
 /** An account in a list or heading: its short name, last four, and whose it is when shared. */
-export function accountLabel(a: { name: string; number_last4: string | null; shared?: boolean; owner_name?: string }): string {
+export function accountLabel(a: {
+  name: string; display_name?: string | null; number_last4: string | null; shared?: boolean; owner_name?: string
+}): string {
   const owner = a.shared ? (a.owner_name ? ` · ${a.owner_name.split(' ')[0]}` : ' (shared)') : ''
-  return `${shortAccountName(a.name)}${a.number_last4 ? ` ••${a.number_last4}` : ''}${owner}`
+  return `${a.display_name || shortAccountName(a.name)}${a.number_last4 ? ` ••${a.number_last4}` : ''}${owner}`
 }
 
 /**
@@ -47,7 +49,7 @@ export function useAccountName() {
     const a = byId.get(id)
     if (!a) return shortAccountName(fallback)
     const owner = a.shared ? ` · ${a.owner_name.split(' ')[0]}` : ''
-    return `${shortAccountName(a.name)}${owner}`
+    return `${a.display_name || shortAccountName(a.name)}${owner}`
   }
 }
 

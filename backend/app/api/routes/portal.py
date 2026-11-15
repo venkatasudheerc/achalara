@@ -19,7 +19,8 @@ from app.api.schemas.client import Relative, RelativeCreate, RelativeInvite
 from app.models.client import Client
 from app.services.auth_service import AuthError, AuthService
 from app.api.schemas.portal import (
-    PortalAccountPrivacy,
+    PortalAccountSettings,
+    PortalAccountUpdate,
     AccountGroupCreate,
     AccountGroupMembers,
     AccountGroupResponse,
@@ -55,7 +56,11 @@ from app.services.account_import_service import (
 )
 from app.services.account_group_service import AccountGroupService
 from app.services.performance_stats_service import GRAINS
-from app.services.portal_service import PortalError, PortalService
+from app.services.portal_service import (
+    PortalError,
+    PortalService,
+    update_own_account_settings,
+)
 
 router = APIRouter()
 
@@ -122,21 +127,28 @@ def portal_accounts(
     }
 
 
-@router.patch("/accounts/{account_id}", response_model=PortalAccountPrivacy)
-def set_account_private(
+@router.patch("/accounts/{account_id}", response_model=PortalAccountSettings)
+def update_own_account(
     account_id: str,
-    body: PortalAccountPrivacy,
+    body: PortalAccountUpdate,
     viewer: PortalViewer = Depends(portal_viewer),
     db: Session = Depends(get_db),
 ):
-    """Keep one of the viewer's own accounts private: their spouse no longer
-    sees it (a minor's guardians always do). Only the owner may change it."""
-    account = db.get(Account, account_id)
-    if account is None or account.client_id != viewer.client_id:
-        raise HTTPException(status_code=404, detail="Account not found")
-    account.is_private = body.is_private
-    db.commit()
-    return PortalAccountPrivacy(is_private=account.is_private)
+    """Change one of the viewer's own accounts: keep it private (their spouse no
+    longer sees it; a minor's guardians always do), or give it a name of their
+    own. Only the owner may change it."""
+    with _http_errors():
+        account = update_own_account_settings(
+            db,
+            viewer.client_id,
+            account_id,
+            is_private=body.is_private,
+            display_name=body.display_name,
+            rename="display_name" in body.model_fields_set,
+        )
+    return PortalAccountSettings(
+        is_private=account.is_private, display_name=account.display_name
+    )
 
 
 @router.get("/relatives", response_model=List[Relative])

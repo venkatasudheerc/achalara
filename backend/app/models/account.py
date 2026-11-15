@@ -32,6 +32,9 @@ class Account(BaseModel):
     # The owner keeps it to themselves: not even a spouse sees it (a minor's
     # guardians still do).
     is_private = Column(Boolean, nullable=False, default=False, server_default="false")
+    # The owner's own name for it ("Pat's trading account"), shown in place of
+    # the custodian's name, which stays in ``name``. Empty when none is given.
+    display_name = Column(String(60))
 
     # Relationships
     client = relationship("Client", back_populates="accounts")

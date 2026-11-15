@@ -405,7 +405,11 @@ export interface PortalAccount extends VisibleAccount {
   sleeves: PortalSleeve[]
   /** The owner keeps it from their spouse; a minor's guardians still see it */
   is_private: boolean
+  /** The owner's own name for it, shown in place of `name` (the custodian's) when set */
+  display_name?: string | null
 }
+/** What an account's owner may change, as the server now holds it */
+export interface PortalAccountSettings { is_private: boolean; display_name: string | null }
 /** One of the client's own named groups of accounts */
 export interface AccountGroup { id: string; name: string; position: number; account_ids: string[] }
 export interface PortalAccountsResponse {

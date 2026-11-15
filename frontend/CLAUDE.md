@@ -107,6 +107,10 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 - **Private accounts** (`PrivateToggle`, `PATCH /portal/accounts/{id}`): only on an account the
   viewer owns (`shared === false`), in the one-account Dashboard's "About this account" and on
   Family; the Accounts view says which of the viewer's accounts their spouse sees.
+- **An account's own name** (`AccountNameEditor`, the same `PATCH` with `display_name`): the
+  owner (or a staff preview) renames an account in "About this account" and on Family; the
+  custodian's name stays beneath in small text. `accountName` (`selection.ts`), `accountLabel`
+  and `useAccountName` prefer `display_name`, so every screen of the new app uses it.
 - Screenshots for review: `ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`
   saves each route at 390 and 1440 wide, light and dark (`playwright-core` with the installed Chrome).
 
