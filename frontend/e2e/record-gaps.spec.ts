@@ -1,4 +1,4 @@
-import { test, expect, signedIn, account, BROKERAGE, CHECKING } from './api'
+import { test, expect, signedIn, account, finding, BROKERAGE, CHECKING } from './api'
 import type { RecordGaps } from '../src/api/types'
 
 const INCOMPLETE = account({
@@ -60,4 +60,21 @@ test('a complete account has no such link', async ({ page, api }) => {
   await page.goto('/home')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Show what is missing' })).toHaveCount(0)
+})
+
+test('a record to repair on the Next best action card offers the same details', async ({ page, api }) => {
+  signedIn(api, [INCOMPLETE, CHECKING]).on(GAPS_CALL, GAPS)
+  api.on('GET /api/v1/portal/insights', {
+    nudges: [finding({
+      key: `record_incomplete:${INCOMPLETE.id}`, rule: 'record_incomplete', must: true,
+      chip: { tone: 'record', label: 'Record' }, title: 'Individual Brokerage Account\'s record is missing a transaction',
+      account_ids: [INCOMPLETE.id],
+    })],
+    insights: [],
+  })
+  await page.goto('/home')
+  expect(api.count(GAPS_CALL)).toBe(0)
+  await page.getByRole('button', { name: 'Show what is missing' }).click()
+  await expect(page.getByRole('cell', { name: 'AAA' })).toBeVisible()
+  expect(api.count(GAPS_CALL)).toBe(1)
 })
