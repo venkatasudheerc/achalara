@@ -250,7 +250,7 @@ Each feature directory contains its page component(s). Implemented:
 - `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades (with "move symbol to another strategy"), income & cash tab
 - `strategies/StrategiesPage`
 - `invitations/RequestInvitationPage` (`/request-invitation`, in `AuthFrame` beside sign-in) holding `invitations/RequestInvitationForm` ( name, email, phone and a note of at least 50 characters, all required, plus a hidden field for scripts; says "Check your email" when the server's `confirm_by_email` is true), `invitations/ConfirmInvitationPage` (`/request-invitation/confirm/:token`, public, in `AuthFrame`; confirms on a button press) and `invitations/RequestsPage` (`/app/requests`: only the requests still waiting, with "Create client", "Mark contacted" and "Dismiss"; handled ones stay on file but off the page); hooks in `useInvitations.ts`
-- `status/StatusPage` (`/app/status`) — system status for the admin: what needs a look, ticker changes to confirm (`useTickerChanges`; "Read OLD as NEW" records it and rebuilds), Plaid logins, daily jobs, linked accounts, data freshness, backup, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
+- `status/StatusPage` (`/app/status`) — system status for the admin: what needs a look, ticker changes to confirm (`useTickerChanges`; "Read OLD as NEW" records it and rebuilds), Plaid logins, daily jobs, linked accounts (each says whose login brought it in, and an entry not added yet says why: a duplicate of an account another login already updates, or new and waiting for its login's owner), data freshness, backup, recent warnings; from `useSystemStatus`, refreshed every 30 seconds
 - `marketdata/MarketDataPage` (`/app/market-data`) — the `md` schema's state for the advisor: what needs a look, jobs with their requests and notes, index members against their expected range, coverage, tables and what is not built; from `useMarketDataStatus`, refreshed every minute. Shares its tiles and tables with the status page (`status/parts.tsx`)
 - `research/ResearchPage` — **Market patterns**, the market-data page for every login: one
   component at `/app/markets` (advisor menu) and `/home/research` (the new app's Research); the
@@ -284,7 +284,11 @@ Each feature directory contains its page component(s). Implemented:
   (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
   Each new account also asks Whose is it (default Mine; jointly with the spouse; held for a minor;
   someone's, which the viewer sees), Who else sees it (default nobody) and, for an invested kind, its
-  cost basis. Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
+  cost basis. An account another login already feeds (a spouse's login pulling in an account the
+  viewer owns, `fed_by`) is not a choice: it is listed apart under "Already updated through
+  <Name>'s <Institution> login", defaults to Don't add, and the header says "N to add. M already
+  update through another login"; the button reads "Add N accounts" (or "Done" when none), so a
+  person links their own login and adds only what is new. Nothing is added until it is pressed. "Upload files" is shown as coming later. A refusal that is
   a setting on the server (linking not set up, a 503; Plaid refusing the OAuth redirect address)
   is said in plain words, to ask the person who runs Achalara, with Plaid's own text beneath
   under "Details" (`explainLinkError`). Hooks in

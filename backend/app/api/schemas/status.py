@@ -40,6 +40,11 @@ class StatusBrokerageAccount(BaseModel):
     name: str
     number_last4: Optional[str] = None
     owner: Optional[str] = None
+    # Whose login brought it in ("Sarvani’s Vanguard login"), and for an entry not
+    # added yet, why it waits: a duplicate of an account another login already
+    # updates, or new and waiting for that login's owner to add it. Empty once added.
+    login: Optional[str] = None
+    note: Optional[str] = None
     status: str  # unmapped | mapped
     connection_status: str
     last_synced_at: Optional[datetime] = None

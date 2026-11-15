@@ -51,6 +51,9 @@ python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 # The morning's Plaid refresh, now (every active login, or one client's); safe to repeat
 python -m app.cli plaid-refresh [--client "Pat Example"]
 
+# Read only: do a new Plaid login's trades match what another login's feed of the same account stored?
+python -m app.cli compare-feeds --client "Pat Example" [--days 90]
+
 # Market indices' daily bars, for research: load a downloaded file, then top up
 python -m app.cli load-index-file --symbol SPX --file SP500_daily.csv --source some-name --replace
 python -m app.cli load-index-history
@@ -527,7 +530,20 @@ its accounts are `brokerage_accounts` rows. Rules:
   nothing is "new". Nothing is linked until `confirm`.
 - **Two feeds never write to one account.** Linking an account another link already feeds is
   refused (409): a second Plaid login gives the same transactions ids of its own, so it would
-  count them twice. Repairing a login that needs signing in again is to come (update mode).
+  count them twice.
+  **The proposals say so** (`fed_by` on a found account and on each candidate: the institution, whose
+  login, and whether it is the viewer's own): an account another login already feeds, such as a
+  spouse's login that pulls in an account the viewer owns, is shown as already updated there and
+  needs nothing, so a client links their own login and adds **only what is new**. The 409 names the
+  account. A 529 and a 401(k) are read from Plaid's subtype as Kids and Retirement
+  (`account_kind.kind_from_plaid`). Moving such an account's feed to the new login is not built: it
+  would risk counting trades twice. `python -m app.cli compare-feeds --client <id or name> [--days 90]`
+  is read only and says how many of the new login's trades match what the other feed stored, by id
+  and by what they were (`services/feed_compare.py`), to decide whether it can be.
+  System status lists each account entry with whose login brought it in (`login`) and, for one not
+  added yet, a `note`: "Same account as one <Name>'s login updates" (the same institution and last
+  four as a mapped entry of another login) or "New: waiting for <Name> to add it". Nothing is
+  merged or hidden by it; only mapped entries feed an account. Repairing a login that needs signing in again is to come (update mode).
 - **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
   the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
   day late) with the total moved to match; same-day internal transfer pairs and sweeps are not

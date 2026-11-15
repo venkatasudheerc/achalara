@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from sqlalchemy import func, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.config import settings
 from app.models.account import Account
@@ -277,19 +277,35 @@ class StatusService:
             )
             .group_by(DailyValuation.account_id)
         )
+        login_owner = aliased(Client)
         rows = (
-            self.db.query(BrokerageAccount, BrokerageConnection, Account, Client)
+            self.db.query(BrokerageAccount, BrokerageConnection, Account, Client, login_owner)
             .join(
                 BrokerageConnection,
                 BrokerageAccount.connection_id == BrokerageConnection.id,
             )
             .outerjoin(Account, BrokerageAccount.account_id == Account.id)
             .outerjoin(Client, Account.client_id == Client.id)
+            .outerjoin(login_owner, login_owner.id == BrokerageConnection.client_id)
             .filter(BrokerageAccount.status != "ignored")
             .order_by(Client.name, BrokerageAccount.name)
+            .all()
         )
+
+        def first(person) -> str:
+            return (person.name if person else "someone").split()[0]
+
+        def login_of(connection, person) -> str:
+            return f"{first(person)}’s {connection.institution or 'Plaid'} login"
+
+        # The accounts a login already updates, to say when another login's entry is the same one.
+        updated = {
+            ((c.institution or "").strip().lower(), ba.mask): lo
+            for ba, c, _account, _owner, lo in rows
+            if ba.status == "mapped" and ba.mask
+        }
         accounts = []
-        for ba, connection, account, owner in rows:
+        for ba, connection, account, owner, owner_of_login in rows:
             # Never the full account number, which the brokerage puts in the name.
             name = display_name(account or ba)
             last = _aware(ba.last_synced_at)
@@ -317,12 +333,23 @@ class StatusService:
                         ),
                         alert="An account's record is incomplete: a transaction is missing.",
                     )
+            note = None
+            if ba.status != "mapped":
+                twin = updated.get(((connection.institution or "").strip().lower(), ba.mask))
+                note = (
+                    f"Same account as one {first(twin)}’s login updates. Nothing to add."
+                    if twin is not None
+                    else f"New: waiting for {first(owner_of_login)} to add it."
+                )
             accounts.append(
                 {
                     "id": ba.id,
                     "name": name,
                     "number_last4": ba.number_last4,
                     "owner": owner.name if owner else None,
+                    # Whose login brought it in, and for an entry not added yet, why it waits.
+                    "login": login_of(connection, owner_of_login),
+                    "note": note,
                     "status": ba.status,
                     "connection_status": connection.status,
                     "last_synced_at": last,

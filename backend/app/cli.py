@@ -140,6 +140,52 @@ def plaid_refresh(client: Optional[str]) -> int:
         db.close()
 
 
+def compare_feeds(client: str, days: int) -> int:
+    """Read only: for a client's new Plaid login, whether its trades match what an
+    existing feed of the same account already stored (by id, or by what they were)."""
+    from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
+    from app.models.client import Client
+    from app.services.feed_compare import compare
+
+    db = SessionLocal()
+    try:
+        found = (
+            db.query(Client).filter((Client.id == client) | (Client.name.ilike(client))).all()
+        )
+        if len(found) != 1:
+            print(f"No single client is called {client!r}.", file=sys.stderr)
+            return 1
+        logins = (
+            db.query(BrokerageConnection)
+            .join(BrokerageAccount)
+            .filter(
+                BrokerageConnection.client_id == found[0].id,
+                BrokerageConnection.source == "plaid",
+                BrokerageAccount.status == "unmapped",
+            )
+            .distinct()
+            .all()
+        )
+        if not logins:
+            print("No login of this client has accounts waiting to be added.")
+            return 0
+        for login in logins:
+            print(f"{login.institution or 'A login'}:")
+            for row in compare(db, login, days):
+                label = f"  {row['name']} ··{row['mask'] or '?'}"
+                if "error" in row:
+                    print(f"{label}: Plaid said: {row['error']}")
+                    continue
+                print(
+                    f"{label}: new login {row['new_login_trades']} trades in {row['days']} days; "
+                    f"same id {row['same_id']}, same trade under another id {row['same_trade_other_id']}, "
+                    f"not on file {row['not_on_file']} (stored {row['stored_trades']})"
+                )
+        return 0
+    finally:
+        db.close()
+
+
 def load_index_history(symbols, full: bool) -> int:
     """Load or top up the daily bars of the market indices."""
     db = SessionLocal()
@@ -655,6 +701,12 @@ def main(argv=None) -> int:
         help="the morning's Plaid refresh, now: every active login, or one client's",
     )
     refresh.add_argument("--client", help="the client's id or name; all clients when left out")
+    compare_cmd = commands.add_parser(
+        "compare-feeds",
+        help="read only: do a new Plaid login's trades match what another login's feed of the same account stored",
+    )
+    compare_cmd.add_argument("--client", required=True, help="the client's id or name")
+    compare_cmd.add_argument("--days", type=int, default=90, help="how far back to compare (default 90)")
     report = commands.add_parser(
         "import-vanguard-report",
         help="add the trades and cash rows in Vanguard's activity report that are not on file",
@@ -679,6 +731,8 @@ def main(argv=None) -> int:
         return add_ticker_change(args.old, args.new, args.date)
     if args.command == "plaid-refresh":
         return plaid_refresh(args.client)
+    if args.command == "compare-feeds":
+        return compare_feeds(args.client, args.days)
     if args.command == "import-vanguard-report":
         return import_vanguard_report(
             args.account, args.file, args.start, args.end, args.apply

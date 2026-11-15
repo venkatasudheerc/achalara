@@ -27,8 +27,20 @@ function evidence(c: PlaidFoundAccount['candidates'][number]): string {
   return parts.join(', ')
 }
 
+const isDone = (a: PlaidFoundAccount) => a.status === 'mapped' || a.status === 'matched'
+/** An account another login already feeds: it keeps updating there, so there is nothing to add. */
+const isFed = (a: PlaidFoundAccount) => !isDone(a) && !!a.fed_by
+const firstName = (name: string | null | undefined) => (name ?? 'someone').split(' ')[0]
+
+/** "Sarvani's Vanguard login", or "your Vanguard login". */
+function whoseLogin(f: NonNullable<PlaidFoundAccount['fed_by']>): string {
+  const bank = f.institution || 'institution'
+  return f.own ? `your other ${bank} login` : `${firstName(f.owner_name)}’s ${bank} login`
+}
+
 function initialPick(a: PlaidFoundAccount): Pick {
   const rest = { whose: 'me', sees: [] as string[], costBasis: 'FIFO' as const }
+  if (isFed(a)) return { action: 'skip', kind: a.kind, ...rest }
   if (a.proposal === 'same' && a.account_id) return { action: 'link', accountId: a.account_id, kind: a.kind, ...rest }
   if (a.proposal === 'new') return { action: 'new', kind: a.kind, ...rest }
   return { action: 'skip', kind: a.kind, ...rest } // "choose": the person decides
@@ -38,7 +50,7 @@ function FoundRow({ account, pick, onPick, people, advisor }: {
   account: PlaidFoundAccount; pick: Pick; onPick: (p: Pick) => void
   people: PersonRow[]; advisor: { name: string } | null
 }) {
-  const done = account.status === 'mapped' || account.status === 'matched'
+  const done = isDone(account)
   const value = pick.action === 'link' ? `link:${pick.accountId}` : pick.action
   const field = 'h-[44px] px-[12px] rounded-[12px] border border-stone/40 bg-surface text-[14px]'
   return (
@@ -63,7 +75,7 @@ function FoundRow({ account, pick, onPick, people, advisor }: {
               const v = e.target.value
               onPick(v.startsWith('link:') ? { ...pick, action: 'link', accountId: v.slice(5) } : { ...pick, action: v as Pick['action'], accountId: undefined })
             }}>
-            {account.candidates.map((c) => (
+            {account.candidates.filter((c) => !c.fed_by).map((c) => (
               <option key={c.account_id} value={`link:${c.account_id}`}>
                 Same as {c.name}{c.last_four ? ` ··${c.last_four}` : ''}{evidence(c) ? ` (${evidence(c)})` : ''}
               </option>
@@ -288,6 +300,11 @@ export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: 
     })
   }
 
+  // What the person is deciding: accounts another login already feeds need nothing.
+  const undecided = found ? found.accounts.filter((a) => !isDone(a)) : []
+  const fedCount = undecided.filter(isFed).length
+  const toAdd = undecided.filter((a) => !isFed(a) && picks[a.link_id] && picks[a.link_id].action !== 'skip').length
+  const newCount = undecided.length - fedCount
   const button = 'h-[44px] px-[18px] rounded-[22px] text-[14px] font-semibold'
   const available = availability.data?.available
   const left = availability.data?.logins_left ?? 0
@@ -304,7 +321,11 @@ export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: 
                 : review ? `Check ${review.institution || 'your institution'} for new accounts` : 'Add an account'}
             </h2>
             {step === 'found' && (
-              <p className="text-[14px] text-stone leading-relaxed">Check each one: link it to an account that’s already here, add it as new, or leave it out. Nobody else sees a new account unless you say so.</p>
+              <p className="text-[14px] text-stone leading-relaxed">
+                {newCount > 0 ? `${newCount} to add.` : 'Nothing new to add.'}
+                {fedCount > 0 && ` ${fedCount} already ${fedCount === 1 ? 'updates' : 'update'} through another login and stay${fedCount === 1 ? 's' : ''} as ${fedCount === 1 ? 'it is' : 'they are'}.`}
+                {newCount > 0 && ' Check each one: link it to an account that’s already here, add it as new, or leave it out. Nobody else sees a new account unless you say so.'}
+              </p>
             )}
           </div>
           <button type="button" onClick={close} aria-label="Close"
@@ -336,13 +357,31 @@ export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: 
         )}
 
         {step === 'found' && found && (
-          <ul className="flex flex-col gap-[12px] max-h-[55vh] overflow-y-auto">
-            {found.accounts.filter((a) => !review || (a.status !== 'mapped' && a.status !== 'matched')).map((a) => (
-              <FoundRow key={a.link_id} account={a} pick={picks[a.link_id]}
-                people={peopleData?.people ?? []} advisor={peopleData?.advisor ?? null}
-                onPick={(p) => setPicks((all) => ({ ...all, [a.link_id]: p }))} />
+          <div className="flex flex-col gap-[16px] max-h-[55vh] overflow-y-auto">
+            {found.accounts.filter((a) => !isFed(a) && (!review || !isDone(a))).length > 0 && (
+              <ul className="flex flex-col gap-[12px]">
+                {found.accounts.filter((a) => !isFed(a) && (!review || !isDone(a))).map((a) => (
+                  <FoundRow key={a.link_id} account={a} pick={picks[a.link_id]}
+                    people={peopleData?.people ?? []} advisor={peopleData?.advisor ?? null}
+                    onPick={(p) => setPicks((all) => ({ ...all, [a.link_id]: p }))} />
+                ))}
+              </ul>
+            )}
+            {[...new Set(found.accounts.filter(isFed).map((a) => whoseLogin(a.fed_by!)))].map((login) => (
+              <section key={login} aria-label={`Already updated through ${login}`} className="border border-line rounded-[16px] p-[16px] flex flex-col gap-[8px]">
+                <h3 className="text-[14px] font-semibold">Already updated through {login}</h3>
+                <p className="text-[13px] text-stone">Nothing to add: these keep updating there, and nothing about them changes.</p>
+                <ul className="flex flex-col divide-y divide-line text-[14px]">
+                  {found.accounts.filter((a) => isFed(a) && whoseLogin(a.fed_by!) === login).map((a) => (
+                    <li key={a.link_id} className="flex items-baseline justify-between gap-[12px] py-[6px]">
+                      <span>{a.name}{a.mask ? <span className="text-stone"> ··{a.mask}</span> : null}</span>
+                      <span className="tabular-nums text-stone">{a.balance == null ? '' : formatCurrency(a.balance)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         )}
 
         {step === 'found' && review && found && found.accounts.some((a) => a.status === 'mapped' || a.status === 'matched') && (
@@ -395,7 +434,7 @@ export function AddAccountDialog({ open, onClose, review: reviewProp }: { open: 
             <>
               <button type="button" onClick={close} className={`${button} border border-stone/40 hover:bg-line`}>Not now</button>
               <button type="button" onClick={add} disabled={confirm.isPending} className={`${button} bg-pine text-on-dark disabled:opacity-50`}>
-                {confirm.isPending ? 'Adding…' : 'Add these'}
+                {confirm.isPending ? 'Adding…' : toAdd > 0 ? `Add ${toAdd} ${toAdd === 1 ? 'account' : 'accounts'}` : 'Done'}
               </button>
             </>
           ) : (

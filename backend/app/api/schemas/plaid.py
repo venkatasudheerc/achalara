@@ -24,6 +24,14 @@ class PlaidLinkFinish(BaseModel):
     public_token: str = Field(min_length=1, max_length=500)
 
 
+class PlaidFedBy(BaseModel):
+    """The login that already feeds an account: whose it is and where it is."""
+
+    institution: str
+    owner_name: Optional[str] = None
+    own: bool  # the viewer's own login
+
+
 class PlaidCandidate(BaseModel):
     """One of the client's accounts this one might be, and the evidence."""
 
@@ -37,6 +45,8 @@ class PlaidCandidate(BaseModel):
     # None: no holdings on one side or the other to compare.
     same_holdings: Optional[bool] = None
     same_balance: bool
+    # Another login already feeds it; linking this one to it would be refused.
+    fed_by: Optional[PlaidFedBy] = None
 
 
 class PlaidFoundAccount(BaseModel):
@@ -53,6 +63,9 @@ class PlaidFoundAccount(BaseModel):
     # choose: some agree on less; new: none.
     proposal: Literal["same", "choose", "new"]
     account_id: Optional[str] = None
+    # Set when it is an account another login already feeds (a spouse's login,
+    # say): nothing to add, it keeps updating through that login.
+    fed_by: Optional[PlaidFedBy] = None
     candidates: List[PlaidCandidate]
 
 

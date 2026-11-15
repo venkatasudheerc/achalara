@@ -32,6 +32,7 @@ from app.config import settings
 from app.connectors import plaid_reader
 from app.connectors.plaid_connector import PlaidClient, PlaidError, configured
 from app.models.account import Account
+from app.models.client import Client
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.perf import DailyHolding, DailyValuation
 from app.services.account_kind import KINDS, OWED, kind_from_plaid
@@ -387,7 +388,7 @@ class PlaidLinkService:
         rows = []
         for link in links:
             plaid = accounts.get(link.external_account_ref, {})
-            rows.append(self._proposal(connection, link, plaid, holdings.get(link.external_account_ref), candidates))
+            rows.append(self._proposal(connection, link, plaid, holdings.get(link.external_account_ref), candidates, client_id))
         return {
             "connection_id": connection.id,
             "institution": connection.institution,
@@ -486,6 +487,18 @@ class PlaidLinkService:
         symbols = set(ours) | set(theirs)
         return all(abs(ours.get(s, Decimal(0)) - theirs.get(s, Decimal(0))) <= _AGREE for s in symbols)
 
+    def _fed_by(self, candidate: Dict, link: BrokerageAccount, viewer_id: str) -> Optional[Dict]:
+        """The login that already feeds this candidate account, if another one does."""
+        for other in candidate["links"]:
+            if other.status == "mapped" and other.id != link.id and other.connection is not None:
+                owner = self.db.get(Client, other.connection.client_id)
+                return {
+                    "institution": other.connection.institution or "",
+                    "owner_name": owner.name if owner else None,
+                    "own": other.connection.client_id == viewer_id,
+                }
+        return None
+
     def _proposal(
         self,
         connection: BrokerageConnection,
@@ -493,6 +506,7 @@ class PlaidLinkService:
         plaid: Dict,
         holdings: Optional[Dict[str, Decimal]],
         candidates: List[Dict],
+        viewer_id: str = "",
     ) -> Dict:
         kind = kind_from_plaid(link.plaid_type, link.plaid_subtype, link.name)
         owed = kind in OWED
@@ -530,6 +544,7 @@ class PlaidLinkService:
                         "same_institution": same_institution,
                         "same_holdings": same_holdings,
                         "same_balance": same_balance,
+                        "fed_by": self._fed_by(c, link, viewer_id),
                     }
                 )
         strong = [
@@ -545,6 +560,9 @@ class PlaidLinkService:
             action, chosen = CHOOSE, None
         else:
             action, chosen = NEW, None
+        fed_by = None
+        if action == SAME and link.status not in ("mapped", "matched"):
+            fed_by = next((c["fed_by"] for c in considered if c["account_id"] == chosen), None)
         return {
             "link_id": link.id,
             "name": link.name,
@@ -557,6 +575,9 @@ class PlaidLinkService:
             "status": link.status,
             "proposal": action,
             "account_id": chosen,
+            # Set when the account this one is already gets its figures through
+            # another login: it needs no second feed (two feeds never write to one account).
+            "fed_by": fed_by,
             "candidates": considered,
         }
 
@@ -589,7 +610,12 @@ class PlaidLinkService:
                 if self._linked_elsewhere(account.id, link.id):
                     # Two feeds never write to one account. A second login's ids
                     # for the same transactions differ, so it would count them twice.
-                    raise PlaidLinkError(409, "This account is already linked")
+                    raise PlaidLinkError(
+                        409,
+                        f"{link.name}{f' ··{link.mask}' if link.mask else ''} already gets its "
+                        "figures through another login, so it is not added again. Leave it out "
+                        "and add the rest.",
+                    )
                 self._describe(account, connection, link, kind)
                 link.account_id = account.id
                 link.default_sleeve_id, link.sleeve_routes = self._sleeves(account)

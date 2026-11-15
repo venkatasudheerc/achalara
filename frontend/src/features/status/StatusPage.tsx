@@ -160,7 +160,7 @@ function Accounts({ status, now }: { status: SystemStatusResponse; now: number }
         <table className="w-full min-w-[860px] border-collapse">
           <thead>
             <tr>
-              <th className={th}>Account</th><th className={th}>Owner</th><th className={th}>Link</th>
+              <th className={th}>Account</th><th className={th}>Owner</th><th className={th}>Login</th><th className={th}>Link</th>
               <th className={th}>Transactions through</th><th className={th}>Last pulled</th>
               <th className={th}>Daily record through</th><th className={th}>Holdings</th>
             </tr>
@@ -175,8 +175,10 @@ function Accounts({ status, now }: { status: SystemStatusResponse; now: number }
                   <td className={td}>
                     {a.name}{a.number_last4 && <span className="ml-2 text-xs text-stone font-mono">····{a.number_last4}</span>}
                     {a.status !== 'mapped' && <span className="ml-2 text-xs text-stone">not added yet</span>}
+                    {a.status !== 'mapped' && a.note && <div className="mt-1 text-xs text-stone font-sans max-w-[320px]">{a.note}</div>}
                   </td>
                   <td className={td}>{a.owner ?? '—'}</td>
+                  <td className={`${td} text-sm`}>{a.login ?? '—'}</td>
                   <td className={td}><span className="flex items-center gap-2"><Dot tone={linkOk ? 'ok' : 'attention'} />{linkOk ? 'Active' : 'Stopped'}</span></td>
                   <td className={mono}>{formatDate(a.transactions_synced_through)}</td>
                   <td className={mono}>
