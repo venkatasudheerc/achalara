@@ -76,7 +76,7 @@ export function account(over: Partial<PortalAccount> & Pick<PortalAccount, 'id' 
     needs_sign_in: false, login_id: null, health: { state: 'complete', reasons: [], download_from: null },
     value: 0, priced_at: '2026-03-02T15:30:00Z', recorded_value: 0, cash: 0, as_of: '2026-02-27',
     source: 'plaid', synced_at: '2026-03-02T11:30:00Z', sleeves: [],
-    owners: [{ id: 'client-1', name: 'Pat Example' }], held_for: null, display_name: null,
+    owners: [{ id: 'client-1', name: 'Pat Example' }], held_for: null, display_name: null, card: null,
     ...over,
   }
 }

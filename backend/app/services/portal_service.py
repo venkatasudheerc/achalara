@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.connectors.models import is_option_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
+from app.models.card_detail import CardDetail
 from app.models.client import Client
 from app.models.user import AccountAccess
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
@@ -364,6 +365,28 @@ class PortalService:
         def money(value) -> Optional[float]:
             return float(value) if value is not None else None
 
+        cards = {
+            card.account_id: card
+            for card in self.db.query(CardDetail).filter(CardDetail.account_id.in_(ids))
+        }
+
+        def card_of(account_id: str) -> Optional[Dict]:
+            card = cards.get(account_id)
+            if card is None:
+                return None
+            return {
+                "credit_limit": money(card.credit_limit),
+                "available_credit": money(card.available_credit),
+                "cash_advance_limit": money(card.cash_advance_limit),
+                "minimum_payment": money(card.minimum_payment),
+                "next_payment_due_date": card.next_payment_due_date,
+                "last_payment_amount": money(card.last_payment_amount),
+                "last_payment_date": card.last_payment_date,
+                "last_statement_balance": money(card.last_statement_balance),
+                "is_overdue": card.is_overdue,
+                "as_of": card.refreshed_at,
+            }
+
         return [
             {
                 **self._account_fields(account, shared),
@@ -403,6 +426,7 @@ class PortalService:
                 "synced_at": links[account.id].last_synced_at
                 if account.id in links
                 else None,
+                "card": card_of(account.id),
                 "sleeves": [
                     {
                         "sleeve_id": sleeve.id,
