@@ -12,7 +12,7 @@ function loadDateRange(): DateRange {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as DateRange
-  } catch {}
+  } catch { /* unreadable or blocked storage: start empty */ }
   return { startDate: undefined, endDate: undefined }
 }
 

@@ -14,7 +14,8 @@ Run from `frontend/`.
 ```bash
 npm run dev           # dev server at http://localhost:5173
 npm run build         # gen:api + tsc + vite build
-npm run lint          # eslint
+npm run lint          # eslint (CI runs it; keep it clean)
+npm run test:e2e      # the browser checks (Playwright), against the app alone
 npm run gen:api       # regenerate src/api/schema.d.ts from ../openapi.yaml
 ```
 
@@ -51,7 +52,10 @@ Both live in `src/context/`. Every performance screen reads from these; never ac
 
 **Pages load when first opened.** `src/routes.tsx` wraps each page in `page(() => import(…))`
 (`React.lazy` inside its own `Suspense`, a skeleton while it arrives); only sign-in and the two
-frames are in the first file. Add a new page the same way, never as a plain import there.
+frames are in the first file. Add a new page the same way, never as a plain import there. Each
+page sits in a `PageBoundary` (`components/PageBoundary.tsx`): a page whose file fails to download
+(the app was updated after the tab was opened, or the connection dropped) or that fails while
+drawing says so inside the frame, with **Reload**, where the screen would otherwise go blank.
 
 There is no public front page: `/` (and any unknown address) opens `/login`, whose "Request an
 invitation" link is the way in for someone new. `/login`, `/request-invitation`,
@@ -220,6 +224,7 @@ This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `
 | `LevelBreakdown` | 5-column grid of `children[]` (name, MWR, TWR, unrealised gain) with drill-down links; a row whose `makeHref` gives `null` has no page and is not a link |
 | `DataTable` | Generic sortable table; columns declare `sortValue?: (row) => string\|number` for client-side sort |
 | `EmptyState` / `ErrorState` | Consistent empty and error treatments; every screen uses these |
+| `PageBoundary` | Around every lazily loaded page (`routes.tsx`): a page that fails to download or to draw shows why and offers Reload; the frame stays |
 | `QueryState` | One section's data: skeleton rows while it loads, `ErrorState` with Try again if it fails, else the section. Wrap any table or card fed by its own query, so an empty table never stands in for a failed or running request |
 | `Skeleton` | Loading placeholders; every data-fetching screen shows skeletons |
 | `ShortBadge` | "Short" tag beside a symbol when a position's quantity is negative |
@@ -393,6 +398,23 @@ Rules that keep both themes working:
 - **Restart `npm run dev` after editing `tailwind.config.ts`.** The dev server keeps serving the
   old colours otherwise, which looks like a half-applied theme.
 
+## Browser checks (`e2e/`)
+
+`npm run test:e2e` runs Playwright against the app alone, at laptop (1440) and phone (390) width:
+sign in, the Dashboard, add an account, update from a file, Manage Access, and a page that fails
+to download. **No backend is involved.** Each test answers the API itself through `e2e/api.ts`
+(`api.on('GET /api/v1/…', answer)`), and a call no test answered fails the test, so a screen that
+starts asking for something new is noticed. The answers are typed with the generated API types
+and `npm run build` type-checks `e2e/` too: an answer that no longer fits `openapi.yaml` fails the
+build. Every name, account and figure there is invented; never paste a real response in.
+
+- Find things the way a person does: by role and visible words (`getByRole`, `getByLabel`), not
+  by class names. On a phone the account list is behind "Choose accounts" (`e2e/pages.ts`).
+- Locally it uses the installed Chrome and starts its own dev server on port 5199 (a dev server
+  already on 5173 is left alone). CI downloads Chromium and runs the same checks (`browser` job).
+- When a flow on one of these screens changes, change its check in the same pull request; a new
+  screen people rely on gets one.
+
 ## Env Setup
 
 Copy `.env.example` to `.env`. Required var: `VITE_API_BASE_URL=http://localhost:8000`.
@@ -408,3 +430,4 @@ A page that does nothing yet is not shown: the Portfolio, Risk and Grow stubs ar
 - Numbers formatted via `src/lib/formatters.ts`, gains green, losses clay
 - No mock data in committed paths once the real endpoint works
 - `openapi.yaml` updated if a new endpoint was added
+- `npm run lint`, `npm run build` and `npm run test:e2e` pass
