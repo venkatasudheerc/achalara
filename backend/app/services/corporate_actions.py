@@ -336,6 +336,76 @@ def assignment_adjustments(
     return prices, deliveries
 
 
+def duplicate_splits(db: Session) -> List[Tuple[CorporateAction, List[CorporateAction]]]:
+    """Splits recorded more than once: the same symbol within a few days. Each
+    entry is the one to keep (the first recorded; of two recorded together, the
+    later date, the day the split took effect) and the ones that repeat it."""
+    rows = (
+        db.query(CorporateAction)
+        .filter(CorporateAction.action_type == "SPLIT")
+        .order_by(CorporateAction.symbol, CorporateAction.effective_date)
+        .all()
+    )
+    found: List[Tuple[CorporateAction, List[CorporateAction]]] = []
+    group: List[CorporateAction] = []
+
+    def close() -> None:
+        if len(group) > 1:
+            first = sorted(group, key=lambda a: (a.created_at is None, a.created_at, -a.effective_date.toordinal()))
+            found.append((first[0], first[1:]))
+
+    for row in rows:
+        if group and (
+            row.symbol != group[-1].symbol
+            or (row.effective_date - group[-1].effective_date).days > _SAME_SPLIT_DAYS
+        ):
+            close()
+            group = []
+        group.append(row)
+    close()
+    return found
+
+
+def repair_duplicate_splits(db: Session, apply: bool = False) -> Dict:
+    """Remove the splits recorded twice, then rebuild the accounts that traded
+    the symbol so their positions read the split once. Shows only unless
+    ``apply``. Returns what was (or would be) removed and how many accounts were rebuilt."""
+    from app.models.perf import DailyHolding
+    from app.services.performance_build_service import PerformanceBuildService
+
+    plan = duplicate_splits(db)
+    removed = [
+        {
+            "symbol": keep.symbol,
+            "keep": (keep.effective_date, keep.ratio),
+            "remove": [(a.effective_date, a.ratio) for a in drop],
+        }
+        for keep, drop in plan
+    ]
+    rebuilt = 0
+    if apply and plan:
+        symbols = {keep.symbol for keep, _ in plan}
+        for _, drop in plan:
+            for row in drop:
+                db.delete(row)
+        db.commit()
+        accounts = {
+            account_id
+            for (account_id,) in db.query(Sleeve.account_id)
+            .join(Trade, Trade.sleeve_id == Sleeve.id)
+            .filter(Trade.symbol.in_(symbols))
+        } | {
+            account_id
+            for (account_id,) in db.query(DailyHolding.account_id)
+            .filter(DailyHolding.symbol.in_(symbols))
+            .distinct()
+        }
+        for account_id in sorted(accounts):
+            PerformanceBuildService(db).rebuild_account(account_id)
+        rebuilt = len(accounts)
+    return {"duplicates": removed, "rebuilt": rebuilt}
+
+
 def record_splits(db: Session, brokerage_account_id: str) -> int:
     """Record the splits a brokerage account's stored activity reports.
 
