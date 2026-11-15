@@ -51,3 +51,36 @@ test('a file that says how far it is complete is shown saying so', async ({ page
   })
   await expect(dialog.getByText(/complete through Feb 20, 2026/)).toBeVisible()
 })
+
+test('a file with nothing to add but a complete-through date offers to record it', async ({ page, api }) => {
+  const nothing = { ...PREVIEW, complete_through: '2026-02-20', to_add_trades: 0, to_add_cash: 0, days: [] }
+  signedIn(api)
+    .on(`GET ${imports}/check`, HOLDINGS_DIFFER)
+    .on(`POST ${imports}/preview`, nothing)
+    .on(`POST ${imports}`, { ...IMPORTED, ...nothing, added_trades: 0, added_cash: 0 })
+  await page.goto(`/home?sel=account:${BROKERAGE.id}`)
+  await page.getByRole('button', { name: 'Update from a file' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Update from a file' })
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'activity.csv', mimeType: 'text/csv', buffer: Buffer.from('Date,Type\n2026-01-20,Through\n'),
+  })
+  await expect(dialog.getByText(/Nothing to add, but the file says it is complete through Feb 20, 2026/)).toBeVisible()
+  expect(api.count(`POST ${imports}`), 'the preview writes nothing').toBe(0)
+  await dialog.getByRole('button', { name: /Record complete through Feb 20, 2026/ }).click()
+  await expect(dialog.getByText(/known to be complete through Feb 20, 2026/)).toBeVisible()
+  expect(api.count(`POST ${imports}`)).toBe(1)
+})
+
+test('a file with nothing to add and no date just says so', async ({ page, api }) => {
+  signedIn(api)
+    .on(`GET ${imports}/check`, HOLDINGS_DIFFER)
+    .on(`POST ${imports}/preview`, { ...PREVIEW, to_add_trades: 0, to_add_cash: 0, days: [] })
+  await page.goto(`/home?sel=account:${BROKERAGE.id}`)
+  await page.getByRole('button', { name: 'Update from a file' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Update from a file' })
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'activity.csv', mimeType: 'text/csv', buffer: Buffer.from('Date,Type\n2026-01-20,Buy\n'),
+  })
+  await expect(dialog.getByText('Nothing to add: everything in this file is already here.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /Record complete through/ })).toHaveCount(0)
+})

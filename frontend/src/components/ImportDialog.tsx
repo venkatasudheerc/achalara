@@ -18,7 +18,11 @@ function headline(p: ImportPreview): string {
     p.to_add_trades ? plural(p.to_add_trades, 'trade') : '',
     p.to_add_cash ? plural(p.to_add_cash, 'cash entry', 'cash entries') : '',
   ].filter(Boolean)
-  if (!parts.length) return 'Nothing to add: everything in this file is already here.'
+  if (!parts.length) {
+    return p.complete_through
+      ? `Nothing to add, but the file says it is complete through ${formatDate(p.complete_through)}.`
+      : 'Nothing to add: everything in this file is already here.'
+  }
   const days = p.days.map((d) => d.date)
   const when = days.length === 1 ? `all on ${formatDate(days[0])}` : `across ${days.length} days, ${formatDate(days[0])} to ${formatDate(days[days.length - 1])}`
   return `${parts.join(' and ')} to add, ${when}.`
@@ -118,7 +122,11 @@ function Result({ r }: { r: ImportResult }) {
   return (
     <div className="flex flex-col gap-[16px]">
       <p className="text-[18px] font-semibold leading-snug">
-        {added ? `Added ${added}. The account’s history has been rebuilt.` : 'Nothing was added: everything was already here.'}
+        {added
+          ? `Added ${added}. The account’s history has been rebuilt.`
+          : r.complete_through
+            ? `Nothing was added. The account is now known to be complete through ${formatDate(r.complete_through)}, and its history has been rebuilt.`
+            : 'Nothing was added: everything was already here.'}
       </p>
       {r.check && (r.check.differences.length === 0 ? (
         <p className="text-[15px] leading-relaxed">
@@ -228,6 +236,13 @@ export function ImportDialog({ open, onClose, door, accountName }: {
                 <button type="button" onClick={() => apply.mutate(file)} disabled={apply.isPending}
                   className={`${button} bg-pine text-on-dark disabled:opacity-50`}>
                   {apply.isPending ? 'Adding…' : 'Add these'}
+                </button>
+              ) : preview.data.complete_through ? (
+                // Nothing to add, but the file says how far the account is complete: that is kept
+                // only when the file is applied, and it lets the opening be worked back.
+                <button type="button" onClick={() => apply.mutate(file)} disabled={apply.isPending}
+                  className={`${button} bg-pine text-on-dark disabled:opacity-50`}>
+                  {apply.isPending ? 'Saving…' : `Record complete through ${formatDate(preview.data.complete_through)}`}
                 </button>
               ) : (
                 <button type="button" onClick={close} className={`${button} bg-pine text-on-dark`}>Done</button>
