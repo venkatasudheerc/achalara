@@ -14,6 +14,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.connectors.models import is_option_symbol, option_expiry
+from app.utils.symbols import is_named_symbol
 from app.models.account import Account
 from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
 from app.models.card_detail import CardDetail
@@ -771,6 +772,11 @@ class PortalService:
         for r in rows:
             r["sector_group"] = r["sector"] = r["sector_code"] = r["name"] = None
             if r["security_type"] == "option":
+                continue
+            if is_named_symbol(r["symbol"]):
+                # Kept under its name, no ticker: a pooled fund or portfolio. Its
+                # symbol is its name, and it has no sector (not looked through).
+                r["sector_group"] = "fund"
                 continue
             known = copy.get(r["symbol"])
             r["name"] = known.name if known else None

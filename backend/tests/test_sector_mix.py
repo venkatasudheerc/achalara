@@ -120,3 +120,19 @@ def test_a_security_still_called_by_its_ticker_has_no_name_to_show(db, world, ma
     _held(db, world)
     sector_copy.refresh(db)
     assert db.get(SecuritySector, "XYZ").name is None
+
+
+def test_a_holding_kept_under_its_name_is_a_fund_and_is_not_handed_to_market_data(db, world):
+    from app.services.held_symbols import held_symbols
+
+    _trade(db, world["brokerage_growth"], date(2026, 3, 2), "BUY", 5, 10, "#TARGET RETIRE 2050 TRUST")
+    db.commit()
+    assert "#TARGET RETIRE 2050 TRUST" not in {symbol for symbol, _ in held_symbols(db)}
+
+
+def test_positions_place_a_name_only_holding_with_the_funds(maya, db, world, market):
+    _trade(db, world["brokerage_growth"], date(2026, 3, 2), "BUY", 5, 10, "#TARGET RETIRE 2050 TRUST")
+    db.commit()
+    rows = {p["symbol"]: p for p in maya.get("/api/v1/portal/positions").json()["positions"]}
+    held = rows["#TARGET RETIRE 2050 TRUST"]
+    assert (held["sector_group"], held["sector"], held["name"]) == ("fund", None, None)

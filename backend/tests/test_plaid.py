@@ -626,3 +626,37 @@ def test_a_login_lists_how_many_accounts_wait_to_be_chosen(db, owner, plaid_keys
     PlaidLinkService(db, FakePlaid()).discover(owner.id, login.id)
     listed = PortalService(db, owner.id).connections()["connections"]
     assert [(c["id"], c["waiting_accounts"]) for c in listed] == [(login.id, 3)]
+
+
+def test_a_holding_with_no_ticker_is_kept_under_its_name_and_the_account_s_cash_is_not():
+    """A target-date trust has a name and no ticker; the settlement fund, cash and an
+    option with no contract details are not holdings to name."""
+    securities = {
+        "tr": {"security_id": "tr", "type": "equity", "ticker_symbol": None, "name": "Target Retire 2050 Trust"},
+        "fund": {"security_id": "fund", "type": "mutual fund", "ticker_symbol": "ZZZFX", "name": "Example Fund"},
+        "settle": {"security_id": "settle", "type": "mutual fund", "ticker_symbol": None,
+                   "name": "EXAMPLE CASH DEPOSIT (Settlement Fund)"},
+        "cash": {"security_id": "cash", "type": "cash", "ticker_symbol": None, "name": "Cash"},
+        "opt": {"security_id": "opt", "type": "derivative", "ticker_symbol": None, "name": "ABC 01/15/27 1 Call"},
+    }
+    held = [
+        {"account_id": "a1", "security_id": key, "quantity": 10, "institution_price": 5, "institution_value": 50}
+        for key in securities
+    ]
+    figures = plaid_reader.read_holdings({"account_id": "a1", "balances": {"current": 250}}, held, securities)
+    assert [p.symbol for p in figures.positions] == ["#TARGET RETIRE 2050 TRUST", "ZZZFX"]
+
+
+def test_a_name_kept_for_a_holding_is_plain_capitals_within_the_column():
+    from app.utils.symbols import is_named_symbol, named_symbol
+
+    assert named_symbol("Target Retire 2050 Trust") == "#TARGET RETIRE 2050 TRUST"
+    assert named_symbol("Vanguard FTSE Social Index - Portfolio, Inc.") == "#VANGUARD FTSE SOCIAL INDEX PORTFOLIO INC"
+    long = named_symbol("A" * 80)
+    assert len(long) == 50 and is_named_symbol(long) and not is_named_symbol("AAPL")
+
+
+def test_nothing_is_asked_of_a_price_source_or_market_data_about_a_name():
+    from app.services.live_quotes import quotable
+
+    assert quotable("VPMAX") and not quotable("#TARGET RETIRE 2050 TRUST")

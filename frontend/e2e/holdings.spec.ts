@@ -13,13 +13,14 @@ function holding(over: Partial<PortalPosition> & Pick<PortalPosition, 'symbol'>)
 }
 
 const POSITIONS: PortalPositionsResponse = {
-  as_of: '2026-11-13', live_prices_at: null, count: 2, unpriced_count: 0,
+  as_of: '2026-11-13', live_prices_at: null, count: 3, unpriced_count: 0,
   total_market_value: 120, total_cost_basis: 100, total_unrealized_gain: 20, total_unrealized_gain_pct: 20,
   options: null,
   account_balances: [],
   positions: [
     holding({ symbol: 'AAA', name: 'EXAMPLE HOLDINGS CORP /DE/' }),
     holding({ symbol: 'BBB' }),
+    holding({ symbol: '#EXAMPLE TARGET 2050 TRUST', sector_group: 'fund', sector: null, sector_code: null }),
   ],
 }
 
@@ -34,4 +35,13 @@ test('a holding says what it is called, or its type while no name is known', asy
   await expect(aaa.getByText('Example Holdings')).toBeVisible()
   await expect(aaa.getByText('Stock', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('row').filter({ hasText: 'BBB' }).getByText('Stock', { exact: true })).toBeVisible()
+})
+
+test('a holding with no ticker is shown by its name, not by the mark it is kept under', async ({ page, api }) => {
+  signedIn(api).on('GET /api/v1/portal/positions', POSITIONS).on('GET /api/v1/portal/home', HOME)
+  await page.goto(`/home?sel=account%3A${BROKERAGE.id}&view=holdings`)
+  await page.getByRole('button', { name: 'Expand all' }).click()
+  const row = page.getByRole('row').filter({ hasText: 'Example Target 2050 Trust' })
+  await expect(row).toBeVisible()
+  await expect(page.getByText('#EXAMPLE TARGET 2050 TRUST')).toHaveCount(0)
 })
