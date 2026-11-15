@@ -62,6 +62,29 @@ class PortalAccount(BaseModel):
     sleeves: List[PortalSleeve] = []
 
 
+class PortalConnection(BaseModel):
+    """One Plaid login feeding accounts in view. Never carries its access key."""
+
+    id: str
+    institution: Optional[str] = None
+    # sharing | needs_sign_in | consent_ending (within 30 days) | stopped
+    state: str
+    # The viewer's own login, which only they can sign in to again; another's
+    # (a spouse's, a shared account's owner's) is shown read-only.
+    own: bool
+    owner_name: Optional[str] = None
+    consent_expires_at: Optional[datetime] = None
+    disabled_at: Optional[datetime] = None  # since when it stopped sharing
+    status_checked_at: Optional[datetime] = None  # its last morning check
+    last_refreshed_at: Optional[datetime] = None  # its accounts' last sync
+    accounts: List[PortalAccount] = []  # only the accounts in view it feeds
+
+
+class PortalConnectionsResponse(BaseModel):
+    connections: List[PortalConnection]
+    needs_sign_in: int  # the viewer's own logins waiting on them
+
+
 class PortalAccountUpdate(BaseModel):
     """What an account's owner may change: keep it from their spouse (never from
     a minor's guardians), and give it a name of their own. A field left out is

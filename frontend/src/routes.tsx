@@ -25,6 +25,7 @@ import { HomeShell, MorePage } from '@/features/home/HomeShell'
 import { LandingPage } from '@/features/home/LandingPage'
 import { PlanPage, TaxPage } from '@/features/home/ComingSoonPage'
 import { FamilyPage } from '@/features/home/FamilyPage'
+import { ConnectionsPage } from '@/features/home/ConnectionsPage'
 
 /** Where each of the old portal's pages now lives in the new app. */
 const OLD_PORTAL: Record<string, string> = {
@@ -96,6 +97,7 @@ export function AppRoutes() {
           <Route path="tax" element={<TaxPage />} />
           <Route path="research" element={<HomeResearch />} />
           <Route path="family" element={<FamilyPage />} />
+          <Route path="connections" element={<ConnectionsPage />} />
           <Route path="more" element={<MorePage />} />
         </Route>
         {/* The old portal's addresses, kept for bookmarks: each opens the matching place in the new app. */}

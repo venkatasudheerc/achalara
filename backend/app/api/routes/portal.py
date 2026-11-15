@@ -28,6 +28,7 @@ from app.api.schemas.portal import (
     AccountGroupUpdate,
     PortalAccountsResponse,
     PortalActivityResponse,
+    PortalConnectionsResponse,
     PortalHomeResponse,
     PortalOverviewResponse,
     PortalPerformanceResponse,
@@ -125,6 +126,16 @@ def portal_accounts(
         },
         "accounts": _service(viewer, db).accounts(),
     }
+
+
+@router.get("/connections", response_model=PortalConnectionsResponse)
+def portal_connections(
+    viewer: PortalViewer = Depends(portal_viewer), db: Session = Depends(get_db)
+):
+    """Where the viewer's figures come from: their own Plaid logins, and,
+    read-only, the logins of others that feed an account in view; each with
+    its state, its last refresh and the accounts it feeds with their health."""
+    return _service(viewer, db).connections()
 
 
 @router.patch("/accounts/{account_id}", response_model=PortalAccountSettings)

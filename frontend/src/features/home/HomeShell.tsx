@@ -77,6 +77,10 @@ function PersonMenu({ name, subtitle, onSignOut }: { name: string; subtitle: str
           <span className="text-[13px] text-stone">Your spouse and children, and who sees what</span>
         </Link>
       )}
+      <Link to={withPreview('/home/connections')} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
+        <span>Connections</span>
+        <span className="text-[13px] text-stone">Where your figures come from, and how fresh they are</span>
+      </Link>
       {isStaff(me?.role) && (
         <Link to={preview ? `/app/clients/${preview}` : '/app'} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
           <span>Manage</span>

@@ -408,6 +408,23 @@ export interface PortalAccount extends VisibleAccount {
   /** The owner's own name for it, shown in place of `name` (the custodian's) when set */
   display_name?: string | null
 }
+/** A Plaid login's state: `consent_ending` is a consent that runs out within 30 days */
+export type ConnectionState = 'sharing' | 'needs_sign_in' | 'consent_ending' | 'stopped'
+/** One Plaid login feeding accounts in view; another's (`own` false) is read-only */
+export interface PortalConnection {
+  id: string; institution: string | null; state: ConnectionState
+  own: boolean; owner_name: string | null
+  consent_expires_at: string | null; disabled_at: string | null
+  /** Its last morning check, and when its accounts were last synced */
+  status_checked_at: string | null; last_refreshed_at: string | null
+  /** Only the accounts in view it feeds */
+  accounts: PortalAccount[]
+}
+export interface PortalConnectionsResponse {
+  connections: PortalConnection[]
+  /** How many of the viewer's own logins wait on them to sign in again */
+  needs_sign_in: number
+}
 /** What an account's owner may change, as the server now holds it */
 export interface PortalAccountSettings { is_private: boolean; display_name: string | null }
 /** One of the client's own named groups of accounts */

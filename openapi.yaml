@@ -3340,6 +3340,26 @@ paths:
 
   # ─── Client portal ──────────────────────────────────────────────────────────
 
+  /api/v1/portal/connections:
+    get:
+      tags: [portal]
+      summary: Where the viewer's figures come from
+      description: >-
+        The viewer's own Plaid logins, and, read-only (own false), the logins of others (a
+        spouse's, a shared account's owner's) that feed an account in view. Each with its
+        state, when it was last refreshed and checked, and the accounts in view it feeds with
+        their health. Never an access key.
+      operationId: portalConnections
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The logins
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PortalConnectionsResponse'}
+        '401': {description: Not signed in}
+        '404': {description: (advisor) client not found}
   /api/v1/portal/accounts:
     get:
       tags:
@@ -5734,6 +5754,61 @@ components:
         status:
           type: string
           enum: [active, needs signing in]
+
+    PortalConnection:
+      type: object
+      required: [id, state, own, accounts]
+      description: One Plaid login feeding accounts in view. Never carries its access key.
+      properties:
+        id:
+          type: string
+        institution:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [sharing, needs_sign_in, consent_ending, stopped]
+          description: consent_ending is a consent that runs out within 30 days
+        own:
+          type: boolean
+          description: The viewer's own login, which only they can sign in to again; another's is read-only
+        owner_name:
+          type: string
+          nullable: true
+        consent_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        disabled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Since when it stopped sharing
+        status_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Its last morning check
+        last_refreshed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When its accounts were last synced
+        accounts:
+          type: array
+          description: Only the accounts in view it feeds
+          items: {$ref: '#/components/schemas/PortalAccount'}
+
+    PortalConnectionsResponse:
+      type: object
+      required: [connections, needs_sign_in]
+      properties:
+        connections:
+          type: array
+          items: {$ref: '#/components/schemas/PortalConnection'}
+        needs_sign_in:
+          type: integer
+          description: How many of the viewer's own logins wait on them to sign in again
 
     PortalAccountUpdate:
       type: object

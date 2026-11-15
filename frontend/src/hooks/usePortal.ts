@@ -24,6 +24,15 @@ export function usePortalAccounts() {
   })
 }
 
+/** Where the viewer's figures come from: their Plaid logins, and others' feeding accounts in view. */
+export function usePortalConnections() {
+  const asClient = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'connections', asClient],
+    queryFn: () => portalApi.connections(asClient),
+  })
+}
+
 export function usePortalHome(filters: PortalScope) {
   const as_client = usePreviewClient()
   return useQuery({

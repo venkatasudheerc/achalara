@@ -70,8 +70,8 @@ in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
 `docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
-Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor, Manage
-for staff, Sign out), and on a
+Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor,
+Connections, Manage for staff, Sign out), and on a
 phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **account rail** plus
 **view tabs**:
 - The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
@@ -104,6 +104,13 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   accounts with "Keep private from my spouse". The guardrails are stated on the page: spouses see
   each other's accounts except private ones; a minor's guardians, and their spouse, see the minor's;
   a minor sees only their own (`viewer.is_minor` hides Family); anything else only by a share.
+- **Connections** (`/home/connections`, `ConnectionsPage`, the person menu's "Connections"),
+  titled "Where your data comes from": one sentence first (all up to date, or how many logins
+  need the viewer to sign in again), then a card per Plaid login from `/portal/connections`
+  (`usePortalConnections`): institution, state in plain words, last refreshed, the accounts it
+  feeds with kind, value and record health. **Sign in again** (`usePlaidRepair`) on the viewer's
+  own login only; another's reads "<Name>'s login · <Name> signs in to it". "+ Connect another
+  institution" opens `AddAccountDialog`. Read-only otherwise; a staff preview sees the same.
 - **Private accounts** (`PrivateToggle`, `PATCH /portal/accounts/{id}`): only on an account the
   viewer owns (`shared === false`), in the one-account Dashboard's "About this account" and on
   Family; the Accounts view says which of the viewer's accounts their spouse sees.

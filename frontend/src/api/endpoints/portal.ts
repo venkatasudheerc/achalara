@@ -2,7 +2,7 @@ import { apiClient } from '../client'
 import type {
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
-  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings,
+  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -46,6 +46,12 @@ export const portalApi = {
   accounts: (asClient?: string) =>
     apiClient
       .get<PortalAccountsResponse>(`${base}/accounts`, { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
+
+  /** The viewer's own Plaid logins, and others' that feed an account in view (read-only). */
+  connections: (asClient?: string) =>
+    apiClient
+      .get<PortalConnectionsResponse>(`${base}/connections`, { params: clean({ as_client: asClient }) })
       .then((r) => r.data),
 
   home: (params: PortalScope) =>
