@@ -62,7 +62,7 @@ function PersonMenu({ name, subtitle, onSignOut }: { name: string; subtitle: str
   const withPreview = useWithPreview()
   const { data: portal } = usePortalAccounts()
   const row = 'min-h-[44px] px-[12px] flex items-center rounded-[12px] text-[15px] text-summit-ink no-underline hover:bg-line'
-  // A minor sees only their own accounts and adds nobody, so has no Family page.
+  // A minor sees only their own accounts and adds nobody, so has no Manage Access page.
   const showFamily = portal ? !portal.viewer.is_minor : false
   return (
     <>
@@ -72,9 +72,9 @@ function PersonMenu({ name, subtitle, onSignOut }: { name: string; subtitle: str
       </div>
       <div className="px-[12px] py-[10px]"><AppearanceChoice /></div>
       {showFamily && (
-        <Link to={withPreview('/home/family')} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
-          <span>Family</span>
-          <span className="text-[13px] text-stone">Your spouse and children, and who sees what</span>
+        <Link to={withPreview('/home/access')} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
+          <span>Manage Access</span>
+          <span className="text-[13px] text-stone">Who sees your accounts, and whose you can see</span>
         </Link>
       )}
       <Link to={withPreview('/home/connections')} className={`${row} flex-col !items-start justify-center py-[6px] border-t border-line`}>
@@ -134,7 +134,9 @@ export function HomeShell() {
       {preview && (
         <div className="bg-pine text-on-dark text-[14px]">
           <div className="px-[20px] md:px-[24px] py-[8px] flex flex-wrap items-center justify-between gap-3">
-            <span>{staffTitle(me?.role)} preview: this is what <strong>{name}</strong> sees.</span>
+            <span>{staffTitle(me?.role)} preview: this is what <strong>{name}</strong> sees.{(portal?.viewer.not_shared_with_you ?? 0) > 0 && (
+              <> Only accounts shared with you are shown; {portal?.viewer.not_shared_with_you} not shared with you.</>
+            )}</span>
             <Link to={`/app/clients/${preview}`} className="underline underline-offset-2 font-medium text-on-dark">Back to the client</Link>
           </div>
         </div>

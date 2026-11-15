@@ -83,7 +83,7 @@ in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
 `docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
-Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor,
+Plan, Tax, Research), the person menu (Appearance, Manage Access unless the viewer is a minor,
 Connections, Manage for staff, Sign out), and on a
 phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **account rail** plus
 **view tabs**:
@@ -113,12 +113,16 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
 - Plan and Tax are "coming soon" pages; Research is `ResearchPage` as built.
 - An admin or advisor opens it as a client with "Preview <first name>'s view" on the person's page (`/home?as=<clientId>`);
   the banner says "Admin preview" or "Advisor preview".
-- **Family** (`/home/family`, `FamilyPage`): the viewer's spouse and minors from
-  `/portal/relatives`, whether each can sign in, "Invite" for one who cannot (a one-time link,
-  `OneTimeLink`), "Add your spouse" / "Add a minor" (name, email optional), and the viewer's own
-  accounts with "Keep private from my spouse". The guardrails are stated on the page: spouses see
-  each other's accounts except private ones; a minor's guardians, and their spouse, see the minor's;
-  a minor sees only their own (`viewer.is_minor` hides Family); anything else only by a share.
+- **Manage Access** (`/home/access`, `AccessPage`; `/home/people` and `/home/family` redirect): everyone the viewer added or
+  shares with, grouped Family, Others and Your advisor, each saying what is shared both ways
+  (`/portal/people`); "Add a person" (name, relation incl. "Child, grown up", email optional);
+  "Invite" for one who cannot sign in; the viewer's accounts with who sees them; "Shared with you"
+  with "Stop seeing". **Nobody sees an account until its owner shares it.** One panel, `SharingPanel`
+  ("Who owns it, who sees it", opened from About this account and from Manage Access), shows owners and who
+  sees it, shares (view only; the advisor is a choice like anyone else), changes owner (no acceptance),
+  holds an account for a minor and hands it over. Transact authority is shown nowhere. A minor
+  (`viewer.is_minor`) has no Manage Access page. An advisor's preview shows only what is shared with the
+  advisor, and its banner says how many are not.
 - **Connections** (`/home/connections`, `ConnectionsPage`, the person menu's "Connections"),
   titled "Where your data comes from": one sentence first (all up to date, or how many logins
   need the viewer to sign in again), then a card per Plaid login from `/portal/connections`
@@ -126,9 +130,6 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   feeds with kind, value and record health. **Sign in again** (`usePlaidRepair`) on the viewer's
   own login only; another's reads "<Name>'s login · <Name> signs in to it". "+ Connect another
   institution" opens `AddAccountDialog`. Read-only otherwise; a staff preview sees the same.
-- **Private accounts** (`PrivateToggle`, `PATCH /portal/accounts/{id}`): only on an account the
-  viewer owns (`shared === false`), in the one-account Dashboard's "About this account" and on
-  Family; the Accounts view says which of the viewer's accounts their spouse sees.
 - **An account's own name** (`AccountNameEditor`, the same `PATCH` with `display_name`): the
   owner (or a staff preview) renames an account in "About this account" and on Family; the
   custodian's name stays beneath in small text. `accountName` (`selection.ts`), `accountLabel`
@@ -259,7 +260,9 @@ Each feature directory contains its page component(s). Implemented:
   and the advisor's preview): "Link with Plaid" loads Plaid's script from `cdn.plaid.com` only
   when chosen, opens Plaid's window, then "What we found": each account with what is proposed
   (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
-  Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
+  Each new account also asks Whose is it (default Mine; jointly with the spouse; held for a minor;
+  someone's, which the viewer sees), Who else sees it (default nobody) and, for an invested kind, its
+  cost basis. Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
   a setting on the server (linking not set up, a 503; Plaid refusing the OAuth redirect address)
   is said in plain words, to ask the person who runs Achalara, with Plaid's own text beneath
   under "Details" (`explainLinkError`). Hooks in

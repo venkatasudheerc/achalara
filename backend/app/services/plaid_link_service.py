@@ -569,7 +569,7 @@ class PlaidLinkService:
             if choice.get("share_advisor"):
                 sharing.share(account.id, advisor=True)
             if owners != [client_id]:
-                sharing.set_owners(account.id, owners, keep_view=False)
+                sharing.set_owners(account.id, owners, keep_view=True)
 
     @staticmethod
     def _describe(account: Account, connection: BrokerageConnection, link: BrokerageAccount, kind: str) -> None:

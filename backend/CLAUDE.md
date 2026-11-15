@@ -136,6 +136,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/portal_service.py`        | The client portal's views over every account a client may see, row by sleeve            |
 | `app/services/account_kind.py`          | An account's kind (taxable, retirement, kids, cash), read from the brokerage's account name |
 | `app/services/account_group_service.py` | A client's own named groups of accounts ("My groups")                                    |
+| `app/services/sharing_service.py`       | Owners, shares, hand-over to a minor, the Manage Access view                                   |
 | `tests/conftest.py`                     | Shared fixtures (DB session, `TestClient`)                                              |
 
 ## Coding Conventions
@@ -191,18 +192,27 @@ Live tests must stay **read-only** and never loop a third-party API.
   it, and the shared reference data. The rule reads `client_id` / `account_id` from the path, so
   **a route that exposes client data must carry those path parameters** or it is staff-only.
   `AuthService.manages` is the one test of whether an admin or advisor may act for a client.
-- **Who sees which accounts is decided by guardrails**, in one place
-  (`AuthService.accounts_for_client`), from `clients.spouse_id` and `guardian_id`: (1) everyone
-  sees what they own; (2) spouses see each other's accounts except those the owner marks private
-  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only, which also sets the owner's
-  own name for it, `accounts.display_name`, returned on `/portal/accounts` beside the
-  custodian's `name`; a staff preview may change both, as the client can); (3) a minor's guardian and
-  the guardian's spouse see every account of the minor, which a minor cannot hide; (4) a minor sees
-  only their own; (5) anything else only when shared (`account_access`). A spouse pair is kept on
-  both sides; a minor has no spouse and cannot add anyone. An admin or advisor sets these
-  (`PUT /clients/{id}/spouse`, `/guardian`, `POST /clients/{id}/relatives`); a client adds and
-  invites their own spouse or minor (`/portal/relatives`). There is no "household" in the model or
-  on screen.
+- **Who sees which accounts is decided by ownership and explicit shares only**, in one place
+  (`AuthService.accounts_for_client`). Nobody sees an account until an owner shares it, person by
+  person (`account_access`, view only: `level` is stored so "transact" can be added later, and
+  shown nowhere yet). Being a spouse or a guardian changes nothing. An account has one or more
+  owners (`account_owners`; `accounts.client_id` stays the first); any owner may share it or
+  change its owners (`SharingService`), and a new owner needs no acceptance. The client who linked
+  an account (`accounts.linked_by_id`) controls it until one of its owners has a sign-in
+  (`AuthService.can_control`). **A minor does not own:** a custodial account is owned by its
+  custodian and held for the minor (`accounts.beneficiary_id`); a minor with a login sees it
+  read-only, and handing it over needs the minor to have a sign-in. `PersonLink` holds how a
+  client describes each person added (spouse, minor, child_grown, parent, friend, other);
+  `spouse_id` / `guardian_id` are relations only. **The admin sees everything; an advisor needs a
+  share like anyone else** (`account_access.user_id`, "share with my advisor"): the advisor's
+  preview, the staff accounts list, the client roll-ups (`staff_account_ids`) and `/trades/*`
+  all stop at what is shared with them, and the preview says how many accounts are not
+  (`viewer.not_shared_with_you`: a count, never names or figures). Every creator of an account
+  gets an owner row from a flush hook in `models/account.py`. The migration `b7d2e9a4c1f3` turned
+  the old spouse/guardian visibility and `is_private` into explicit shares and tells each owner
+  once (`clients.sharing_notice`, `POST /portal/people/notice/dismiss`). Linking asks, per new
+  account, whose it is, who else sees it (default nobody) and its cost basis
+  (`PlaidLinkService._ownership`).
 - Never return a full account number to a client user; use `auth_service.display_name` and
   `last_four`.
 - **A link may be emailed** (`services/mailer.py`, Resend, when `RESEND_API_KEY` and `MAIL_FROM`
