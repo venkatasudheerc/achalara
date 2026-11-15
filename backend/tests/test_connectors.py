@@ -43,9 +43,10 @@ def _trade(symbol="AAPL", qty="10", price="100", action=TradeAction.BUY, source=
 
 def test_registry_resolves_known_sources():
     assert get_connector("csv") is not None
-    assert get_connector("sheets") is not None
     assert get_connector("fake") is not None
-    assert {"csv", "sheets", "fake"}.issubset(set(available_sources()))
+    assert {"csv", "fake"}.issubset(set(available_sources()))
+    # Google Sheets is no longer a source.
+    assert "sheets" not in available_sources()
 
 
 def test_registry_unknown_source_raises():

@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     """Application settings from environment variables"""
 
     database_url: str
-    google_sheets_api_key: str = ""
-    google_sheets_credentials_file: str = "./credentials.json"
     webull_app_key: str = ""
     webull_app_secret: str = ""
     # Plaid: clients link their own bank, card, loan and brokerage logins. One

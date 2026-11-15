@@ -70,13 +70,15 @@ def test_status_reports_accounts_capture_and_data(db, client):
     body = client.get("/api/v1/admin/status").json()
 
     assert body["database"]["ok"] is True
-    assert [j["id"] for j in body["jobs"]][:5] == [
+    job_ids = [j["id"] for j in body["jobs"]]
+    assert job_ids[:4] == [
         "plaid_refresh",
         "ticker_changes",
         "price_history",
-        "daily_sheets_sync",
         "index_history",
     ]
+    # The sheet sync is retired: no job and no line for it.
+    assert "daily_sheets_sync" not in job_ids
     (linked,) = body["brokerage_accounts"]
     # The full account number never appears, only its last four.
     assert (linked["name"], linked["number_last4"]) == ("Brokerage", "5678")

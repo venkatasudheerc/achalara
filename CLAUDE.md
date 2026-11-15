@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Achalara** is a multi-client, multi-strategy investment portfolio management system for advisory firms. It tracks trades through a `Client → Account → Sleeve` hierarchy, calculates portfolio performance (MWR/TWR), imports historical trades from CSV or Google Sheets, and fetches live prices via Webull.
+**Achalara** is a multi-client, multi-strategy investment portfolio management system for advisory firms. It tracks trades through a `Client → Account → Sleeve` hierarchy, calculates portfolio performance (MWR/TWR), links accounts through Plaid, adds history from the custodian's own files, and fetches live prices via Webull.
 
 See `ROADMAP.md` for what is built and what is next, and `backend/INFRA.md` to run it locally.
 
@@ -61,12 +61,11 @@ Read `backend/DATA_MODEL.md` before touching models, performance calculations, o
 ```
 Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account × strategy instance)
                           ├──< Trade
-                          ├──< Position
-                          └──< SheetSyncConfig
+                          └──< Position
 ```
 
 - A **Strategy** is a firm-wide *definition* ("Growth", "Income") — global, reusable, no `account_id`/`client_id`. Names are unique case-insensitively; `POST /strategies` returns 409 on a duplicate.
-- A **Sleeve** is one strategy *as run in one account* — the join between `Account` and `Strategy`. Sleeves own trades, positions, and sync configs. `UNIQUE(account_id, strategy_id)`.
+- A **Sleeve** is one strategy *as run in one account* — the join between `Account` and `Strategy`. Sleeves own trades and positions. `UNIQUE(account_id, strategy_id)`.
 - Trades/positions reference `sleeve_id`. Client is derived via `sleeve → account.client_id`.
 
 This hierarchy must be reflected consistently in both the backend API routes and the frontend navigation / data-fetching logic.

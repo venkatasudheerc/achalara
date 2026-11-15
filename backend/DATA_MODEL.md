@@ -10,13 +10,12 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           │
                           ├──< Trade
                           ├──< Position
-                          ├──< CashActivity
-                          └──< SheetSyncConfig
+                          └──< CashActivity
 
 Client ──< BrokerageConnection ──< BrokerageAccount ──> Account, Sleeve   (linked logins)
                                         └──< BrokerageActivity            (source rows, verbatim)
 
-SyncLog                                            (standalone import/sync audit trail)
+SyncLog                                            (standalone ingestion audit trail)
 index_bars                                         (market indices, per day; research and benchmarks)
 invitation_requests                                (a visitor asking for an invitation; linked to nothing)
 
@@ -40,7 +39,6 @@ erDiagram
     STRATEGY ||--o{ SLEEVE : "is run as"
     SLEEVE ||--o{ TRADE : has
     SLEEVE ||--o{ POSITION : has
-    SLEEVE ||--o{ SHEET_SYNC_CONFIG : feeds
 
     CLIENT {
         string id PK
@@ -88,14 +86,6 @@ erDiagram
         numeric realized_gain
         numeric realized_gain_pct
         datetime closed_at
-    }
-    SHEET_SYNC_CONFIG {
-        string id PK
-        string sleeve_id FK
-        string sheet_id
-        string range_name
-        bool enabled
-        datetime last_synced_at
     }
     SYNC_LOG {
         string id PK
@@ -288,17 +278,10 @@ strategy). Each matched pair is one `CLOSED` row with
 the `OPEN` position. A SELL with no matching BUY is ignored (out-of-scope data, not an error).
 (Migration `8f45b7a41fcf`.)
 
-### `sheet_sync_configs`
-| Column | Type | Notes |
-|---|---|---|
-| id | String(36) PK | uuid |
-| sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
-| sheet_id | String(255) | not null |
-| range_name | String(100) | default "Sheet1" |
-| enabled | Boolean | not null, default true |
-| last_synced_at | DateTime(tz) | nullable |
-
-Client is derived via `sleeve → account.client_id` (the old `client_id` column was dropped).
+### `sheet_sync_configs` (dropped)
+Google Sheets is no longer a source: the table that mapped a sheet to a sleeve for the daily
+sheet sync was dropped with the Imports page and the sync job (migration `a3f8c1e6d2b9`; its
+downgrade recreates it empty). Trades keep `google_sheet_row_id`.
 
 ### `sync_logs`
 | Column | Type | Notes |
@@ -310,7 +293,9 @@ Client is derived via `sleeve → account.client_id` (the old `client_id` column
 | error_details | JSON | nullable |
 | started_at / completed_at | DateTime(tz) | nullable |
 
-Standalone audit trail — no FK to the entity hierarchy.
+Standalone audit trail — no FK to the entity hierarchy. Today only the shared ingestion of a
+feed's or a file's rows writes it (`BROKERAGE`); `HISTORICAL` and `DAILY` rows came from the
+retired Imports page and sheet sync. Nothing in the app reads it since those were removed.
 
 ## The `perf` schema — performance over time
 
@@ -727,8 +712,9 @@ from trades. Rebuild the reconstructed rows with `POST /admin/rebuild-performanc
 - **Stored source rows can be re-read.** `ConnectionService.rederive` runs an account's
   `brokerage_activities` through the current mapping and adds whatever is new, with no call to
   the source.
-- **`google_sheet_row_id` is retained but no longer the dedup path** (sheet trades go through
-  `external_id` like every other source); it stays available for a future row-id-keyed source.
+- **`google_sheet_row_id` is retained but no longer the dedup path**: Google Sheets is no longer
+  a source (the sheet sync was retired); the column keeps what earlier trades came from and stays
+  available for a future row-id-keyed source.
 - **Migration `fe521b07fb54` is Postgres-guarded** and preserves each old strategy id as its
   sleeve id so child FK values didn't need rewriting. SQLite/tests build from the models via
   `create_all`. The follow-up migration `95798c4a2a9a` adds the case-insensitive unique index

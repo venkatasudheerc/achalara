@@ -205,6 +205,14 @@ Afterwards: add each client again (and invite their login), link their accounts 
 from a file"). The `SNAPTRADE_*` settings can be deleted from `deploy/.env`, and the webhook
 removed from SnapTrade's dashboard.
 
+## Google Sheets retired
+
+Google Sheets is no longer a source: the Imports page, the daily sheet sync (it ran at 16:00
+UTC and was listed on System status as "Sheet sync") and the admin routes behind them are gone.
+When the backend starts, the migration `a3f8c1e6d2b9` drops the `sheet_sync_configs` table;
+trades keep the column saying which sheet row they came from. `GOOGLE_SHEETS_*` settings, if any
+are in `deploy/.env`, are no longer read and can be deleted.
+
 ## Routine
 
 **Times.** The server's clock is US Eastern. Security updates install themselves, and when one

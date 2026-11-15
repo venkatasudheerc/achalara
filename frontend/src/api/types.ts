@@ -223,32 +223,6 @@ export interface FetchMarketPricesResponse {
   status: string; updated: number; failed: string[]
 }
 
-export interface ImportSummary {
-  total_rows: number; valid_trades: number; duplicates_found: number; errors: number
-  accounts_created?: number; strategies_created?: number; sleeves_created?: number
-}
-export interface ImportResponse {
-  status: string; mode: string; routing: string
-  summary: ImportSummary; message: string
-  validation_warnings?: string[]; sync_log_id?: string
-}
-
-export interface SyncDailyResponse { status: string; message: string; trades_added: number }
-
-export interface SyncLog {
-  id: string; source: string; status: string; message: string
-  trades_added: number; created_at: string
-}
-export interface SyncLogsResponse { total: number; skip: number; limit: number; logs: SyncLog[] }
-
-export interface SheetSyncConfig {
-  id: string; sleeve_id: string; sheet_id: string; range_name: string; enabled: boolean
-}
-export interface SyncConfigCreate {
-  sleeve_id: string; sheet_id: string; range_name: string; enabled?: boolean
-}
-export interface SyncConfigUpdate { enabled: boolean }
-
 export interface WeeklyReturnPoint {
   date: string          // ISO date (Monday)
   twr_cumul: number | null

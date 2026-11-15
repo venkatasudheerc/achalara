@@ -6,7 +6,6 @@ import { ClientDetailPage } from '@/features/clients/ClientDetailPage'
 import { AccountDetailPage } from '@/features/accounts/AccountDetailPage'
 import { SleeveDetailPage } from '@/features/sleeves/SleeveDetailPage'
 import { StrategiesPage } from '@/features/strategies/StrategiesPage'
-import { ImportsPage } from '@/features/imports/ImportsPage'
 import { SettingsPage } from '@/features/SettingsPage'
 import { StatusPage } from '@/features/status/StatusPage'
 import { MarketDataPage } from '@/features/marketdata/MarketDataPage'
@@ -74,9 +73,10 @@ export function AppRoutes() {
           <Route path="strategies" element={<StrategiesPage />} />
           <Route path="markets" element={<ResearchPage forAdvisor />} />
           <Route path="research" element={<Navigate to="/app/markets" replace />} />
+          {/* The Imports page is retired: files go through each account's "Update from a file". */}
+          <Route path="imports" element={<Navigate to="/app" replace />} />
           {/* The platform's own pages: the admin's alone (the API refuses them to an advisor). */}
           <Route element={<RequireAuth role="admin" />}>
-            <Route path="imports" element={<ImportsPage />} />
             <Route path="requests" element={<RequestsPage />} />
             <Route path="status" element={<StatusPage />} />
             <Route path="market-data" element={<MarketDataPage />} />

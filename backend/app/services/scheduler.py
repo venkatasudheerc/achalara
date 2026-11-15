@@ -1,4 +1,4 @@
-"""APScheduler background jobs: the Plaid refresh, price history, sheet syncs,
+"""APScheduler background jobs: the Plaid refresh, price history, ticker changes,
 index history and the status watch.
 
 The Plaid refresh records each account's previous day early in the morning
@@ -14,7 +14,6 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.db.database import SessionLocal
 from app.services import alerts, run_log
-from app.services.daily_sync import run_all_enabled_syncs
 from app.services.index_history_service import IndexHistoryService
 from app.services.plaid_refresh_service import run_plaid_refresh
 from app.services.ticker_changes import run_ticker_changes
@@ -25,18 +24,6 @@ logger = logging.getLogger(__name__)
 MARKET_TIMEZONE = "America/New_York"
 
 _scheduler: BackgroundScheduler | None = None
-
-
-@run_log.tracked("daily_sheets_sync")
-def _job_wrapper() -> None:
-    """Open a DB session, run syncs, close session."""
-    db = SessionLocal()
-    try:
-        run_all_enabled_syncs(db)
-    except Exception as exc:
-        logger.error(f"Unhandled error in daily sync job: {exc}")
-    finally:
-        db.close()
 
 
 def _status_watch_wrapper() -> None:
@@ -124,13 +111,6 @@ def start_scheduler() -> None:
         return
 
     _scheduler = BackgroundScheduler()
-    # The sheets sync: 4 PM UTC daily
-    _scheduler.add_job(
-        _job_wrapper,
-        CronTrigger(hour=16, minute=0),
-        id="daily_sheets_sync",
-        replace_existing=True,
-    )
     # Alerts: look every ten minutes, and once shortly after start-up.
     _scheduler.add_job(
         _status_watch_wrapper,

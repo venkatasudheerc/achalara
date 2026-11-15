@@ -33,10 +33,6 @@ backend/venv/bin/pytest backend/tests --cov=backend/app          # with coverage
 backend/venv/bin/pytest backend/tests/test_sleeves.py -v         # single file
 backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # single test
 
-# Google Sheets sync against a sheet you name (opt-in; no sheet id is kept in the repo)
-export GOOGLE_SHEETS_TEST_SHEET_ID=<sheet id>
-backend/venv/bin/pytest backend/tests/test_google_sheets.py -m live -v
-
 # First admin login (run from backend/, asks for a password)
 python -m app.cli create-admin --email you@example.com --name "Your Name"
 
@@ -80,7 +76,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/clients`    | `clients`, `accounts`, `sleeves` (nested under clients) |
 | `/api/v1/strategies` | `strategies` (firm-wide definitions)                    |
 | `/api/v1/trades`     | `trades`                                                |
-| `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
+| `/api/v1/admin`      | `admin` (status, market-data status, ticker changes, rebuild-performance) and `invitations` (the requests' list) |
 | `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
 | `/api/v1/portal`     | `portal` (a client's accounts read together: accounts, overview, positions, trades, realised gains, performance; CSV; the client's own account groups; where the data comes from, `connections`) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
@@ -101,9 +97,6 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/portfolio_calculation.py` | Position tracking, weighted-avg cost basis, `persist_positions`                         |
 | `app/services/tax_lots.py`              | Lot matching (FIFO / MinTax) and the brokerage's reading of each closed lot             |
 | `app/services/trade_ingestion.py`       | Row validation + **duplicate detection** (intentional — do not skip)                    |
-| `app/services/trade_import.py`          | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes)                    |
-| `app/services/google_sheets_sync.py`    | Fetches public sheets via CSV export (no credentials)                                   |
-| `app/services/daily_sync.py`            | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`)                      |
 | `app/services/connection_service.py`    | The shared ingest of a feed's or a file's rows (`ingest_batch`) and the holdings reconciliation |
 | `app/services/plaid_refresh_service.py` | The daily Plaid refresh: transactions, balances, holdings; records the day before         |
 | `app/services/account_health.py`        | Each account's record: complete, provisional or incomplete, and where to download from    |
@@ -134,8 +127,8 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `app/services/market_price.py`          | Position price updates / persistence                                                    |
 | `app/services/webull_market_data.py`    | Webull API client                                                                       |
 | `app/services/live_quotes.py`           | Batched, briefly cached live prices for the portal's holdings screen                    |
-| `app/models/sleeve.py`                  | The account × strategy join that owns trades/positions/sync configs                     |
-| `app/models/sync_log.py`                | Standalone import/sync audit trail (no FK to the hierarchy)                             |
+| `app/models/sleeve.py`                  | The account × strategy join that owns trades and positions                              |
+| `app/models/sync_log.py`                | Standalone ingestion audit trail (no FK to the hierarchy); written, not read            |
 | `app/models/user.py`                    | Logins, sessions, one-time links, shared-account grants                                 |
 | `app/services/auth_service.py`          | Sign-in, password rules, sessions, invites/resets, who may read which account           |
 | `app/api/deps.py`                       | `get_current_user`, `require_advisor`, `require_access` (the rule on every data router) |
@@ -173,13 +166,13 @@ Live tests must stay **read-only** and never loop a third-party API.
 
 ## Dedup Rules (don't bypass)
 
-- **Sheet-sourced trades** dedup on `trades.google_sheet_row_id` (unique; NULL for CSV trades).
-- **CSV imports** dedup on `(date, symbol, qty, price)` per sleeve in the import pipeline.
-- Re-running a sync is safe — duplicates are skipped. The dedup in `trade_ingestion.py` is intentional.
-
-## Sync Logic Must Stay Shared
-
-The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from `daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
+- **Feeds and files** dedup in `IngestionService` on each row's `external_id` (and the file's
+  economics, see "Feeds and files"), across the account's sleeves.
+- **CSV rows** (`csv_connector`) get an `external_id` from `(date, symbol, qty, price)`.
+- `trades.google_sheet_row_id` stays (unique) for trades that came from Google Sheets; Sheets are
+  no longer a source (the Imports page and the sheet sync were retired).
+- Re-running a refresh or an upload is safe — duplicates are skipped. The dedup in
+  `trade_ingestion.py` and `ingestion_service.py` is intentional.
 
 ## Sign-in and Access Rules
 

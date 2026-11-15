@@ -401,7 +401,7 @@ def test_a_client_cannot_reach_anyone_else_or_any_firm_wide_route(as_maya, house
         f"/api/v1/clients/{maya.id}/accounts/{trust.id}/positions",
         "/api/v1/clients/",
         "/api/v1/strategies/",
-        "/api/v1/admin/sync-logs",
+        "/api/v1/admin/status",
         f"/api/v1/clients/{maya.id}/account-access",
     ]:
         assert as_maya.get(path).status_code == 403, path

@@ -51,7 +51,7 @@ function AdvisorsSection() {
       </div>
       <p className="text-sm text-stone mb-16">
         An advisor looks after only the people assigned to them: their accounts, logins and family. Assign someone
-        on their page. System status, market data, imports, requests and strategies stay with you.
+        on their page. System status, market data, requests and strategies stay with you.
       </p>
 
       {open && (
