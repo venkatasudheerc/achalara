@@ -19,10 +19,17 @@ function when(instant: string): string {
 
 /** The one sentence the page opens with. */
 function headline(list: PortalConnection[], needsYou: number): string {
+  const waiting = list.reduce((t, c) => t + (c.own ? (c.waiting_accounts ?? 0) : 0), 0)
+  const base = headlineBase(list, needsYou)
+  if (waiting === 0 || needsYou > 0) return base
+  return `${base} ${waiting === 1 ? '1 new account is' : `${waiting} new accounts are`} waiting for you to add.`
+}
+
+function headlineBase(list: PortalConnection[], needsYou: number): string {
   if (list.length === 0) return 'Nothing is linked yet. Connect an institution and its accounts update every day by themselves.'
   if (needsYou > 0) return `${needsYou === 1 ? 'One login needs' : `${needsYou} logins need`} you to sign in again.`
-  const waiting = list.filter((c) => c.state !== 'sharing').length
-  if (waiting > 0) return `${waiting} of ${list.length} logins ${waiting === 1 ? 'needs' : 'need'} a look.`
+  const notSharing = list.filter((c) => c.state !== 'sharing').length
+  if (notSharing > 0) return `${notSharing} of ${list.length} logins ${notSharing === 1 ? 'needs' : 'need'} a look.`
   return list.length === 1 ? 'Your one login is up to date.' : `All ${list.length} logins are up to date.`
 }
 
@@ -79,6 +86,46 @@ function useSignInAgain() {
   return { signIn, working, error }
 }
 
+/** "Today", "Yesterday" or "Nov 14": a day short enough for a tile. */
+function shortDay(instant: string): string {
+  const day = new Date(instant)
+  const now = new Date()
+  if (day.toDateString() === now.toDateString()) return 'Today'
+  const before = new Date(now); before.setDate(now.getDate() - 1)
+  if (day.toDateString() === before.toDateString()) return 'Yesterday'
+  return day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** Four figures that say at a glance whether the data is coming in. */
+function Summary({ list }: { list: PortalConnection[] }) {
+  const accounts = new Map<string, PortalAccount>()
+  for (const c of list) for (const a of c.accounts) accounts.set(a.id, a)
+  const value = [...accounts.values()].reduce((t, a) => t + (a.value ?? 0), 0)
+  const moments = list.map((c) => c.last_refreshed_at ?? c.status_checked_at).filter((m): m is string => !!m)
+  const latest = moments.length ? moments.reduce((a, b) => (new Date(a) > new Date(b) ? a : b)) : null
+  const look =
+    list.filter((c) => c.state !== 'sharing').length +
+    list.reduce((t, c) => t + (c.own ? (c.waiting_accounts ?? 0) : 0), 0) +
+    [...accounts.values()].filter((a) => a.health?.state === 'incomplete').length
+  const tiles = [
+    { label: 'Logins', value: String(list.length), note: list.length === 1 ? 'institution' : 'institutions' },
+    { label: 'Accounts', value: String(accounts.size), note: accounts.size ? `${formatCurrency(value)} in all` : 'none fed yet' },
+    { label: 'Last refreshed', value: latest ? shortDay(latest) : 'Not yet', note: latest ? `${formatTime(latest)} · daily refresh` : 'by the daily refresh' },
+    { label: 'Need a look', value: String(look), note: look === 0 ? 'all clear' : 'see the cards below', warn: look > 0 },
+  ]
+  return (
+    <dl className="grid grid-cols-2 lg:grid-cols-4 gap-[12px]">
+      {tiles.map((t) => (
+        <div key={t.label} className="border border-line rounded-[16px] px-[16px] py-[14px] bg-surface flex flex-col gap-[2px] min-w-0">
+          <dt className="text-[13px] text-stone">{t.label}</dt>
+          <dd className={`font-display text-[22px] leading-tight truncate ${t.warn ? 'text-loss' : ''}`}>{t.value}</dd>
+          <dd className="text-[13px] text-stone truncate">{t.note}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 function ConnectionCard({ connection, signIn, onReview }: {
   connection: PortalConnection
   signIn: ReturnType<typeof useSignInAgain>
@@ -87,7 +134,7 @@ function ConnectionCard({ connection, signIn, onReview }: {
   const state = stateText(connection)
   const refreshed = connection.last_refreshed_at ?? connection.status_checked_at
   return (
-    <li className="border border-line rounded-[18px] p-[18px] flex flex-col gap-[14px]">
+    <li className="border border-line rounded-[20px] p-[20px] flex flex-col gap-[14px] bg-surface">
       <div className="flex flex-wrap items-start justify-between gap-[12px]">
         <div className="flex flex-col gap-[2px] min-w-0">
           <h2 className="font-display text-[19px]">{connection.institution ?? 'An institution'}</h2>
@@ -100,7 +147,8 @@ function ConnectionCard({ connection, signIn, onReview }: {
             {refreshed ? `Last refreshed ${when(refreshed)}` : 'Not refreshed yet'}
           </span>
         </div>
-        <span className={`text-[13px] font-semibold px-[10px] py-[4px] rounded-full ${state.warn ? 'bg-loss/15 text-loss' : 'bg-accent-soft text-pine'}`}>
+        <span className={`inline-flex items-center gap-[6px] text-[13px] font-semibold px-[10px] py-[4px] rounded-full ${state.warn ? 'bg-loss/15 text-loss' : 'bg-accent-soft text-pine'}`}>
+          <span aria-hidden className={`w-[8px] h-[8px] rounded-full ${state.warn ? 'bg-loss' : 'bg-gain'}`} />
           {state.text}
         </span>
       </div>
@@ -117,9 +165,12 @@ function ConnectionCard({ connection, signIn, onReview }: {
                   <span className="text-[15px] font-medium">
                     {accountName(a)}{a.number_last4 ? <span className="text-stone font-normal"> ··{a.number_last4}</span> : null}
                   </span>
-                  <span className="text-[13px] text-stone">
-                    {kindOf(a.kind).label}
-                    {health && <> · <span className={health.warn ? 'text-loss' : ''}>{health.text}</span></>}
+                  <span className="text-[13px] text-stone flex flex-wrap items-center gap-x-[8px] gap-y-[2px]">
+                    <span className={`inline-flex items-center gap-[5px] px-[8px] py-[1px] rounded-full text-[12px] font-medium ${kindOf(a.kind).bg} ${kindOf(a.kind).text}`}>
+                      <span aria-hidden className={`w-[6px] h-[6px] rounded-full ${kindOf(a.kind).dot}`} />
+                      {kindOf(a.kind).label}
+                    </span>
+                    {health && <span className={health.warn ? 'text-loss' : ''}>{health.text}</span>}
                   </span>
                 </span>
                 <span className="font-mono tabular-nums text-[15px]">{a.value == null ? '—' : formatCurrency(a.value)}</span>
@@ -172,7 +223,7 @@ export function ConnectionsPage() {
   const found = discover.all.data
 
   return (
-    <main className="w-full max-w-[720px] mx-auto px-[20px] md:px-[24px] pt-[32px] pb-[72px] flex flex-col gap-[24px]">
+    <main className="w-full max-w-[1120px] mx-auto px-[20px] md:px-[32px] pt-[32px] pb-[72px] flex flex-col gap-[24px]">
       <h1 className="font-display text-[32px] md:text-[36px] leading-tight">Where your data comes from</h1>
       {isLoading ? (
         <div className="flex flex-col gap-[14px]">
@@ -183,25 +234,27 @@ export function ConnectionsPage() {
         <ErrorState message="Could not load where your figures come from." onRetry={() => refetch()} />
       ) : (
         <>
-          <p className="text-[17px] leading-relaxed">{headline(data.connections, data.needs_sign_in)}</p>
-          {data.connections.length > 0 && (
-            <ul className="flex flex-col gap-[14px]">
-              {data.connections.map((c) => <ConnectionCard key={c.id} connection={c} signIn={signIn} onReview={setReviewing} />)}
-            </ul>
-          )}
-          {hasOwn && (
-            <div className="flex flex-col gap-[8px]">
-              <div className="flex flex-wrap items-center gap-[12px]">
+          <div className="flex flex-wrap items-center justify-between gap-x-[24px] gap-y-[12px]">
+            <p className="text-[17px] leading-relaxed">{headline(data.connections, data.needs_sign_in)}</p>
+            <div className="flex flex-wrap items-center gap-[10px]">
+              {hasOwn && (
                 <button type="button" onClick={checkAll} disabled={discover.all.isPending}
                   className="h-[44px] px-[18px] rounded-[22px] bg-pine text-on-dark text-[14px] font-semibold disabled:opacity-60">
                   {discover.all.isPending ? 'Checking…' : 'Check for new accounts'}
                 </button>
-                <span className="text-[14px] text-stone">Opened an account at one of these? This finds it. Nothing changes until you add it.</span>
-              </div>
+              )}
+              <button type="button" onClick={() => setAdding(true)}
+                className="h-[44px] px-[18px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line">
+                + Connect another institution
+              </button>
+            </div>
+          </div>
+          {hasOwn && (found || checkError) && (
+            <div className="flex flex-col gap-[4px]">
               {found && !discover.all.isPending && (
-                <p role="status" className="text-[14px]">
+                <p role="status" className="text-[14px] rounded-[12px] bg-accent-soft px-[14px] py-[10px]">
                   {found.new_accounts > 0
-                    ? `${found.new_accounts} new account${found.new_accounts === 1 ? '' : 's'} found. Review ${found.new_accounts === 1 ? 'it' : 'them'} above.`
+                    ? `${found.new_accounts} new account${found.new_accounts === 1 ? '' : 's'} found. Review ${found.new_accounts === 1 ? 'it' : 'them'} below.`
                     : 'No new accounts. Everything these logins share is already here.'}
                   {found.needs_sign_in > 0 && ` ${found.needs_sign_in === 1 ? 'One login needs' : `${found.needs_sign_in} logins need`} you to sign in again first.`}
                   {found.failed > 0 && ` ${found.failed === 1 ? 'One login' : `${found.failed} logins`} could not be checked; try again in a moment.`}
@@ -210,13 +263,13 @@ export function ConnectionsPage() {
               {checkError && <p role="alert" className="text-[14px] text-loss">{checkError}</p>}
             </div>
           )}
+          {data.connections.length > 0 && <Summary list={data.connections} />}
+          {data.connections.length > 0 && (
+            <ul className="lg:columns-2 lg:gap-[16px] [&>li]:break-inside-avoid [&>li]:mb-[16px] flex flex-col gap-[16px] lg:block">
+              {data.connections.map((c) => <ConnectionCard key={c.id} connection={c} signIn={signIn} onReview={setReviewing} />)}
+            </ul>
+          )}
           {signIn.error && <p role="alert" className="text-[14px] text-loss">{signIn.error}</p>}
-          <div>
-            <button type="button" onClick={() => setAdding(true)}
-              className="h-[44px] px-[18px] rounded-[22px] border border-stone/40 text-[14px] font-semibold hover:bg-line">
-              + Connect another institution
-            </button>
-          </div>
         </>
       )}
       <AddAccountDialog open={adding} onClose={() => setAdding(false)} />
