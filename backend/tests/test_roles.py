@@ -132,7 +132,8 @@ def test_a_client_keeps_their_own_account_private_and_invites_their_family(db, p
     sam_ira = people["Sam IRA"].id
     assert pat.patch(f"/api/v1/portal/accounts/{sam_ira}", json={"is_private": True}).status_code == 404
     mine = people["Pat brokerage"].id
-    assert pat.patch(f"/api/v1/portal/accounts/{mine}", json={"is_private": True}).json() == {"is_private": True}
+    assert pat.patch(f"/api/v1/portal/accounts/{mine}", json={"is_private": True}).json() == {
+        "is_private": True, "display_name": None}
 
     relatives = {r["name"]: r for r in pat.get("/api/v1/portal/relatives").json()}
     assert {n: r["relation"] for n, r in relatives.items()} == {"Sam Example": "spouse", "Kit Example": "minor"}
@@ -145,6 +146,36 @@ def test_a_client_keeps_their_own_account_private_and_invites_their_family(db, p
     kit = _browser("login-kit@example.com")
     assert kit.get("/api/v1/portal/accounts").json()["viewer"]["is_minor"] is True
     assert kit.post("/api/v1/portal/relatives", json={"name": "X", "relation": "minor"}).status_code == 422
+
+
+def test_an_owner_names_their_own_account_and_their_spouse_sees_the_name(db, people):
+    pat = _browser("login-pat@example.com")
+    mine = people["Pat brokerage"].id
+    named = pat.patch(f"/api/v1/portal/accounts/{mine}", json={"display_name": "  Pat's   trading account "})
+    assert named.json() == {"is_private": False, "display_name": "Pat's trading account"}
+    # Changing privacy alone leaves the name as it is.
+    kept = pat.patch(f"/api/v1/portal/accounts/{mine}", json={"is_private": True}).json()
+    assert kept["display_name"] == "Pat's trading account"
+    pat.patch(f"/api/v1/portal/accounts/{mine}", json={"is_private": False})
+    sam = _browser("login-sam@example.com")
+    listed = {a["id"]: a for a in sam.get("/api/v1/portal/accounts").json()["accounts"]}
+    assert listed[mine]["display_name"] == "Pat's trading account"
+    assert listed[mine]["name"] == "Pat brokerage"  # the custodian's name stays
+    # Too long is refused; a spouse cannot rename it; empty clears it.
+    assert pat.patch(f"/api/v1/portal/accounts/{mine}", json={"display_name": "x" * 61}).status_code == 422
+    assert sam.patch(f"/api/v1/portal/accounts/{mine}", json={"display_name": "Mine"}).status_code == 404
+    assert pat.patch(f"/api/v1/portal/accounts/{mine}", json={"display_name": " "}).json()["display_name"] is None
+
+
+def test_an_advisor_previewing_names_the_clients_account(db, people):
+    ben = _browser("ben@example.com")
+    mine = people["Pat brokerage"].id
+    named = ben.patch(f"/api/v1/portal/accounts/{mine}?as_client={people['pat'].id}", json={"display_name": "Joint"})
+    assert named.json()["display_name"] == "Joint"
+    # Not as Lee, who is not Ben's client.
+    lee = people["Lee brokerage"].id
+    refused = ben.patch(f"/api/v1/portal/accounts/{lee}?as_client={people['lee'].id}", json={"display_name": "X"})
+    assert refused.status_code == 404
 
 
 def test_an_advisor_sees_and_trades_for_their_own_clients_only(db, people):

@@ -67,6 +67,38 @@ function FoundRow({ account, pick, onPick }: { account: PlaidFoundAccount; pick:
   )
 }
 
+/** A refusal that is a setting on the server, not something the person did. */
+const SERVER_SETTING = 'This is a setting on the server, not something you did. Ask the person who runs Achalara to fix it, then try again.'
+
+/**
+ * What went wrong, in plain words, with the raw text kept for "Details" when it
+ * says more than the plain words do. Linking not set up on the server (503) and
+ * Plaid refusing the redirect address are both settings on the server.
+ */
+function explainLinkError(raw: string): { plain: string; details: string | null } {
+  const text = raw.trim()
+  if (/not set up on this server/i.test(text)) {
+    return { plain: `Linking with Plaid isn’t switched on for this Achalara. ${SERVER_SETTING}`, details: text }
+  }
+  if (/redirect[ _-]?uri/i.test(text) || /oauth/i.test(text)) {
+    return {
+      plain: `Plaid refused the address it is asked to return to after a bank’s sign-in. ${SERVER_SETTING}`,
+      details: text,
+    }
+  }
+  return { plain: text, details: null }
+}
+
+function LinkError({ raw }: { raw: string }) {
+  const { plain, details } = explainLinkError(raw)
+  return (
+    <div role="alert" className="flex flex-col gap-[4px]">
+      <p className="text-[14px] text-loss leading-relaxed">{plain}</p>
+      {details && <p className="text-[12px] text-stone break-words">Details: {details}</p>}
+    </div>
+  )
+}
+
 /**
  * Add an account: sign in to the institution through Plaid, then say which of
  * the accounts it found are which. Nothing is added until "Add these".
@@ -176,7 +208,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
               <span className="text-[14px] text-stone leading-relaxed">For an institution Plaid doesn’t reach: add the account from its downloads.</span>
             </div>
             {availability.data && !available && (
-              <p className="text-[14px] text-stone">Linking isn’t set up on this server yet.</p>
+              <p className="text-[14px] text-stone leading-relaxed">Linking with Plaid isn’t switched on for this Achalara yet. {SERVER_SETTING}</p>
             )}
             {available && left <= 2 && (
               <p className="text-[14px] text-stone">
@@ -210,7 +242,7 @@ export function AddAccountDialog({ open, onClose }: { open: boolean; onClose: ()
           </div>
         )}
 
-        {error && <p role="alert" className="text-[14px] text-loss">{error}</p>}
+        {error && <LinkError raw={error} />}
 
         <div className="flex flex-wrap justify-end gap-[8px]">
           {step === 'found' ? (

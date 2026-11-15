@@ -24,6 +24,15 @@ export function usePortalAccounts() {
   })
 }
 
+/** Where the viewer's figures come from: their Plaid logins, and others' feeding accounts in view. */
+export function usePortalConnections() {
+  const asClient = usePreviewClient()
+  return useQuery({
+    queryKey: ['portal', 'connections', asClient],
+    queryFn: () => portalApi.connections(asClient),
+  })
+}
+
 export function usePortalHome(filters: PortalScope) {
   const as_client = usePreviewClient()
   return useQuery({
@@ -124,6 +133,17 @@ export function useSetAccountPrivate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (v: { accountId: string; isPrivate: boolean }) => portalApi.setAccountPrivate(v.accountId, v.isPrivate, asClient),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', 'accounts'] }),
+  })
+}
+
+/** Give one of the viewer's own accounts a name of their own, or clear it. */
+export function useRenameAccount() {
+  const asClient = usePreviewClient()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { accountId: string; displayName: string }) =>
+      portalApi.renameAccount(v.accountId, v.displayName, asClient),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portal', 'accounts'] }),
   })
 }

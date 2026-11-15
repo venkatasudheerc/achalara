@@ -115,5 +115,13 @@ export function useGroupBy(): [GroupBy, (g: GroupBy) => void] {
   return [groupBy, choose]
 }
 
-/** An account's short name ("Roth IRA Brokerage"); see shortAccountName. */
-export const accountName = (a: Pick<PortalAccount, 'name'>): string => shortAccountName(a.name)
+/**
+ * An account's name: the owner's own name for it when they gave one ("Pat's
+ * trading account"), else the custodian's, shortened ("Roth IRA Brokerage").
+ */
+export const accountName = (a: { name: string; display_name?: string | null }): string =>
+  a.display_name || shortAccountName(a.name)
+
+/** The custodian's name, shown small beneath an owner's own name; null when none was given. */
+export const custodianName = (a: { name: string; display_name?: string | null }): string | null =>
+  a.display_name ? shortAccountName(a.name) : null

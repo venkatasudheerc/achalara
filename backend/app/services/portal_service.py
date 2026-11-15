@@ -6,7 +6,7 @@ are read per sleeve, so each row can name its account and strategy.
 """
 from dataclasses import dataclass
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.connectors.models import is_option_symbol
 from app.models.account import Account
-from app.models.brokerage_connection import BrokerageAccount
+from app.models.brokerage_connection import BrokerageAccount, BrokerageConnection
+from app.models.client import Client
 from app.models.cash_activity import INCOME_TYPES, MARGIN_INTEREST, CashActivity
 from app.models.perf import DailyHolding, DailyValuation
 from app.models.position import Position
@@ -238,6 +239,40 @@ def _matches(symbol: str, query: Optional[str]) -> bool:
     return not query or query.strip().lower() in symbol.lower()
 
 
+# The longest name an owner may give an account.
+DISPLAY_NAME_MAX = 60
+
+# A login whose consent runs out within this many days is flagged ahead of it.
+CONSENT_WARNING_DAYS = 30
+
+
+def update_own_account_settings(
+    db: Session,
+    client_id: str,
+    account_id: str,
+    is_private: Optional[bool] = None,
+    display_name: Optional[str] = None,
+    rename: bool = False,
+) -> Account:
+    """Change what an account's owner may change: whether it is private, and
+    (when ``rename``) its own name, trimmed; empty clears it. Anyone but the
+    owner gets the same 404 as an account that is not there."""
+    account = db.get(Account, account_id)
+    if account is None or account.client_id != client_id:
+        raise PortalError(404, "Account not found")
+    if rename:
+        name = " ".join((display_name or "").split())
+        if len(name) > DISPLAY_NAME_MAX:
+            raise PortalError(
+                422, f"A name can be at most {DISPLAY_NAME_MAX} characters"
+            )
+        account.display_name = name or None
+    if is_private is not None:
+        account.is_private = is_private
+    db.commit()
+    return account
+
+
 class PortalService:
     def __init__(self, db: Session, client_id: str):
         self.db = db
@@ -287,6 +322,7 @@ class PortalService:
             "client_id": account.client_id,
             "owner_name": account.client.name,
             "name": display_name(account),
+            "display_name": account.display_name or None,
             "number_last4": last_four(account),
             "shared": shared,
         }
@@ -357,6 +393,82 @@ class PortalService:
             }
             for account, shared in self.visible
         ]
+
+    def connections(self) -> Dict:
+        """Where the viewer's figures come from: each Plaid login that feeds an
+        account in view, with its state and the accounts in view it feeds.
+
+        The viewer's own logins are theirs to repair (``own``), and are listed
+        even when they feed nothing yet. A login someone else signs in to (a
+        spouse's, or the owner's of a shared account) is listed read-only, and
+        only with the accounts the viewer can see. Nothing secret is returned.
+        """
+        in_view = {account["id"]: account for account in self.accounts()}
+        own = (
+            self.db.query(BrokerageConnection)
+            .filter(
+                BrokerageConnection.client_id == self.client_id,
+                BrokerageConnection.source == "plaid",
+            )
+            .all()
+        )
+        feeding = (
+            self.db.query(BrokerageConnection)
+            .join(BrokerageAccount)
+            .filter(
+                BrokerageConnection.source == "plaid",
+                BrokerageAccount.status == "mapped",
+                BrokerageAccount.account_id.in_(list(in_view)),
+            )
+            .all()
+        )
+        logins = {c.id: c for c in [*own, *feeding]}
+        now = datetime.now(timezone.utc)
+
+        def aware(moment: Optional[datetime]) -> Optional[datetime]:
+            if moment is not None and moment.tzinfo is None:
+                return moment.replace(tzinfo=timezone.utc)
+            return moment
+
+        result = []
+        for login in logins.values():
+            links = [
+                link
+                for link in login.brokerage_accounts
+                if link.status == "mapped" and link.account_id in in_view
+            ]
+            consent_ends = aware(login.consent_expires_at)
+            if login.status == "broken":
+                state = "needs_sign_in"
+            elif login.status != "active":
+                state = "stopped"
+            elif consent_ends is not None and consent_ends <= now + timedelta(
+                days=CONSENT_WARNING_DAYS
+            ):
+                state = "consent_ending"
+            else:
+                state = "sharing"
+            synced = [aware(link.last_synced_at) for link in links if link.last_synced_at]
+            owner = self.db.get(Client, login.client_id)
+            result.append(
+                {
+                    "id": login.id,
+                    "institution": login.institution or None,
+                    "state": state,
+                    # Only the login's owner can sign in to it again.
+                    "own": login.client_id == self.client_id,
+                    "owner_name": owner.name if owner else None,
+                    "consent_expires_at": consent_ends,
+                    "disabled_at": aware(login.disabled_at),
+                    "status_checked_at": aware(login.status_checked_at),
+                    "last_refreshed_at": max(synced) if synced else None,
+                    "accounts": [in_view[link.account_id] for link in links],
+                }
+            )
+        # The viewer's own first, then by institution.
+        result.sort(key=lambda c: (not c["own"], (c["institution"] or "").lower()))
+        needs_you = sum(1 for c in result if c["own"] and c["state"] == "needs_sign_in")
+        return {"connections": result, "needs_sign_in": needs_you}
 
     def _symbol_types(self, sleeve_ids: Sequence[str]) -> Dict[Tuple[str, str], str]:
         """The security type last recorded for each symbol of each sleeve."""

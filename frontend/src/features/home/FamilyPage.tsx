@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { OneTimeLink } from '@/features/auth/OneTimeLink'
 import { PRIVATE_NOTE, PrivateToggle } from './PrivateToggle'
-import { accountName } from './selection'
+import { AccountNameEditor } from './AccountNameEditor'
 
 /** What the guardrails are, in one line each, in the order people ask. */
 const RULES = [
@@ -71,14 +71,12 @@ export function FamilyPage() {
 
       {own.length > 0 && (
         <section aria-labelledby="private" className="flex flex-col gap-[12px]">
-          <h2 id="private" className="font-display text-[20px]">Private accounts</h2>
-          <p className="text-[14px] text-stone">{PRIVATE_NOTE}</p>
+          <h2 id="private" className="font-display text-[20px]">Your accounts</h2>
+          <p className="text-[14px] text-stone">{PRIVATE_NOTE} A name you give an account is what everyone who sees it reads.</p>
           <ul className="border border-line rounded-[18px] divide-y divide-line">
             {own.map((a) => (
               <li key={a.id} className="px-[16px] py-[8px] flex flex-wrap items-center justify-between gap-x-[16px]">
-                <span className="text-[15px] font-medium">
-                  {accountName(a)}{a.number_last4 ? <span className="text-stone font-normal"> ··{a.number_last4}</span> : null}
-                </span>
+                <AccountNameEditor account={a} />
                 <PrivateToggle account={a} showNote={false} />
               </li>
             ))}

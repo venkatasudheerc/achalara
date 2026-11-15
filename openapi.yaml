@@ -3340,6 +3340,26 @@ paths:
 
   # ─── Client portal ──────────────────────────────────────────────────────────
 
+  /api/v1/portal/connections:
+    get:
+      tags: [portal]
+      summary: Where the viewer's figures come from
+      description: >-
+        The viewer's own Plaid logins, and, read-only (own false), the logins of others (a
+        spouse's, a shared account's owner's) that feed an account in view. Each with its
+        state, when it was last refreshed and checked, and the accounts in view it feeds with
+        their health. Never an access key.
+      operationId: portalConnections
+      parameters:
+        - {name: as_client, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: The logins
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PortalConnectionsResponse'}
+        '401': {description: Not signed in}
+        '404': {description: (advisor) client not found}
   /api/v1/portal/accounts:
     get:
       tags:
@@ -4909,8 +4929,12 @@ paths:
   /api/v1/portal/accounts/{account_id}:
     patch:
       tags: [portal]
-      summary: Keep one of the viewer's own accounts private
-      description: Their spouse no longer sees it; a minor's guardians always do. Only the owner may change it.
+      summary: Change one of the viewer's own accounts (private, its own name)
+      description: >-
+        Keep it private (their spouse no longer sees it; a minor's guardians always do) or give
+        it a name of the owner's own, shown in place of the custodian's. A field left out is
+        left as it is; an empty name clears it. Only the owner may change it (an admin or
+        advisor previewing the owner, as_client, may too).
       operationId: setPortalAccountPrivate
       parameters:
         - {name: account_id, in: path, required: true, schema: {type: string}}
@@ -4919,14 +4943,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+            schema: {$ref: '#/components/schemas/PortalAccountUpdate'}
       responses:
         '200':
-          description: The account's setting
+          description: The account's settings
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/PortalAccountPrivacy'}
+              schema: {$ref: '#/components/schemas/PortalAccountSettings'}
         '404': {description: Not one of the viewer's own accounts}
+        '422': {description: A name longer than 60 characters}
   /api/v1/portal/relatives/{relative_id}/invite:
     post:
       tags: [portal]
@@ -5753,13 +5778,83 @@ components:
           type: string
           enum: [active, needs signing in]
 
-    PortalAccountPrivacy:
+    PortalConnection:
       type: object
-      required: [is_private]
-      description: An owner's own account kept from their spouse (never from a minor's guardians).
+      required: [id, state, own, accounts]
+      description: One Plaid login feeding accounts in view. Never carries its access key.
+      properties:
+        id:
+          type: string
+        institution:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [sharing, needs_sign_in, consent_ending, stopped]
+          description: consent_ending is a consent that runs out within 30 days
+        own:
+          type: boolean
+          description: The viewer's own login, which only they can sign in to again; another's is read-only
+        owner_name:
+          type: string
+          nullable: true
+        consent_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        disabled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Since when it stopped sharing
+        status_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Its last morning check
+        last_refreshed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When its accounts were last synced
+        accounts:
+          type: array
+          description: Only the accounts in view it feeds
+          items: {$ref: '#/components/schemas/PortalAccount'}
+
+    PortalConnectionsResponse:
+      type: object
+      required: [connections, needs_sign_in]
+      properties:
+        connections:
+          type: array
+          items: {$ref: '#/components/schemas/PortalConnection'}
+        needs_sign_in:
+          type: integer
+          description: How many of the viewer's own logins wait on them to sign in again
+
+    PortalAccountUpdate:
+      type: object
+      description: What an account's owner may change. A field left out is left as it is.
       properties:
         is_private:
           type: boolean
+          nullable: true
+          description: Keep it from their spouse (never from a minor's guardians).
+        display_name:
+          type: string
+          nullable: true
+          description: The owner's own name for it, at most 60 characters once trimmed; empty or null clears it.
+
+    PortalAccountSettings:
+      type: object
+      required: [is_private]
+      properties:
+        is_private:
+          type: boolean
+        display_name:
+          type: string
+          nullable: true
 
     ClientResponse:
       type: object
@@ -7304,6 +7399,11 @@ components:
           type: string
         name:
           type: string
+          description: The custodian's name, without any full account number
+        display_name:
+          type: string
+          nullable: true
+          description: The owner's own name for it, shown in place of name when set
         number_last4:
           type: string
           nullable: true

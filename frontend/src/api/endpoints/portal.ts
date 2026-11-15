@@ -2,7 +2,7 @@ import { apiClient } from '../client'
 import type {
   PortalAccountsResponse, PortalGrain, PortalHomeResponse, PortalOverviewResponse, PortalPerformanceResponse,
   PortalActivityResponse, PortalPositionsResponse, PortalRealizedResponse, PortalTradesResponse, SecurityGroup,
-  AccountGroup, LinkResponse, Relative, RelativeCreate,
+  AccountGroup, LinkResponse, Relative, RelativeCreate, PortalAccountSettings, PortalConnectionsResponse,
 } from '../types'
 
 const base = '/api/v1/portal'
@@ -48,6 +48,12 @@ export const portalApi = {
       .get<PortalAccountsResponse>(`${base}/accounts`, { params: clean({ as_client: asClient }) })
       .then((r) => r.data),
 
+  /** The viewer's own Plaid logins, and others' that feed an account in view (read-only). */
+  connections: (asClient?: string) =>
+    apiClient
+      .get<PortalConnectionsResponse>(`${base}/connections`, { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
+
   home: (params: PortalScope) =>
     apiClient.get<PortalHomeResponse>(`${base}/home`, { params: clean(params) }).then((r) => r.data),
 
@@ -90,7 +96,13 @@ export const portalApi = {
   /** Keeps one of the viewer's own accounts from their spouse, or stops keeping it. */
   setAccountPrivate: (accountId: string, isPrivate: boolean, asClient?: string) =>
     apiClient
-      .patch<{ is_private: boolean }>(`${base}/accounts/${accountId}`, { is_private: isPrivate },
+      .patch<PortalAccountSettings>(`${base}/accounts/${accountId}`, { is_private: isPrivate },
+        { params: clean({ as_client: asClient }) })
+      .then((r) => r.data),
+  /** Gives one of the viewer's own accounts a name of their own; empty clears it. */
+  renameAccount: (accountId: string, displayName: string, asClient?: string) =>
+    apiClient
+      .patch<PortalAccountSettings>(`${base}/accounts/${accountId}`, { display_name: displayName },
         { params: clean({ as_client: asClient }) })
       .then((r) => r.data),
 

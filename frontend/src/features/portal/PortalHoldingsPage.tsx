@@ -23,15 +23,14 @@ interface Group {
   dayChange: number | null
   gain: number | null
   unpriced: number
-  /** Its options are valued together, at the custodian's figure for the account */
-  optionsFolded?: boolean
 }
 interface AccountGroup extends Group {
   last4: string | null; shared: boolean; strategies: Group[]
   /** The custodian's own figures, added to the priced holdings for the account's total */
   cash: number | null; optionsValue: number | null; optionsGain: number | null; balancesAsOf: string | null
-  /** True when the options sit in one strategy, which then carries their value */
-  optionsInStrategy: boolean
+  /** The open contracts the trade history names, shown under the account's Options line
+   * (the custodian values them only as a group, so none has a value of its own) */
+  contracts: PortalPosition[]
 }
 
 /** Totals of the rows that have a value; options without a price are counted, not valued. */
@@ -128,6 +127,43 @@ function HoldingsTable({ rows }: { rows: PortalPosition[] }) {
   )
 }
 
+/** The open option contracts the history names: what they are and how many, never a price each. */
+function ContractsTable({ rows }: { rows: PortalPosition[] }) {
+  const cell = 'px-[14px] py-[13px] align-top'
+  const num = `${cell} text-right font-mono whitespace-nowrap`
+  const head = 'px-[14px] py-[10px] text-[14px] font-medium text-summit-ink/70 whitespace-nowrap'
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] border-collapse text-[16px]">
+        <thead>
+          <tr>
+            <th scope="col" className={`${head} text-left`}>Contract</th>
+            <th scope="col" className={`${head} text-right`}>Quantity</th>
+            <th scope="col" className={`${head} text-right`}>Premium per share</th>
+            <th scope="col" className={`${head} text-right`}>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.sleeve_id}:${r.symbol}`} className="border-t border-stone/20">
+              <td className={cell}>
+                <span className="font-semibold">{securityLabel(r.symbol)}</span><ShortBadge quantity={r.quantity} />
+                <div className="text-[14px] text-summit-ink/70">{r.strategy_name}</div>
+              </td>
+              <td className={num}>
+                {formatNumber(r.quantity, Number.isInteger(r.quantity) ? 0 : 4)}
+                {r.multiplier > 1 && <div className="font-sans text-[14px] text-summit-ink/70">contracts × {r.multiplier}</div>}
+              </td>
+              <td className={num}>{formatSharePrice(r.avg_cost, true)}</td>
+              <td className={`${cell} text-right text-[14px] text-summit-ink/70`}>Priced by the custodian as a group</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function RailRow({ label, children }: { label: string; children: ReactNode }) {
   return <div className="flex justify-between gap-[12px]"><span>{label}</span><span className="font-mono text-right">{children}</span></div>
 }
@@ -205,30 +241,26 @@ export function PortalHoldingsPage() {
     }
     return listed.map((account) => {
       const rows = byAccount.get(account.id) ?? []
-      const bySleeve = new Map<string, PortalPosition[]>()
-      for (const row of rows) bySleeve.set(row.sleeve_id, [...(bySleeve.get(row.sleeve_id) ?? []), row])
       const balance = partial ? undefined : data?.account_balances.find((b) => b.account_id === account.id)
       const priced = summarise(account.id, account.name, rows)
       const optionsValue = balance?.options_value ?? null
       // The custodian's value for the options, less what they cost.
       const optionsGain = optionsValue != null && balance?.options_cost != null ? optionsValue - balance.options_cost : null
-      const strategies = [...bySleeve.entries()].map(([sleeveId, held]) => summarise(sleeveId, held[0].strategy_name, held))
-      // The custodian values the account's options as one figure. When they all sit in one
-      // strategy that figure is the strategy's; spread over several, it gets a line of its own.
-      const holders = strategies.filter((st) => st.unpriced > 0)
-      const optionsInStrategy = optionsValue != null && holders.length === 1
-      if (optionsInStrategy) {
-        const holder = holders[0]
-        holder.value += optionsValue
-        if (optionsGain != null) holder.gain = (holder.gain ?? 0) + optionsGain
-        holder.optionsFolded = true
+      // The custodian values the account's options as one figure, so they get a line of their
+      // own in the account, listing the open contracts; the strategies keep what is priced.
+      const contracts = optionsValue != null ? rows.filter((r) => r.security_type === 'option' && r.market_value == null) : []
+      const bySleeve = new Map<string, PortalPosition[]>()
+      for (const row of rows) {
+        if (contracts.includes(row)) continue
+        bySleeve.set(row.sleeve_id, [...(bySleeve.get(row.sleeve_id) ?? []), row])
       }
+      const strategies = [...bySleeve.entries()].map(([sleeveId, held]) => summarise(sleeveId, held[0].strategy_name, held))
       return {
         ...priced,
         // Holdings at live prices, plus the custodian's options value and cash: the account's total.
         value: priced.value + (optionsValue ?? 0) + (balance?.cash_value ?? 0),
         gain: optionsGain != null ? (priced.gain ?? 0) + optionsGain : priced.gain,
-        cash: balance?.cash_value ?? null, optionsValue, optionsGain, optionsInStrategy,
+        cash: balance?.cash_value ?? null, optionsValue, optionsGain, contracts,
         balancesAsOf: balance?.as_of ?? null,
         last4: account.number_last4, shared: account.shared,
         strategies: strategies.sort((a, b) => b.value - a.value),
@@ -253,7 +285,10 @@ export function PortalHoldingsPage() {
     if (next.has(id)) next.delete(id); else next.add(id)
     setOpen(next)
   }
-  const everything = accounts.flatMap((a) => [a.id, ...a.strategies.map((s) => s.id)])
+  const optionsId = (accountId: string) => `options:${accountId}`
+  const everything = accounts.flatMap((a) => [
+    a.id, ...a.strategies.map((s) => s.id), ...(a.contracts.length ? [optionsId(a.id)] : []),
+  ])
   const allOpen = everything.length > 0 && everything.every((id) => open.has(id))
 
   return (
@@ -312,7 +347,7 @@ export function PortalHoldingsPage() {
 
                 {expanded && (
                   <div className="px-[24px] pb-[24px] flex flex-col gap-[14px]">
-                    {account.strategies.length === 0 && account.cash == null && <p className="text-summit-ink/70">Nothing is held in this account right now.</p>}
+                    {account.strategies.length === 0 && account.cash == null && account.optionsValue == null && <p className="text-summit-ink/70">Nothing is held in this account right now.</p>}
                     {account.strategies.map((strategy) => {
                       const shown = open.has(strategy.id)
                       return (
@@ -325,9 +360,7 @@ export function PortalHoldingsPage() {
                                 <span className="block text-[18px] font-semibold">{strategy.name}</span>
                                 <span className="block text-[15px] text-summit-ink/70">
                                   {strategy.rows.length} {strategy.rows.length === 1 ? 'holding' : 'holdings'}
-                                  {strategy.optionsFolded
-                                    ? ` · options at your custodian’s value${account.balancesAsOf ? `, as of ${shortDate(account.balancesAsOf)}` : ''}`
-                                    : strategy.unpriced > 0 && ` · ${strategy.unpriced} without a price`}
+                                  {strategy.unpriced > 0 && ` · ${strategy.unpriced} without a price`}
                                 </span>
                               </span>
                             </span>
@@ -341,15 +374,42 @@ export function PortalHoldingsPage() {
                         </div>
                       )
                     })}
-                    {account.optionsValue != null && !account.optionsInStrategy && (
-                      <div className="rounded-[10px] bg-mist/50 border border-stone/20 px-[20px] py-[16px] flex flex-wrap items-center justify-between gap-[14px]">
-                        <span className="pl-[34px]">
-                          <span className="block text-[18px] font-semibold">Options, at your custodian’s value</span>
-                          <span className="block text-[15px] text-summit-ink/70">All of this account’s options together{account.balancesAsOf ? ` · as of ${shortDate(account.balancesAsOf)}` : ''}</span>
-                        </span>
-                        <Figures group={{ id: 'options', name: 'Options', rows: [], value: account.optionsValue, dayChange: null, gain: account.optionsGain, unpriced: 0 }} />
-                      </div>
-                    )}
+                    {account.optionsValue != null && (() => {
+                      const id = optionsId(account.id)
+                      const shown = open.has(id)
+                      const n = account.contracts.length
+                      const asOf = account.balancesAsOf ? `, as of ${shortDate(account.balancesAsOf)}` : ''
+                      const header = (
+                        <>
+                          <span className="flex items-center gap-[12px]">
+                            {n > 0 ? <Chevron open={shown} /> : <span aria-hidden className="w-[22px] shrink-0" />}
+                            <span>
+                              <span className="block text-[18px] font-semibold">Options</span>
+                              <span className="block text-[15px] text-summit-ink/70">
+                                {n > 0
+                                  ? `${n} open ${n === 1 ? 'contract' : 'contracts'} · priced by your custodian as a group${asOf}`
+                                  : `Your custodian’s value for this account’s options together${asOf}. The contracts aren’t named in the history on file.`}
+                              </span>
+                            </span>
+                          </span>
+                          <Figures group={{ id, name: 'Options', rows: [], value: account.optionsValue, dayChange: null, gain: account.optionsGain, unpriced: 0 }} />
+                        </>
+                      )
+                      const box = 'px-[20px] py-[16px] flex flex-wrap items-center justify-between gap-[14px]'
+                      return (
+                        <div className="rounded-[10px] bg-mist/50 border border-stone/20 overflow-hidden">
+                          {n > 0 ? (
+                            <button type="button" aria-expanded={shown} onClick={() => toggle(id)}
+                              className={`w-full text-left ${box} hover:bg-mist transition-colors`}>{header}</button>
+                          ) : <div className={box}>{header}</div>}
+                          {n > 0 && shown && (
+                            <div className="bg-surface border-t border-stone/20">
+                              <ContractsTable rows={[...account.contracts].sort((a, b) => a.symbol.localeCompare(b.symbol))} />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {account.cash != null && (
                       <div className="rounded-[10px] bg-mist/50 border border-stone/20 px-[20px] py-[16px] flex flex-wrap items-center justify-between gap-[14px]">
                         <span className="pl-[34px]">
@@ -368,8 +428,9 @@ export function PortalHoldingsPage() {
           })}
           <p className="text-[15px] text-summit-ink/70 max-w-4xl">
             An account’s value is its holdings at live prices, plus its options and cash as your custodian last
-            reported them. Your custodian gives one value for all of an account’s options together, so their
-            unrealised gain is that value less what they cost, and single contracts show no value of their own.
+            reported them. Your custodian gives one value for all of an account’s options together, shown on the
+            account’s Options line: their unrealised gain is that value less what they cost, and single contracts
+            show no value of their own.
             Today covers the priced holdings only.
           </p>
         </div>

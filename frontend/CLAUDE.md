@@ -70,8 +70,8 @@ in `src/routes.tsx`), keeping a staff preview's `?as=`.
 
 **The new app (`/home`, `src/features/home/`)** is the 2026-11 redesign (designs in the local
 `docs/design/one-app/`). `HomeShell` is the frame: a menu bar (the "achalara" wordmark is home;
-Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor, Manage
-for staff, Sign out), and on a
+Plan, Tax, Research), the person menu (Appearance, Family unless the viewer is a minor,
+Connections, Manage for staff, Sign out), and on a
 phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **account rail** plus
 **view tabs**:
 - The rail (`AccountRail`) lists the accounts in view (`/portal/accounts`), grouped by Person
@@ -106,9 +106,20 @@ phone a bottom bar (Home, Plan, Tax, Research, More). `LandingPage` is an **acco
   accounts with "Keep private from my spouse". The guardrails are stated on the page: spouses see
   each other's accounts except private ones; a minor's guardians, and their spouse, see the minor's;
   a minor sees only their own (`viewer.is_minor` hides Family); anything else only by a share.
+- **Connections** (`/home/connections`, `ConnectionsPage`, the person menu's "Connections"),
+  titled "Where your data comes from": one sentence first (all up to date, or how many logins
+  need the viewer to sign in again), then a card per Plaid login from `/portal/connections`
+  (`usePortalConnections`): institution, state in plain words, last refreshed, the accounts it
+  feeds with kind, value and record health. **Sign in again** (`usePlaidRepair`) on the viewer's
+  own login only; another's reads "<Name>'s login · <Name> signs in to it". "+ Connect another
+  institution" opens `AddAccountDialog`. Read-only otherwise; a staff preview sees the same.
 - **Private accounts** (`PrivateToggle`, `PATCH /portal/accounts/{id}`): only on an account the
   viewer owns (`shared === false`), in the one-account Dashboard's "About this account" and on
   Family; the Accounts view says which of the viewer's accounts their spouse sees.
+- **An account's own name** (`AccountNameEditor`, the same `PATCH` with `display_name`): the
+  owner (or a staff preview) renames an account in "About this account" and on Family; the
+  custodian's name stays beneath in small text. `accountName` (`selection.ts`), `accountLabel`
+  and `useAccountName` prefer `display_name`, so every screen of the new app uses it.
 - Screenshots for review: `ACHALARA_SESSION=<token> node scripts/screens.mjs <out> <route…>`
   saves each route at 390 and 1440 wide, light and dark (`playwright-core` with the installed Chrome).
 
@@ -130,7 +141,10 @@ page shows each lot as the custodian reports it (`cost`, `proceeds`, `short_term
 recompute gains from entry and exit prices on the client. The holdings page is on live prices: it
 shows `live_prices_at`, refetches every minute while open, and marks a row "custodian's price"
 when `price_source` is `custodian`. An account's options are valued together at the custodian's
-figure (`account_balances`), with cash beside them. The performance page's "Compare with" list
+figure (`account_balances`), on an **Options** line of their own in the account's tile, with cash
+beside it: it opens to the open contracts the trade history names (contract, strategy, quantity,
+premium), each marked "Priced by the custodian as a group", never with a price of its own; where
+no trade names them it says so. The strategies then hold only what is priced. The performance page's "Compare with" list
 comes from the response (`benchmarks`); the choice is sent back as `benchmark`. Do not hard-code
 benchmark names on a screen. An advisor previews a client's view at `/home?as=<clientId>`
 ("Preview the client's view" on the client's page); `usePreviewClient()` reads that, every
@@ -234,7 +248,10 @@ Each feature directory contains its page component(s). Implemented:
   and the advisor's preview): "Link with Plaid" loads Plaid's script from `cdn.plaid.com` only
   when chosen, opens Plaid's window, then "What we found": each account with what is proposed
   (same as an account here, with the evidence; add as new; don't add) and its kind, changeable.
-  Nothing is added until "Add these". "Upload files" is shown as coming later. Hooks in
+  Nothing is added until "Add these". "Upload files" is shown as coming later. A refusal that is
+  a setting on the server (linking not set up, a 503; Plaid refusing the OAuth redirect address)
+  is said in plain words, to ask the person who runs Achalara, with Plaid's own text beneath
+  under "Details" (`explainLinkError`). Hooks in
   `usePlaid.ts`. The kinds (`selection.ts` `KINDS`) include checking, savings, credit card,
   mortgage, car loan and loan (colours `k-bank`, `k-owed`); `INVESTED` kinds alone offer
   Holdings, Cost basis and Analysis. An owed account's value is negative, so totals are net worth.

@@ -82,7 +82,7 @@ Request flow: **route → service → ORM model**. Routes are registered in `app
 | `/api/v1/trades`     | `trades`                                                |
 | `/api/v1/admin`      | `admin` (import, sync-daily, sync-logs, sync-configs)   |
 | `/api/v1/auth`       | `auth` (sign-in, invite/reset links, users) and `/clients/{id}/account-access` |
-| `/api/v1/portal`     | `portal` (a client's accounts read together: accounts, overview, positions, trades, realised gains, performance; CSV; the client's own account groups) |
+| `/api/v1/portal`     | `portal` (a client's accounts read together: accounts, overview, positions, trades, realised gains, performance; CSV; the client's own account groups; where the data comes from, `connections`) |
 | `/api/v1`            | `performance` (periods by grain, statistics, account report)            |
 | `/api/v1/research`   | `research` (market insights from `md`, for every signed-in user; read-only) |
 
@@ -201,7 +201,9 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
 - **Who sees which accounts is decided by guardrails**, in one place
   (`AuthService.accounts_for_client`), from `clients.spouse_id` and `guardian_id`: (1) everyone
   sees what they own; (2) spouses see each other's accounts except those the owner marks private
-  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only); (3) a minor's guardian and
+  (`accounts.is_private`, `PATCH /portal/accounts/{id}`, owner only, which also sets the owner's
+  own name for it, `accounts.display_name`, returned on `/portal/accounts` beside the
+  custodian's `name`; a staff preview may change both, as the client can); (3) a minor's guardian and
   the guardian's spouse see every account of the minor, which a minor cannot hide; (4) a minor sees
   only their own; (5) anything else only when shared (`account_access`). A spouse pair is kept on
   both sides; a minor has no spouse and cannot add anyone. An admin or advisor sets these
@@ -247,6 +249,12 @@ The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` 
   them, so the rail and the tile always agree), the custodian's last reported total
   (`recorded_value`) and cash with its day (`as_of`, the last *observed* row), and its source and
   last sync (`brokerage_accounts`). Bank, card, loan and property kinds come with Plaid.
+- `GET /portal/connections` (`PortalService.connections`) is where the viewer's figures come
+  from: the viewer's own Plaid logins (even one feeding nothing yet) and, read-only (`own`
+  false), another's login (a spouse's, a minor's, a shared account's owner's) that feeds an
+  account in view; each with a plain `state` (`sharing`, `needs_sign_in`, `consent_ending`
+  within `CONSENT_WARNING_DAYS`, `stopped`), its last refresh and check, and only the accounts
+  in view it feeds, as `/portal/accounts` gives them (health included). Never the access key.
 - **Account groups are the one thing a client changes in the portal** (`/portal/groups`). The
   portal router is not behind `require_access`; its guard is `portal_viewer`, so the routes guard
   themselves: a group belongs to the viewer's client, members must be accounts in view, and an
