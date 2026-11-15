@@ -1,7 +1,7 @@
 # Bridge — Connector Layer Conventions
 
 > Scope: `backend/app/connectors/`. This is **Bridge** — the layer that brings trade and
-> position data into Achalara from any source (CSV, Google Sheets, Webull, Plaid, and
+> position data into Achalara from any source (CSV, custodians' files, Webull, Plaid, and
 > future brokers). Read this before adding or changing anything in this package.
 
 ---
@@ -24,7 +24,7 @@ is worthless and you're locked in. Treat a vendor import leaking upward as a bui
   swappable**. We design our own interface and adapt vendors to it, not the reverse.
 - Our differentiator is the performance/insight layer (Lens), not the plumbing. Connectors
   are commodities; our normalized model and analytics are the product.
-- CSV/Sheets/manual must remain first-class **forever** — they are the universal fallback for
+- CSV/files/manual must remain first-class **forever** — they are the universal fallback for
   any broker no aggregator covers.
 
 ---
@@ -37,7 +37,6 @@ backend/app/connectors/
 ├── models.py          # NormalizedTrade, NormalizedPosition, RawAccount, enums
 ├── registry.py        # name -> connector instance; runtime source selection
 ├── csv_connector.py        # existing CSV import, refactored behind the interface
-├── sheets_connector.py     # existing Google Sheets sync, behind the interface
 ├── webull_connector.py     # existing Webull price fetch, normalized
 ├── plaid_connector.py      # Plaid's API: link tokens, accounts, transactions, holdings
 ├── plaid_reader.py         # Plaid's rows as normalized trades, cash and day figures

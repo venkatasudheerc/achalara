@@ -5,8 +5,9 @@ What is built, what comes next, and what is deliberately deferred. Detailed rule
 
 ## Built
 
-- **Hierarchy and trades.** Clients, accounts, firm-wide strategies and sleeves. Trades from CSV,
-  public Google Sheets and brokerages, with duplicate detection on every path.
+- **Hierarchy and trades.** Clients, accounts, firm-wide strategies and sleeves. Trades from feeds,
+  custodians' files and by hand, with duplicate detection on every path. (The Imports page and
+  the Google Sheets sync were retired in 2026-11.)
 - **Accounts linked through Plaid.** Clients link their own bank, card, loan and brokerage
   logins; each account is matched to one already here on evidence and confirmed by a person, and
   refreshed each weekday morning. Earlier history comes from the custodian's own files, and every

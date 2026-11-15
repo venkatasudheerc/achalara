@@ -32,7 +32,6 @@ JOBS = (
     ("plaid_refresh", "Plaid refresh"),
     ("ticker_changes", "Ticker changes"),
     ("price_history", "Price history"),
-    ("daily_sheets_sync", "Sheet sync"),
     ("index_history", "Index history"),
 )
 # A backup older than this, or transactions further behind than this, is pointed out.

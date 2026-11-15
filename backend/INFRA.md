@@ -162,8 +162,8 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/docs   # 200
 ```
 
 The scheduler starts and stops with the app when `SCHEDULER_ENABLED=true` (the default). It runs
-the daily jobs System status lists: brokerage sync, daily capture, sheet sync, index history and the
-link check. Locally you usually want `SCHEDULER_ENABLED=false`, so a run on your machine does not
+the daily jobs System status lists: the Plaid refresh, ticker changes, price history and index
+history, with the status watch behind the alerts. Locally you usually want `SCHEDULER_ENABLED=false`, so a run on your machine does not
 spend a brokerage pull. Market-data jobs run only in their own worker (`python -m app.md.worker`),
 never in the app.
 
@@ -193,16 +193,9 @@ curl -s http://localhost:8000/health && echo                    # app
 
 ## Loading trades by hand
 
-Brokerage accounts sync themselves. For anything else, the Imports page takes a CSV and registers
-Google Sheets; both go through the same duplicate detection, so a second run adds nothing.
-
-CSV columns:
-
-```
-Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes
-2025-03-17,ABC,BUY,40,25.00,0,Example Strategy,Example Account,Initial purchase
-```
-
-- Validate first, then import. Without a sleeve, rows are routed by their Account and Strategy.
-- A Google Sheet must be shared as "Anyone with the link can view" and have the same header row.
-  `Date` may be `YYYY-MM-DD` or `YYYY/MM/DD`; `Action` is `Buy`/`Sell` in any case.
+Linked accounts refresh themselves each morning. Earlier history comes from the custodian's own
+file: "Update from a file" on the account (the advisor's account page, or the owner's app) takes
+Vanguard's activity report or Achalara's template (`frontend/public/achalara-activity-template.csv`),
+shows what it would add, and adds only rows not on file, so a second upload adds nothing. From
+the command line: `python -m app.cli import-vanguard-report`. The old Imports page (a CSV into a
+chosen strategy, and Google Sheets) is retired.

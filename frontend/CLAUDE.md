@@ -58,7 +58,7 @@ kept at `/about`, which nothing links to; its "Request an invitation" opens `/re
 sign-in); `advisor`, who manages only the clients assigned to them (`clients.advisor_id`); and
 `client`. `src/lib/roles.ts` has `isStaff` (admin or advisor) and `staffTitle`. `RequireAuth`
 takes an audience: `staff` opens `/app/*` to both, and nested under it `admin` guards the
-platform's own pages (`/app/status`, `/app/market-data`, `/app/requests`, `/app/imports`,
+platform's own pages (`/app/status`, `/app/market-data`, `/app/requests`,
 `/app/settings`); `AppShell` leaves those out of an advisor's menu. Strategy creation and a
 strategy's performance show only for an admin (`useIsAdmin`), since the API refuses them to an
 advisor. An advisor adds trades, moves symbols and manages logins for their own clients (the API
@@ -266,7 +266,9 @@ Each feature directory contains its page component(s). Implemented:
   `usePlaid.ts`. The kinds (`selection.ts` `KINDS`) include checking, savings, credit card,
   mortgage, car loan and loan (colours `k-bank`, `k-owed`); `INVESTED` kinds alone offer
   Holdings, Cost basis and Analysis. An owed account's value is negative, so totals are net worth.
-- `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
+- The old Imports page (a CSV into a chosen sleeve, Google Sheets sync configs, sync logs) is
+  retired with its admin routes; `/app/imports` redirects to `/app`. A custodian's file goes
+  through the account's "Update from a file" (`ImportDialog`)
 - "Update from a file" (`components/ImportDialog`) is on the advisor's `AccountDetailPage`, and in the
   new app when the rail's selection is one account the client owns (not a shared one). An advisor's
   preview shows it too, since the preview is exactly what the client sees

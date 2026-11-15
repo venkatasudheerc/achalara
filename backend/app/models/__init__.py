@@ -8,7 +8,6 @@ from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.models.position import Position
 from app.models.sync_log import SyncLog
-from app.models.sheet_sync_config import SheetSyncConfig
 from app.models.brokerage_connection import (
     BrokerageConnection,
     BrokerageAccount,
@@ -39,7 +38,6 @@ __all__ = [
     "Trade",
     "Position",
     "SyncLog",
-    "SheetSyncConfig",
     "BrokerageConnection",
     "BrokerageAccount",
     "BrokerageActivity",

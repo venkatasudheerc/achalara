@@ -28,7 +28,6 @@ const workItems: (NavItem & { admin?: boolean })[] = [
 
 /** The platform's own pages: the admin's alone (an advisor neither sees nor may open them). */
 const platformItems: NavItem[] = [
-  { to: '/app/imports', label: 'Imports' },
   { to: '/app/status', label: 'System status' },
   { to: '/app/market-data', label: 'Market data' },
   { to: '/app/settings', label: 'Settings' },

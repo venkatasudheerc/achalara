@@ -38,10 +38,7 @@ cd backend/bruno
 bru run --env Local.private
 ```
 
-**Expected CLI result:** all requests pass except **06 Admin / Sync Daily (Sheets)**, which
-returns `502` until you supply a real, accessible Google Sheet ID + credentials — it's
-included for completeness. To run everything except that one:
-`bru run --env Local.private --exclude "**/Sync Daily*"`.
+**Expected CLI result:** all requests pass.
 
 ## Calling the data sources directly
 
@@ -58,7 +55,7 @@ private environment:
 ## How chaining works
 
 Each create request stores the returned `id` into a runtime variable via a
-`vars:post-response` block (`clientId`, `accountId`, `strategyId`, `sleeveId`, `configId`).
+`vars:post-response` block (`clientId`, `accountId`, `strategyId`, `sleeveId`).
 Later requests reference them as `{{clientId}}`, etc. Re-running is safe — the client
 email is randomized per run in a `script:pre-request` so you never hit
 "Email already registered".
@@ -77,7 +74,3 @@ tied to a client, so `client_id` in the Login and Me responses is `null` for an 
 - `05 Prices / Fetch from Webull` will return `status: "partial"` with `fetched: 0`
   unless valid Webull credentials are configured in `.env` — that's expected; the
   request still returns 200.
-- `06 Admin / Import Historical` runs in `mode=VALIDATE` (dry run) by default so it
-  doesn't write trades. Change the `mode` query param to `IMPORT` to persist.
-- `06 Admin / Sync Daily` needs a real Google Sheet ID + credentials; it's included
-  for completeness and will error without them.

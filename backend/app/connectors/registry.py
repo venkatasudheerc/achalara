@@ -13,7 +13,6 @@ from typing import Dict
 from app.connectors.base import BrokerageConnector
 from app.connectors.csv_connector import CSVConnector
 from app.connectors.fake_connector import FakeConnector
-from app.connectors.sheets_connector import SheetsConnector
 
 _REGISTRY: Dict[str, BrokerageConnector] = {}
 
@@ -41,5 +40,4 @@ def available_sources() -> list[str]:
 
 # Default registrations. Stateless connectors are safe as singletons.
 register("csv", CSVConnector())
-register("sheets", SheetsConnector())
 register("fake", FakeConnector())

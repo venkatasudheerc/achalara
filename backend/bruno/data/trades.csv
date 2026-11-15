@@ -1,8 +1,0 @@
-Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes
-2025/03/17,ABC,Buy,40,25.00,0,Thematic ETFs,10000001,
-2025/03/17,DEF,Buy,15,60.00,0,Thematic ETFs,10000001,
-2025/03/17,GHI,Buy,10,65.00,0,Thematic ETFs,10000001,
-2025/03/24,JKL,Buy,20,50.00,0,Thematic ETFs,10000001,
-2025/04/04,ABC,Sell,40,21.00,0,Thematic ETFs,10000001,
-2025/04/04,DEF,Sell,15,57.00,0,Thematic ETFs,10000001,
-2026/02/02,BATS:XYZ,Buy,18,55.00,0,Thematic ETFs,10000001,
