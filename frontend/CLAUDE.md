@@ -132,7 +132,10 @@ page shows each lot as the custodian reports it (`cost`, `proceeds`, `short_term
 recompute gains from entry and exit prices on the client. The holdings page is on live prices: it
 shows `live_prices_at`, refetches every minute while open, and marks a row "custodian's price"
 when `price_source` is `custodian`. An account's options are valued together at the custodian's
-figure (`account_balances`), with cash beside them. The performance page's "Compare with" list
+figure (`account_balances`), on an **Options** line of their own in the account's tile, with cash
+beside it: it opens to the open contracts the trade history names (contract, strategy, quantity,
+premium), each marked "Priced by the custodian as a group", never with a price of its own; where
+no trade names them it says so. The strategies then hold only what is priced. The performance page's "Compare with" list
 comes from the response (`benchmarks`); the choice is sent back as `benchmark`. Do not hard-code
 benchmark names on a screen. An advisor previews a client's view at `/home?as=<clientId>`
 ("Preview the client's view" on the client's page); `usePreviewClient()` reads that, every

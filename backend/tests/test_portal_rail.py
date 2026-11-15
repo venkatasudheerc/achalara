@@ -252,6 +252,13 @@ def test_an_account_of_options_and_cash_values_its_options_as_the_custodian_does
     held = maya.get(f"{PORTAL}/positions").json()
     balance = next(b for b in held["account_balances"] if b["account_id"] == account.id)
     assert balance["options_value"] == pytest.approx(1000)
+    # What the Holdings view's Options line lists beneath that figure: the open
+    # contract, its quantity and what it cost, but no price of its own.
+    contract = next(p for p in held["positions"] if p["account_id"] == account.id)
+    assert (contract["symbol"], contract["security_type"], contract["quantity"]) == (
+        "ZZZ270115C00020000", "option", 2)
+    assert contract["market_value"] is None and contract["price"] is None
+    assert balance["options_cost"] == pytest.approx(contract["cost_basis"])
     rail = next(a for a in maya.get(ACCOUNTS).json()["accounts"] if a["id"] == account.id)
     assert rail["value"] == pytest.approx(1500)
 
