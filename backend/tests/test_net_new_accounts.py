@@ -201,3 +201,51 @@ def test_comparing_two_logins_says_how_their_trades_match_and_changes_nothing(
     assert {k: row[k] for k in expected} == expected
     assert row["fed_by"]["owner_name"] == "Sarvani Example"
     assert (db.query(Trade).count(), db.query(Account).count(), db.query(BrokerageAccount).count()) == before
+
+
+# -- System status: whose login, and why an entry waits ------------------------
+
+from app.services.status_service import StatusService  # noqa: E402
+
+
+def _status_rows(db):
+    return {
+        (r["login"], r["number_last4"]): r for r in StatusService(db).status()["brokerage_accounts"]
+    }
+
+
+def test_system_status_says_whose_login_and_why_an_entry_is_not_added_yet(db, two, plaid_keys):
+    sarvani, sudheer = two
+    _sarvanis_login_feeds_a_brokerage_sudheer_owns(db, sarvani, sudheer)
+    _sudheers_login(db, sudheer)  # found, nothing chosen yet
+    rows = _status_rows(db)
+
+    mapped = rows[("Sarvani’s Example Brokerage login", "4321")]
+    assert mapped["status"] == "mapped" and mapped["note"] is None
+    assert mapped["owner"] == "Sudheer Example"  # the account's owner, not the login's
+
+    duplicate = rows[("Sudheer’s Example Brokerage login", "4321")]
+    assert duplicate["status"] == "unmapped" and duplicate["owner"] is None
+    assert duplicate["note"] == "Same account as one Sarvani’s login updates. Nothing to add."
+
+    new = rows[("Sudheer’s Example Brokerage login", "0529")]
+    assert new["note"] == "New: waiting for Sudheer to add it."
+    assert rows[("Sudheer’s Example Brokerage login", "0401")]["note"].startswith("New:")
+
+
+def test_the_note_goes_once_the_entry_is_added_or_left_out(db, two, plaid_keys):
+    sarvani, sudheer = two
+    _sarvanis_login_feeds_a_brokerage_sudheer_owns(db, sarvani, sudheer)
+    service, found = _sudheers_login(db, sudheer)
+    by_mask = {a["mask"]: a for a in found["accounts"]}
+    service.confirm(sudheer.id, found["connection_id"], [
+        {"link_id": by_mask["4321"]["link_id"], "action": "skip"},
+        {"link_id": by_mask["0529"]["link_id"], "action": "new"},
+        {"link_id": by_mask["0401"]["link_id"], "action": "skip"},
+    ])
+    rows = _status_rows(db)
+    added = rows[("Sudheer’s Example Brokerage login", "0529")]
+    assert added["status"] == "mapped" and added["note"] is None and added["owner"] == "Sudheer Example"
+    # Entries left out are not listed at all.
+    assert ("Sudheer’s Example Brokerage login", "4321") not in rows
+    assert ("Sudheer’s Example Brokerage login", "0401") not in rows

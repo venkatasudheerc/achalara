@@ -539,7 +539,11 @@ its accounts are `brokerage_accounts` rows. Rules:
   (`account_kind.kind_from_plaid`). Moving such an account's feed to the new login is not built: it
   would risk counting trades twice. `python -m app.cli compare-feeds --client <id or name> [--days 90]`
   is read only and says how many of the new login's trades match what the other feed stored, by id
-  and by what they were (`services/feed_compare.py`), to decide whether it can be. Repairing a login that needs signing in again is to come (update mode).
+  and by what they were (`services/feed_compare.py`), to decide whether it can be.
+  System status lists each account entry with whose login brought it in (`login`) and, for one not
+  added yet, a `note`: "Same account as one <Name>'s login updates" (the same institution and last
+  four as a mapped entry of another login) or "New: waiting for <Name> to add it". Nothing is
+  merged or hidden by it; only mapped entries feed an account. Repairing a login that needs signing in again is to come (update mode).
 - **What Plaid sends is read by `plaid_reader`**: buys and sales moved from settlement back to
   the trade day; holdings valued at each security's `close_price` (Plaid's holding price is a
   day late) with the total moved to match; same-day internal transfer pairs and sweeps are not

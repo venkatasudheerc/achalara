@@ -8714,6 +8714,14 @@ components:
         owner:
           type: string
           nullable: true
+        login:
+          type: string
+          nullable: true
+          description: Whose login brought it in, for example "Sarvani’s Vanguard login"
+        note:
+          type: string
+          nullable: true
+          description: For an entry not added yet, why it waits (a duplicate of an account another login already updates, or new and waiting for that login's owner). Empty once added.
         status:
           type: string
         connection_status:
@@ -8759,6 +8767,8 @@ components:
       - connection_status
       - number_last4
       - owner
+      - login
+      - note
       - last_synced_at
       - next_sync_allowed_at
       - transactions_synced_through
