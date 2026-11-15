@@ -184,6 +184,13 @@ def read_investment_transactions(
                     NormalizedCashActivity(
                         external_id=ext, type=cash_type, amount=holder, occurred_at=_at(day),
                         symbol=None if not ticker or ticker.startswith("CUR:") else ticker,
+                        # So a dividend on shares not traded in the rows read
+                        # still goes where those shares belong.
+                        security_type=(
+                            SECURITY_TYPES.get(security.get("type") or "", "OTHER")
+                            if ticker and not ticker.startswith("CUR:")
+                            else None
+                        ),
                         source=SOURCE, notes=name,
                     )
                 )

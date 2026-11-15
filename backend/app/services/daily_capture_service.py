@@ -19,6 +19,7 @@ from app.models.perf import DailyHolding, DailyPrice, DailyValuation
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.connection_service import ConnectionService
+from app.services.sleeve_routing import sleeve_for_type
 from app.services.performance_build_service import (
     CENT,
     ZERO,
@@ -58,7 +59,6 @@ class DailyCaptureService:
             )
         ]
         placed = self._placements(sleeve_ids)
-        routes = ba.sleeve_routes or {}
 
         # --- holdings, and the prices they came with ---------------------
         self.db.query(DailyHolding).filter(
@@ -90,9 +90,7 @@ class DailyCaptureService:
                 entry["costed"] = False
         holdings_value = ZERO
         for symbol, entry in merged.items():
-            sleeve_id = placed.get(symbol) or routes.get(
-                entry["type"] or "", ba.default_sleeve_id
-            )
+            sleeve_id = placed.get(symbol) or sleeve_for_type(ba, entry["type"])
             value = entry["value"].quantize(CENT)
             self.db.add(
                 DailyHolding(
@@ -128,7 +126,7 @@ class DailyCaptureService:
         beyond = securities - holdings_value
         unpriced: Dict[str, Decimal] = {sid: ZERO for sid in by_sleeve}
         if beyond != 0:
-            options_sleeve = routes.get("OPTION", ba.default_sleeve_id)
+            options_sleeve = sleeve_for_type(ba, "OPTION")
             by_sleeve[options_sleeve] = by_sleeve.get(options_sleeve, ZERO) + beyond
             unpriced[options_sleeve] = unpriced.get(options_sleeve, ZERO) + abs(beyond)
 

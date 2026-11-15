@@ -493,7 +493,7 @@ Plaid login's access key, kept encrypted.
 | account_fingerprint | String(64) | nullable, indexed — SHA-256 of the brokerage and the full account number, where the source shows one; the same account reached through a second login has the same value |
 | account_id | String(36) FK→accounts.id | nullable, **ON DELETE SET NULL** — set when mapped |
 | default_sleeve_id | String(36) FK→sleeves.id | nullable, **ON DELETE SET NULL** — where synced trades land |
-| sleeve_routes | JSON | nullable — security type → sleeve id, e.g. `{"ETF": "…"}`; other types use `default_sleeve_id` |
+| sleeve_routes | JSON | nullable — security type → sleeve id (`STOCK`, `ADR`, `OTHER`, `ETF`, `MUTUAL_FUND`, `OPTION`) and `CASH` for cash with no security; other types use `default_sleeve_id`. Null: everything goes to `default_sleeve_id` |
 | sync_start_date | Date | nullable — earliest activity date to load; NULL = full history |
 | status | String(20) | `unmapped` / `mapped` / `ignored`; Plaid also `matched`: linked to an account another feed still writes to, moved over later |
 | initial_sync_completed | Boolean | false while the source is still loading history |
@@ -513,13 +513,16 @@ Every account discovered under a login, mapped or not — kept apart from `accou
 login exposes several accounts and some are never brought in. The mapped `Account` may belong
 to a **different client** than the connection: one person's login reaches accounts they only
 act on as agent, so `connection.client_id` is who holds the login, not who owns each account. Mapping creates the `Account`
-and a `FIFO` sleeve (default strategy "Unallocated"). Symbols can later be moved to other
+and, for an investment account, a `FIFO` sleeve per strategy (Stocks, ETFs, Mutual funds, Options, Cash;
+a bank, card or loan only Cash; see `sleeve_routing`). Accounts linked earlier had one sleeve under
+"Unallocated", which `python -m app.cli split-into-strategies` sorts. Symbols can later be moved to other
 sleeves of the same account (`POST /trades/reassign`); sync dedups across all of the account's
 sleeves so moved trades are not re-imported.
 
 **Routing a synced trade to a sleeve**, in order: (1) the sleeve of this account that already
 holds the symbol — so a symbol never straddles sleeves and a manual reassignment sticks;
-(2) `sleeve_routes[security_type]`; (3) `default_sleeve_id`. Cash activities follow their symbol.
+(2) `sleeve_routes[security_type]`; (3) `default_sleeve_id`. Cash activities follow their symbol; cash
+with no symbol goes to `sleeve_routes["CASH"]`.
 
 ### `brokerage_activities`
 | Column | Type | Notes |
