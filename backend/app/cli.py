@@ -162,6 +162,53 @@ def plaid_refresh(client: Optional[str]) -> int:
         db.close()
 
 
+def plaid_securities(client: Optional[str]) -> int:
+    """Read only: what Plaid calls each security a login holds (name, type,
+    ticker, CUSIP, ISIN) and whether the app reads it. A holding with no ticker
+    is not read, so it is left out of the account's holdings; this shows what
+    else Plaid gives for it. No quantity, value or access key is printed."""
+    from app.connectors.plaid_connector import PlaidClient, configured
+    from app.models.brokerage_connection import BrokerageConnection
+    from app.models.client import Client
+    from app.services.plaid_link_service import PlaidLinkService
+
+    if not configured():
+        print("Plaid is not set up on this machine.", file=sys.stderr)
+        return 1
+    db = SessionLocal()
+    try:
+        logins = db.query(BrokerageConnection).filter(
+            BrokerageConnection.source == "plaid", BrokerageConnection.status == "active"
+        )
+        if client:
+            found = db.query(Client).filter((Client.id == client) | (Client.name.ilike(client))).all()
+            if len(found) != 1:
+                print(f"No single client is called {client!r}.", file=sys.stderr)
+                return 1
+            logins = logins.filter(BrokerageConnection.client_id == found[0].id)
+        links = PlaidLinkService(db, PlaidClient())
+        for login in logins.all():
+            try:
+                answer = links.client.holdings(links._access_token(login))
+            except Exception as error:  # one login never stops the rest
+                print(f"{login.institution or 'A login'}: failed ({type(error).__name__})")
+                continue
+            held = {h.get("security_id") for h in answer.get("holdings") or []}
+            print(f"{login.institution or 'A login'}:")
+            for sec in answer.get("securities") or []:
+                if sec.get("security_id") not in held:
+                    continue
+                read = bool(sec.get("ticker_symbol")) and sec.get("type") != "derivative"
+                print(
+                    f"  {'read' if read else 'NOT READ':8} type={sec.get('type')} "
+                    f"ticker={sec.get('ticker_symbol')} cusip={sec.get('cusip')} isin={sec.get('isin')} "
+                    f"name={sec.get('name')!r}"
+                )
+        return 0
+    finally:
+        db.close()
+
+
 def compare_feeds(client: str, days: int) -> int:
     """Read only: for a client's new Plaid login, whether its trades match what an
     existing feed of the same account already stored (by id, or by what they were)."""
@@ -718,6 +765,11 @@ def main(argv=None) -> int:
     rename.add_argument("--from", dest="old", required=True)
     rename.add_argument("--to", dest="new", required=True)
     rename.add_argument("--date", required=True, help="the first day under the new ticker, YYYY-MM-DD")
+    securities = commands.add_parser(
+        "plaid-securities",
+        help="read only: what Plaid calls each security a login holds, and whether the app reads it",
+    )
+    securities.add_argument("--client", help="one client's logins (name or id); every active login without it")
     dupes = commands.add_parser(
         "repair-duplicate-splits",
         help="a split recorded twice makes shares never held: show them (--apply removes the copies and rebuilds)",
@@ -754,6 +806,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command == "split-into-strategies":
         return split_into_strategies(args.account, args.apply)
+    if args.command == "plaid-securities":
+        return plaid_securities(args.client)
     if args.command == "repair-duplicate-splits":
         return repair_duplicate_splits(args.apply)
     if args.command == "add-ticker-change":
