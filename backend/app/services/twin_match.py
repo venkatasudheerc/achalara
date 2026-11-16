@@ -9,7 +9,10 @@ same price, on the same day or within two weekdays.
 from datetime import timedelta
 from decimal import Decimal
 from itertools import combinations
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from app.services.corporate_actions import current_symbol
+from app.utils.symbols import app_symbol
 
 # The feed rounds a quantity to three places; each part may be a little off too.
 QUANTITY_TOLERANCE = Decimal("0.0015")
@@ -19,6 +22,14 @@ WEEKDAYS = 2
 MAX_ROWS = 6
 # The nearest rows are tried; a day holds a few per fund.
 MAX_CANDIDATES = 14
+
+
+def read_as(symbol: str, day, changes: Optional[Dict] = None) -> str:
+    """The symbol a trade of ``symbol`` on ``day`` is read under: today's, after
+    any ticker change (a file's rows under an old name, the feed's under the new)."""
+    if changes:
+        symbol = current_symbol(symbol, day, changes)[0]
+    return app_symbol(symbol)
 
 
 def weekdays_apart(a, b) -> int:

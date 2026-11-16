@@ -534,7 +534,7 @@ through Plaid (below), their earlier history from the custodian's own files.
   add up to it (two to six, within 0.0015 of a unit, at its price within a cent, on its day or
   within two weekdays), recognised in both orders (the feed's row arriving after the file:
   `IngestionService`; the file arriving after the feed's row: `VanguardReportImport.plan`).
-  `python -m app.cli repair-feed-twins [--apply]` removes a feed trade stored before this could be
+  Symbols are compared as they are read today (`twin_match.read_as`), so a file's rows under an old ticker are the feed's under the new one. `python -m app.cli repair-feed-twins [--apply]` removes a feed trade stored before this could be
   recognised (marking its source row, with no cash) and rebuilds. **One holdings
   check** (`AccountImportService.holdings_check`) compares every day the custodian recorded
   holdings with what the trades add up to and says which differ, when they last agreed and first

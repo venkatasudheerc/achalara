@@ -48,8 +48,8 @@ from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.models.perf import CorporateAction
 from app.connectors.plaid_reader import ID_PREFIX as PLAID_PREFIX
-from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE, split_on_file
-from app.services.twin_match import sum_to
+from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE, renames, split_on_file
+from app.services.twin_match import read_as, sum_to
 from app.services.opening_position import NOT_OPENING
 from app.utils.symbols import app_symbol
 
@@ -620,7 +620,7 @@ class VanguardReportImport:
                         (row, {"date": ours.trade_date.isoformat(), "symbol": ours.symbol})
                     )
             pending = left
-        pending = self._several_for_one_feed_row(pending, on_file, used, plan)
+        pending = self._several_for_one_feed_row(pending, on_file, used, plan, renames(self.db))
         plan.trades.extend(pending)
 
         cash_on_file = (
@@ -648,7 +648,7 @@ class VanguardReportImport:
         return plan
 
     @staticmethod
-    def _several_for_one_feed_row(pending, on_file, used: set, plan: "Plan"):
+    def _several_for_one_feed_row(pending, on_file, used: set, plan: "Plan", changes=None):
         """A feed's one row for a day's purchase of a fund is several of the
         report's rows (a plan's pre-tax and employer-match lines, one each).
         They are on file already when their quantities add up to the feed's row,
@@ -662,7 +662,7 @@ class VanguardReportImport:
                 for index, (_, trade) in enumerate(pending)
                 if trade.action.value == ours.action
                 and trade.security_type != "OPTION"
-                and app_symbol(trade.symbol) == app_symbol(ours.symbol)
+                and read_as(trade.symbol, trade.executed_at.date(), changes) == read_as(ours.symbol, ours.trade_date, changes)
             ]
             found = sum_to(Decimal(str(ours.quantity)), Decimal(str(ours.price)), ours.trade_date, candidates)
             if not found:
