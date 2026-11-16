@@ -365,15 +365,11 @@ class AccountImportService:
         ]
 
     def _holdings_only(self, account: Account, sleeve_ids: List[str]) -> bool:
-        """An account whose institution gives holdings and no transactions, and no
-        trade has been added: there is nothing for the holdings to be checked
-        against, so the holdings are the record. Cash rows do not explain
-        holdings, so they do not count (a 529 may have contributions on file and
-        no purchases, its funds being named but never traded here)."""
-        if self.db.query(func.max(BrokerageAccount.transactions_synced_through)).filter(
-            BrokerageAccount.account_id == account.id
-        ).scalar() is not None:
-            return False
+        """An account with holdings and no trades on file at all (an opening is not
+        one): there is nothing for the holdings to be checked against, and no first
+        transaction to anchor an opening to, so the holdings are the record. Cash
+        rows do not explain holdings, and a feed's completeness date does not either:
+        a feed that gave no trades in its window holds what was bought before it."""
         if not sleeve_ids:
             return True
         return self.db.query(Trade.id).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).first() is None
@@ -388,7 +384,7 @@ class AccountImportService:
         report should start from to cover what is missing: the last day they
         agreed, or a few weeks before the first record when even that differs.
         None when the custodian has never recorded the account's holdings, or
-        when it gives no transactions and none are on file (the holdings are the record).
+        when no trade is on file at all (the holdings are the record).
 
         Options are left out (the record never lists them), as is anything the
         feed names by its company with a leading "~" (a security that no longer

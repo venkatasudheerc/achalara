@@ -195,6 +195,8 @@ def test_when_even_the_first_record_differs_the_whole_history_is_asked_for(db, a
 
     acct = db.get(Account, account.account_id)
     account.transactions_synced_through = date(2026, 10, 9)  # a feed that gives transactions
+    db.add(Trade(sleeve_id=account.default_sleeve_id, trade_date=date(2026, 10, 1), symbol="BBB", action="BUY",
+                 quantity=D(1), price=D(10), commission=D(0), external_id="plaid:b1"))  # and has given some
     db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
                         quantity=D(4), price=D(50), market_value=D(200)))
     db.commit()
@@ -292,6 +294,8 @@ def test_record_gaps_name_the_holdings_that_differ(client, db, account):  # noqa
 
     acct = db.get(Account, account.account_id)
     account.transactions_synced_through = date(2026, 10, 9)  # a feed that gives transactions
+    db.add(Trade(sleeve_id=account.default_sleeve_id, trade_date=date(2026, 10, 1), symbol="BBB", action="BUY",
+                 quantity=D(1), price=D(10), commission=D(0), external_id="plaid:b1"))  # and has given some
     db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 10, 9), symbol="AAA",
                         quantity=D(4), price=D(50), market_value=D(200)))
     db.commit()
@@ -299,7 +303,10 @@ def test_record_gaps_name_the_holdings_that_differ(client, db, account):  # noqa
                      params={"as_client": acct.client_id})
     assert got.status_code == 200, got.text
     body = got.json()
-    assert body["holdings"] == [{"symbol": "AAA", "custodian_quantity": 4.0, "our_quantity": 0.0}]
+    assert body["holdings"] == [
+        {"symbol": "AAA", "custodian_quantity": 4.0, "our_quantity": 0.0},
+        {"symbol": "BBB", "custodian_quantity": 0.0, "our_quantity": 1.0},
+    ]
     assert body["first_differed"] == "2026-10-09" and body["last_agreed"] is None
     assert body["cash"] is None
     # An account that is not in view is a 404, as everywhere in the portal.
@@ -563,3 +570,22 @@ def test_cash_rows_alone_do_not_make_holdings_something_to_check(db, account):
     assert account.transactions_synced_through is None
     assert AccountImportService(db).holdings_check(acct) is None
     assert account_health(db, acct, date(2026, 11, 10))["state"] != "incomplete"
+
+
+def test_a_feed_that_gave_no_trades_holds_what_was_bought_before_it(db, account):
+    """A 529 whose feed has a completeness date but no trades in its window, and no cash
+    either: no first transaction to anchor an opening to, so the holdings are the record."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import DailyHolding
+    from app.services.account_health import account_health
+    from app.services.account_import_service import AccountImportService
+
+    acct = db.get(Account, account.account_id)
+    account.transactions_synced_through = date(2026, 11, 15)
+    db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 11, 13), symbol="#EXAMPLE PORTFOLIO",
+                        quantity=D(10), price=D(25), market_value=D(250)))
+    db.commit()
+    assert AccountImportService(db).holdings_check(acct) is None
+    assert account_health(db, acct, date(2026, 11, 16))["state"] != "incomplete"
