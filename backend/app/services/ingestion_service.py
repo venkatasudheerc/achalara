@@ -30,6 +30,7 @@ from app.models.sync_log import SyncLog
 from app.models.trade import Trade
 from app.services.opening_position import NOT_OPENING
 from app.services.portfolio_calculation import PortfolioCalculationService
+from app.services.twin_match import sum_to
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,11 @@ def _weekdays_apart(a, b) -> int:
     return apart
 
 
-def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[tuple]:
-    """The report trade in ``keys`` that ``trade`` is: same side, symbol and
-    quantity, price within a cent a share, within two weekdays; the nearest."""
+def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[List[tuple]]:
+    """The report trade(s) in ``keys`` that ``trade`` is: same side, symbol and
+    quantity, price within a cent a share, within two weekdays; the nearest. Failing
+    that, the report trades that add up to it (a feed's one row for several of the
+    report's, one per source of a plan's money)."""
     day = trade.executed_at.date()
     quantity = _exact(trade.quantity)
     price = Decimal(str(trade.price))
@@ -80,7 +83,15 @@ def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[tuple]:
         rank = (abs((on - day).days), abs(at - price))
         if best is None or rank < best[0]:
             best = (rank, key)
-    return best[1] if best else None
+    if best:
+        return [best[1]]
+    parts = [
+        (key, key[4], key[5], key[2])
+        for key in keys
+        if isinstance(key, tuple) and len(key) == 7 and key[0] == "report"
+        and key[1] == trade.action.value and key[3] == symbol
+    ]
+    return sum_to(quantity, price, day, parts)
 
 
 def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = None) -> bool:
@@ -96,7 +107,8 @@ def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = Non
             # report trade answers for one feed trade only.
             twin = _report_twin(trade, keys)
             if twin is not None:
-                keys.discard(twin)
+                for key in twin:
+                    keys.discard(key)
                 if twins is not None:
                     twins.append(trade.external_id)
                 return True

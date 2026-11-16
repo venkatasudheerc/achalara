@@ -47,7 +47,9 @@ from app.models.cash_activity import MARGIN_INTEREST, CashActivity
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.models.perf import CorporateAction
+from app.connectors.plaid_reader import ID_PREFIX as PLAID_PREFIX
 from app.services.corporate_actions import ASSIGNMENT_NOTE, EXPIRY_NOTE, MERGER_NOTE, split_on_file
+from app.services.twin_match import sum_to
 from app.services.opening_position import NOT_OPENING
 from app.utils.symbols import app_symbol
 
@@ -618,6 +620,7 @@ class VanguardReportImport:
                         (row, {"date": ours.trade_date.isoformat(), "symbol": ours.symbol})
                     )
             pending = left
+        pending = self._several_for_one_feed_row(pending, on_file, used, plan)
         plan.trades.extend(pending)
 
         cash_on_file = (
@@ -643,6 +646,35 @@ class VanguardReportImport:
                 used_cash.add(match.id)
                 plan.held_cash += 1
         return plan
+
+    @staticmethod
+    def _several_for_one_feed_row(pending, on_file, used: set, plan: "Plan"):
+        """A feed's one row for a day's purchase of a fund is several of the
+        report's rows (a plan's pre-tax and employer-match lines, one each).
+        They are on file already when their quantities add up to the feed's row,
+        at its price, on its day or within two weekdays. Returns what is left."""
+        for ours in sorted(
+            (t for t in on_file if (t.external_id or "").startswith(PLAID_PREFIX) and t.id not in used),
+            key=lambda t: t.trade_date,
+        ):
+            candidates = [
+                (index, trade.quantity, trade.price, trade.executed_at.date())
+                for index, (_, trade) in enumerate(pending)
+                if trade.action.value == ours.action
+                and trade.security_type != "OPTION"
+                and app_symbol(trade.symbol) == app_symbol(ours.symbol)
+            ]
+            found = sum_to(Decimal(str(ours.quantity)), Decimal(str(ours.price)), ours.trade_date, candidates)
+            if not found:
+                continue
+            used.add(ours.id)
+            plan.held_trades += len(found)
+            for index in found:
+                row, trade = pending[index]
+                if trade.executed_at.date() != ours.trade_date:
+                    plan.loose_matches.append((row, {"date": ours.trade_date.isoformat(), "symbol": ours.symbol}))
+            pending = [item for index, item in enumerate(pending) if index not in set(found)]
+        return pending
 
     def apply(
         self, ba: BrokerageAccount, plan: Plan, holdings: Optional[list] = None
