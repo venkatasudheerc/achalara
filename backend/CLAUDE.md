@@ -54,6 +54,9 @@ python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 # The morning's Plaid refresh, now (every active login, or one client's); safe to repeat
 python -m app.cli plaid-refresh [--client "Pat Example"]
 
+# A feed's purchase a custodian's file already counts (one feed row for several file rows): shows them; --apply removes them and rebuilds
+python -m app.cli repair-feed-twins [--apply]
+
 # Read only: what Plaid calls each security a login holds, and whether the app reads it (a holding with no ticker is not read)
 python -m app.cli plaid-securities [--client "Pat Example"]
 
@@ -525,7 +528,14 @@ through Plaid (below), their earlier history from the custodian's own files.
   symbol and quantity with the price within a cent a share and the day within two weekdays (a
   feed's day is worked back from settlement, which a bank holiday moves), cash on amount within
   three days. The feed's row is then marked `connection_service.REPORT_TWIN` and keeps no cash,
-  so the report's row alone counts it. **One holdings
+  so the report's row alone counts it. **A feed row may be several of the file's rows**
+  (`services/twin_match.py`): a plan's pre-tax and employer-match money is one row per source in
+  its file and one row in the feed, rounded to three places. The feed row is the file rows that
+  add up to it (two to six, within 0.0015 of a unit, at its price within a cent, on its day or
+  within two weekdays), recognised in both orders (the feed's row arriving after the file:
+  `IngestionService`; the file arriving after the feed's row: `VanguardReportImport.plan`).
+  `python -m app.cli repair-feed-twins [--apply]` removes a feed trade stored before this could be
+  recognised (marking its source row, with no cash) and rebuilds. **One holdings
   check** (`AccountImportService.holdings_check`) compares every day the custodian recorded
   holdings with what the trades add up to and says which differ, when they last agreed and first
   differed, and where a report should start (`download_from`). Options and "~" names are not

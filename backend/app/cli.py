@@ -162,6 +162,28 @@ def plaid_refresh(client: Optional[str]) -> int:
         db.close()
 
 
+def repair_feed_twins(apply: bool) -> int:
+    """A feed's purchase that a custodian's file already counts (the feed sends one
+    row for several of the file's, one per source of a plan's money) is counted
+    twice. Shows them; with --apply removes the feed's trade, keeps the file's
+    rows and rebuilds. Safe to repeat."""
+    from app.services.feed_twins import repair
+
+    db = SessionLocal()
+    try:
+        result = repair(db, apply)
+    finally:
+        db.close()
+    if not result["duplicates"]:
+        print("No feed trade repeats a file's.")
+        return 0
+    for item in result["duplicates"]:
+        print(f"{item['date']} {item['action']} {item['quantity']:f} {item['symbol']}: "
+              f"is {item['file_rows']} row(s) of the file" + (" (removed)" if apply else ""))
+    print(f"{result['rebuilt']} account(s) rebuilt." if apply else "Nothing changed. Add --apply to remove them and rebuild.")
+    return 0
+
+
 def plaid_securities(client: Optional[str]) -> int:
     """Read only: what Plaid calls each security a login holds (name, type,
     ticker, CUSIP, ISIN) and whether the app reads it. A holding with no ticker
@@ -765,6 +787,11 @@ def main(argv=None) -> int:
     rename.add_argument("--from", dest="old", required=True)
     rename.add_argument("--to", dest="new", required=True)
     rename.add_argument("--date", required=True, help="the first day under the new ticker, YYYY-MM-DD")
+    twins = commands.add_parser(
+        "repair-feed-twins",
+        help="a feed's purchase a custodian's file already counts: show them (--apply removes them and rebuilds)",
+    )
+    twins.add_argument("--apply", action="store_true")
     securities = commands.add_parser(
         "plaid-securities",
         help="read only: what Plaid calls each security a login holds, and whether the app reads it",
@@ -806,6 +833,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command == "split-into-strategies":
         return split_into_strategies(args.account, args.apply)
+    if args.command == "repair-feed-twins":
+        return repair_feed_twins(args.apply)
     if args.command == "plaid-securities":
         return plaid_securities(args.client)
     if args.command == "repair-duplicate-splits":

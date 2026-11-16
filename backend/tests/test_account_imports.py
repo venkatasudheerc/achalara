@@ -378,3 +378,115 @@ def test_an_account_with_holdings_and_no_transactions_at_all_has_nothing_to_chec
     db.commit()
     assert account.transactions_synced_through is None
     assert AccountImportService(db).holdings_check(acct) is None  # the holdings are the record
+
+
+# ----------------------------------------------------------------------
+# A feed's one row for several of a file's (one per source of a plan's money)
+# ----------------------------------------------------------------------
+
+
+def _feed_buy(db, account, ext, qty, price, day):
+    from datetime import datetime, timezone
+    from decimal import Decimal as D
+
+    from app.connectors.models import ActivityBatch, NormalizedTrade, RawActivity, TradeAction
+    from app.services.connection_service import ConnectionService
+
+    feed = NormalizedTrade(external_id=ext, symbol="QQQ", action=TradeAction.BUY, quantity=D(str(qty)),
+                           price=D(str(price)), executed_at=datetime(day.year, day.month, day.day, tzinfo=timezone.utc),
+                           commission=D(0), source="plaid", security_type="MUTUAL_FUND", notes="QQQ FUND")
+    raw = RawActivity(source_id=ext, type="PLAID BUY/BUY", occurred_on=day, symbol="QQQ", outcome="trade",
+                      cash_amount=-D(str(qty)) * D(str(price)), is_external_flow=False, payload={})
+    return ConnectionService(db, connector=object()).ingest_batch(
+        account, ActivityBatch(trades=[feed], cash=[], raw=[raw], skipped={}, security_type_sources={}))
+
+
+def _two_source_report():
+    # Pre-tax and employer match, each its own row; the feed reports them as one.
+    return _report_xlsx(
+        ("10/23/2026", "10/23/2026", "QQQ", "QQQ FUND", "Buy", "CASH", "1.4930", "$132.3000", "Free", "-$197.5000"),
+        ("10/23/2026", "10/23/2026", "QQQ", "QQQ FUND", "Buy", "CASH", "1.1950", "$132.3000", "Free", "-$158.1000"),
+    )
+
+
+def test_a_feed_row_that_is_several_of_the_files_rows_is_not_counted_again(client, db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.connection_service import REPORT_TWIN
+
+    assert client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx")).status_code == 200
+    before = db.query(Trade).count()
+    _feed_buy(db, account, "plaid:t9", "2.688", "132.30", date(2026, 10, 22))  # a day earlier, three places
+    assert db.query(Trade).count() == before
+    row = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:t9").one()
+    assert (row.outcome, row.cash_amount) == (REPORT_TWIN, D("0"))
+
+
+def test_a_file_whose_rows_make_up_a_feed_row_already_here_adds_nothing(client, db, account):
+    from datetime import date
+
+    _feed_buy(db, account, "plaid:t9", "2.688", "132.30", date(2026, 10, 22))
+    before = db.query(Trade).count()
+    plan_response = client.post(_base(account, db) + "/preview", files=_files(_two_source_report(), "report.xlsx"))
+    assert plan_response.status_code == 200, plan_response.text
+    body = plan_response.json()
+    assert (body["to_add_trades"], body["on_file_trades"]) == (0, 2)
+    client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx"))
+    assert db.query(Trade).filter(Trade.symbol == "QQQ").count() == 1  # the feed's row alone; the file's two are not added
+
+
+def test_rows_that_do_not_add_up_to_the_feed_row_are_not_its_twin(client, db, account):
+    from datetime import date
+
+    assert client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx")).status_code == 200
+    before = db.query(Trade).count()
+    _feed_buy(db, account, "plaid:far", "2.700", "132.30", date(2026, 10, 22))   # not their sum
+    _feed_buy(db, account, "plaid:price", "2.688", "133.50", date(2026, 10, 22))  # not their price
+    _feed_buy(db, account, "plaid:late", "2.688", "132.30", date(2026, 11, 3))    # not their day
+    assert db.query(Trade).count() == before + 3
+
+
+def test_the_repair_finds_a_feed_row_stored_before_it_could_be_recognised(client, db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.connection_service import REPORT_TWIN
+    from app.services.feed_twins import repair
+
+    # The feed's row first, then the file: the upload recognises it, so to model the
+    # old state store the feed's trade beside the file's rows directly.
+    assert client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx")).status_code == 200
+    db.add(Trade(sleeve_id=account.default_sleeve_id, trade_date=date(2026, 10, 22), symbol="QQQ", action="BUY",
+                 quantity=D("2.688"), price=D("132.30"), commission=D(0), external_id="plaid:old", security_type="MUTUAL_FUND"))
+    db.add(BrokerageActivity(brokerage_account_id=account.id, source_activity_id="plaid:old", type="PLAID BUY/BUY",
+                             activity_date=date(2026, 10, 22), symbol="QQQ", outcome="trade", cash_amount=D("-355.6"),
+                             is_external_flow=False, payload={}))
+    db.commit()
+    shown = repair(db)
+    assert [(d["symbol"], d["quantity"], d["file_rows"]) for d in shown["duplicates"]] == [("QQQ", D("2.688"), 2)]
+    assert db.query(Trade).filter(Trade.external_id == "plaid:old").count() == 1  # showing changes nothing
+    done = repair(db, apply=True)
+    assert done["rebuilt"] == 1
+    assert db.query(Trade).filter(Trade.external_id == "plaid:old").count() == 0
+    row = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:old").one()
+    assert (row.outcome, row.cash_amount) == (REPORT_TWIN, D("0"))
+    assert repair(db)["duplicates"] == []  # safe to repeat
+
+
+def test_summing_rows_to_a_total_prefers_the_fewest_and_respects_the_window():
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.services.twin_match import sum_to
+
+    day = date(2026, 10, 22)
+    parts = [("a", D("1.493"), D("132.30"), date(2026, 10, 23)), ("b", D("1.195"), D("132.30"), date(2026, 10, 23)),
+             ("c", D("2.688"), D("132.30"), date(2026, 10, 23)), ("d", D("0.5"), D("132.30"), date(2026, 10, 23))]
+    assert sum_to(D("2.688"), D("132.30"), day, parts[:2] + parts[3:]) == ["a", "b"]
+    assert sum_to(D("2.688"), D("132.30"), day, parts[:2] + [("x", D("9"), D("132.30"), date(2026, 10, 23))]) == ["a", "b"]
+    # Too far in days, or at another price: not part of it.
+    assert sum_to(D("2.688"), D("132.30"), day, [("a", D("1.493"), D("132.30"), date(2026, 10, 30)), parts[1]]) is None
+    assert sum_to(D("2.688"), D("132.30"), day, [("a", D("1.493"), D("140"), date(2026, 10, 23)), parts[1]]) is None
