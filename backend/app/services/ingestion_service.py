@@ -30,7 +30,8 @@ from app.models.sync_log import SyncLog
 from app.models.trade import Trade
 from app.services.opening_position import NOT_OPENING
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.twin_match import sum_to
+from app.services.corporate_actions import renames
+from app.services.twin_match import read_as, sum_to
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ def _weekdays_apart(a, b) -> int:
     return apart
 
 
-def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[List[tuple]]:
+def _report_twin(trade: NormalizedTrade, keys: set, changes=None) -> Optional[List[tuple]]:
     """The report trade(s) in ``keys`` that ``trade`` is: same side, symbol and
     quantity, price within a cent a share, within two weekdays; the nearest. Failing
     that, the report trades that add up to it (a feed's one row for several of the
@@ -71,11 +72,15 @@ def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[List[tuple]]:
     quantity = _exact(trade.quantity)
     price = Decimal(str(trade.price))
     symbol = str(trade.symbol).upper()
+    # A file's rows may be under an old ticker and the feed's under the new.
+    read = read_as(symbol, day, changes) if changes else None
     best = None
     for key in keys:
         if not (isinstance(key, tuple) and len(key) == 7 and key[0] == "report"):
             continue
         _, action, on, sym, qty, at, _number = key
+        if read is not None and sym != symbol and read_as(sym, on, changes) == read:
+            sym = symbol  # the same security under its other name
         if action != trade.action.value or sym != symbol or qty != quantity:
             continue
         if abs(at - price) > _TWIN_PRICE or _weekdays_apart(on, day) > _TWIN_WEEKDAYS:
@@ -89,12 +94,13 @@ def _report_twin(trade: NormalizedTrade, keys: set) -> Optional[List[tuple]]:
         (key, key[4], key[5], key[2])
         for key in keys
         if isinstance(key, tuple) and len(key) == 7 and key[0] == "report"
-        and key[1] == trade.action.value and key[3] == symbol
+        and key[1] == trade.action.value
+        and (key[3] == symbol or (read is not None and read_as(key[3], key[2], changes) == read))
     ]
     return sum_to(quantity, price, day, parts)
 
 
-def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = None) -> bool:
+def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = None, changes=None) -> bool:
     """Whether ``trade`` is already represented in ``keys``, and record it if not.
     A feed trade found to be a report's trade is added to ``twins`` (its id)."""
     if trade.source in _ID_AUTHORITATIVE_SOURCES and trade.external_id:
@@ -105,7 +111,7 @@ def _is_duplicate(trade: NormalizedTrade, keys: set, twins: Optional[list] = Non
             # it is the same trade when the side, symbol and quantity agree,
             # the price within a cent and the day within two weekdays. Each
             # report trade answers for one feed trade only.
-            twin = _report_twin(trade, keys)
+            twin = _report_twin(trade, keys, changes)
             if twin is not None:
                 for key in twin:
                     keys.discard(key)
@@ -232,10 +238,11 @@ class IngestionService:
         for sid in dedup_sleeve_ids or [sleeve_id]:
             existing_keys |= self._existing_keys(sid)
         to_import: List[NormalizedTrade] = []
+        changes = renames(self.db)
         twins: List[str] = []
         result["report_twins"] = twins
         for t in trades:
-            if _is_duplicate(t, existing_keys, twins):
+            if _is_duplicate(t, existing_keys, twins, changes):
                 result["duplicates"] += 1
                 continue
             to_import.append(t)

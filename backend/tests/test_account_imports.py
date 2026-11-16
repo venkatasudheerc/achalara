@@ -385,17 +385,17 @@ def test_an_account_with_holdings_and_no_transactions_at_all_has_nothing_to_chec
 # ----------------------------------------------------------------------
 
 
-def _feed_buy(db, account, ext, qty, price, day):
+def _feed_buy(db, account, ext, qty, price, day, symbol="QQQ"):
     from datetime import datetime, timezone
     from decimal import Decimal as D
 
     from app.connectors.models import ActivityBatch, NormalizedTrade, RawActivity, TradeAction
     from app.services.connection_service import ConnectionService
 
-    feed = NormalizedTrade(external_id=ext, symbol="QQQ", action=TradeAction.BUY, quantity=D(str(qty)),
+    feed = NormalizedTrade(external_id=ext, symbol=symbol, action=TradeAction.BUY, quantity=D(str(qty)),
                            price=D(str(price)), executed_at=datetime(day.year, day.month, day.day, tzinfo=timezone.utc),
                            commission=D(0), source="plaid", security_type="MUTUAL_FUND", notes="QQQ FUND")
-    raw = RawActivity(source_id=ext, type="PLAID BUY/BUY", occurred_on=day, symbol="QQQ", outcome="trade",
+    raw = RawActivity(source_id=ext, type="PLAID BUY/BUY", occurred_on=day, symbol=symbol, outcome="trade",
                       cash_amount=-D(str(qty)) * D(str(price)), is_external_flow=False, payload={})
     return ConnectionService(db, connector=object()).ingest_batch(
         account, ActivityBatch(trades=[feed], cash=[], raw=[raw], skipped={}, security_type_sources={}))
@@ -490,3 +490,54 @@ def test_summing_rows_to_a_total_prefers_the_fewest_and_respects_the_window():
     # Too far in days, or at another price: not part of it.
     assert sum_to(D("2.688"), D("132.30"), day, [("a", D("1.493"), D("132.30"), date(2026, 10, 30)), parts[1]]) is None
     assert sum_to(D("2.688"), D("132.30"), day, [("a", D("1.493"), D("140"), date(2026, 10, 23)), parts[1]]) is None
+
+
+def _renamed(db):
+    """The file calls the fund QQQ; the feed, since a ticker change, "#QQQ FUND"."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.perf import CorporateAction
+
+    db.add(CorporateAction(symbol="QQQ", effective_date=date(2026, 11, 15), action_type="RENAME", ratio=D(1),
+                           new_symbol="#QQQ FUND", source="manual"))
+    db.commit()
+
+
+def test_a_files_rows_under_an_old_ticker_are_the_feeds_row_under_the_new_one(client, db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.brokerage_connection import BrokerageActivity
+    from app.services.connection_service import REPORT_TWIN
+
+    _renamed(db)
+    assert client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx")).status_code == 200
+    before = db.query(Trade).count()
+    _feed_buy(db, account, "plaid:t9", "2.688", "132.30", date(2026, 10, 22), symbol="#QQQ FUND")
+    assert db.query(Trade).count() == before
+    row = db.query(BrokerageActivity).filter(BrokerageActivity.source_activity_id == "plaid:t9").one()
+    assert (row.outcome, row.cash_amount) == (REPORT_TWIN, D("0"))
+
+
+def test_the_repair_reads_a_ticker_change_too(client, db, account):
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.services.feed_twins import repair
+
+    _renamed(db)
+    assert client.post(_base(account, db), files=_files(_two_source_report(), "report.xlsx")).status_code == 200
+    db.add(Trade(sleeve_id=account.default_sleeve_id, trade_date=date(2026, 10, 22), symbol="#QQQ FUND", action="BUY",
+                 quantity=D("2.688"), price=D("132.30"), commission=D(0), external_id="plaid:old", security_type="MUTUAL_FUND"))
+    db.commit()
+    assert [(d["symbol"], d["file_rows"]) for d in repair(db)["duplicates"]] == [("#QQQ FUND", 2)]
+
+
+def test_a_file_under_an_old_ticker_adds_nothing_when_the_feed_has_it_under_the_new(client, db, account):
+    from datetime import date
+
+    _renamed(db)
+    _feed_buy(db, account, "plaid:t9", "2.688", "132.30", date(2026, 10, 22), symbol="#QQQ FUND")
+    body = client.post(_base(account, db) + "/preview", files=_files(_two_source_report(), "report.xlsx")).json()
+    assert (body["to_add_trades"], body["on_file_trades"]) == (0, 2)

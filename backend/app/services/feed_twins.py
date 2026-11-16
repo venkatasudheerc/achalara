@@ -23,18 +23,18 @@ from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.services.connection_service import REPORT_TWIN
 from app.services.opening_position import NOT_OPENING
-from app.services.twin_match import PRICE_TOLERANCE, WEEKDAYS, sum_to, weekdays_apart
-from app.utils.symbols import app_symbol
+from app.services.corporate_actions import renames
+from app.services.twin_match import PRICE_TOLERANCE, WEEKDAYS, read_as, sum_to, weekdays_apart
 
 logger = logging.getLogger(__name__)
 _SAME_QUANTITY = Decimal("0.0001")
 
 
-def _one_for_one(feed: Trade, reports: List[Trade]):
+def _one_for_one(feed: Trade, reports: List[Trade], changes: Dict):
     for report in reports:
         if (
             report.action == feed.action
-            and app_symbol(report.symbol) == app_symbol(feed.symbol)
+            and read_as(report.symbol, report.trade_date, changes) == read_as(feed.symbol, feed.trade_date, changes)
             and abs(Decimal(str(report.quantity)) - Decimal(str(feed.quantity))) <= _SAME_QUANTITY
             and abs(Decimal(str(report.price)) - Decimal(str(feed.price))) <= PRICE_TOLERANCE
             and weekdays_apart(report.trade_date, feed.trade_date) <= WEEKDAYS
@@ -54,18 +54,20 @@ def find(db: Session, account_id: str) -> List[Dict]:
         (t for t in trades if (t.external_id or "").startswith(PLAID_PREFIX)),
         key=lambda t: (t.trade_date, t.id),
     )
+    changes = renames(db)  # a file's rows under an old ticker are the feed's under the new
     used: set = set()
     found: List[Dict] = []
     for trade in feed:
         free = [r for r in reports if r.id not in used]
-        counted = _one_for_one(trade, free)
+        counted = _one_for_one(trade, free, changes)
         if counted is None:
             parts = sum_to(
                 Decimal(str(trade.quantity)), Decimal(str(trade.price)), trade.trade_date,
                 [
                     (r, r.quantity, r.price, r.trade_date)
                     for r in free
-                    if r.action == trade.action and app_symbol(r.symbol) == app_symbol(trade.symbol)
+                    if r.action == trade.action
+                    and read_as(r.symbol, r.trade_date, changes) == read_as(trade.symbol, trade.trade_date, changes)
                 ],
             )
             counted = parts
