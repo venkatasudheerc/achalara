@@ -541,3 +541,25 @@ def test_a_file_under_an_old_ticker_adds_nothing_when_the_feed_has_it_under_the_
     _feed_buy(db, account, "plaid:t9", "2.688", "132.30", date(2026, 10, 22), symbol="#QQQ FUND")
     body = client.post(_base(account, db) + "/preview", files=_files(_two_source_report(), "report.xlsx")).json()
     assert (body["to_add_trades"], body["on_file_trades"]) == (0, 2)
+
+
+def test_cash_rows_alone_do_not_make_holdings_something_to_check(db, account):
+    """A 529 with contributions on file and funds it never traded here: the holdings
+    are the record, so nothing is reported as missing."""
+    from datetime import date
+    from decimal import Decimal as D
+
+    from app.models.cash_activity import CashActivity
+    from app.models.perf import DailyHolding
+    from app.services.account_health import account_health
+    from app.services.account_import_service import AccountImportService
+
+    acct = db.get(Account, account.account_id)
+    db.add(DailyHolding(account_id=acct.id, as_of_date=date(2026, 11, 8), symbol="#EXAMPLE PORTFOLIO",
+                        quantity=D(10), price=D(25), market_value=D(250)))
+    db.add(CashActivity(sleeve_id=account.default_sleeve_id, activity_date=date(2026, 10, 1), type="CONTRIBUTION",
+                        amount=D(100), external_id="plaid:c1"))
+    db.commit()
+    assert account.transactions_synced_through is None
+    assert AccountImportService(db).holdings_check(acct) is None
+    assert account_health(db, acct, date(2026, 11, 10))["state"] != "incomplete"
