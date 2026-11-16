@@ -365,18 +365,18 @@ class AccountImportService:
         ]
 
     def _holdings_only(self, account: Account, sleeve_ids: List[str]) -> bool:
-        """An account whose institution gives holdings and no transactions, and
-        none has been added: there is nothing for the holdings to be checked
-        against, so the holdings are the record."""
+        """An account whose institution gives holdings and no transactions, and no
+        trade has been added: there is nothing for the holdings to be checked
+        against, so the holdings are the record. Cash rows do not explain
+        holdings, so they do not count (a 529 may have contributions on file and
+        no purchases, its funds being named but never traded here)."""
         if self.db.query(func.max(BrokerageAccount.transactions_synced_through)).filter(
             BrokerageAccount.account_id == account.id
         ).scalar() is not None:
             return False
         if not sleeve_ids:
             return True
-        has_trade = self.db.query(Trade.id).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).first()
-        has_cash = self.db.query(CashActivity.id).filter(CashActivity.sleeve_id.in_(sleeve_ids)).first()
-        return has_trade is None and has_cash is None
+        return self.db.query(Trade.id).filter(Trade.sleeve_id.in_(sleeve_ids), NOT_OPENING).first() is None
 
     def holdings_check(self, account: Account) -> Optional[Dict]:
         """Our holdings against the custodian's record, and what to download.
