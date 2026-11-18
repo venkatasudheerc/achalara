@@ -546,8 +546,9 @@ through Plaid (below), their earlier history from the custodian's own files.
   `transactions_synced_through` to that day (never lowers it, never past today), which is what lets
   `OpeningPositionService` work the opening back from the holdings recorded on or before it: an
   account whose institution gives holdings and no transactions (a 401k) gets no opening otherwise.
-  An account with **holdings and no trades, and no feed watermark** (cash rows do not count: a
-  529's contributions are on file and its funds never traded), has nothing to
+  An account with **holdings and no trades on file at all** (cash rows and a feed watermark do not
+  count: a 529's contributions are on file and its funds never traded here, and a feed that gave no
+  trades in its window holds what was bought before it) has nothing to
   check them against: `holdings_check` returns None (the holdings are the record). The file itself is never kept. A shared account takes
   no uploads. An admin or advisor previewing a client (`as_client`) sees and may use exactly what the
   client does.
