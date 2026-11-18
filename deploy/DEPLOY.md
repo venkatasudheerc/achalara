@@ -221,7 +221,8 @@ The app's own daily jobs keep their UTC times (price history at 23:30 UTC on wee
 Eastern Tuesday to Saturday and records the day before. A server down at that time makes the
 run up when it starts, if it is back by 9:30 AM Eastern (after that the balances are no longer
 where the day before ended, and that day's record for Plaid accounts is missed; the next run
-brings their transactions up to date). The other daily jobs are made up the same way for most of
+brings their transactions up to date). A second Plaid run at 7:30 PM Eastern, Monday to Saturday,
+brings new transactions and balances in and records no day. The other daily jobs are made up the same way for most of
 a day. System status keeps each job's last run across restarts. Ticker changes
 market data has seen are copied at 6:15 AM Eastern every day; one it has not seen is confirmed on
 System status ("Ticker changes to confirm") or entered with

@@ -71,8 +71,9 @@ def test_status_reports_accounts_capture_and_data(db, client):
 
     assert body["database"]["ok"] is True
     job_ids = [j["id"] for j in body["jobs"]]
-    assert job_ids[:6] == [
+    assert job_ids[:7] == [
         "plaid_refresh",
+        "plaid_refresh_evening",
         "ticker_changes",
         "sector_copy",
         "market_pattern_copy",

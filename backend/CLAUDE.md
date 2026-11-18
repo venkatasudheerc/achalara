@@ -635,6 +635,11 @@ its accounts are `brokerage_accounts` rows. Rules:
   pending) is deleted, both by Plaid's id. Investment transactions are read again over the last
   `REFRESH_DAYS`. A login Plaid says needs signing in again (`NEEDS_SIGN_IN`) is set `broken`
   and skipped until repaired; one failing login never stops the rest.
+- **The evening refresh** (job `plaid_refresh_evening`, 7:30 PM US Eastern Monday to Saturday,
+  grace three hours) is the same refresh with `record=False`: new bank and card transactions,
+  late trades, balances and card details are brought up to date, but **no day is recorded**,
+  since an evening balance is not where the day before ended. Only the morning run records. A
+  run missed is not worth more than the next one; the grace only covers a short outage.
 - **Refresh now** (`PlaidLinkService.refresh_mine`, `POST /portal/links/plaid/refresh`): the
   morning refresh for the viewer's own logins only, never a spouse's or a shared one; a login
   checked in the last ten minutes (`REFRESH_AFTER`) or one that needs signing in again is left as
