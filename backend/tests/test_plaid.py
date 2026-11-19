@@ -660,3 +660,20 @@ def test_nothing_is_asked_of_a_price_source_or_market_data_about_a_name():
     from app.services.live_quotes import quotable
 
     assert quotable("VPMAX") and not quotable("#TARGET RETIRE 2050 TRUST")
+
+
+def test_a_settlement_fund_sent_as_a_ticker_less_fund_is_the_accounts_cash_not_its_options():
+    """Vanguard's cash deposit fund arrives as a mutual fund with no ticker. Left as it was, its
+    balance was in the account's total with nothing listed, so it showed as "options"."""
+    securities = {
+        "sf": {"security_id": "sf", "type": "mutual fund", "ticker_symbol": None,
+               "name": "EXAMPLE CASH DEPOSIT (Settlement Fund)"},
+        "mm": {"security_id": "mm", "type": "mutual fund", "ticker_symbol": "ZZZXX", "name": "Example Money Market"},
+    }
+    held = [
+        {"account_id": "a1", "security_id": "sf", "quantity": 50.15, "institution_price": 1, "institution_value": 50.15},
+        {"account_id": "a1", "security_id": "mm", "quantity": 200, "institution_price": 1, "institution_value": 200},
+    ]
+    figures = plaid_reader.read_holdings({"account_id": "a1", "balances": {"current": 250.15}}, held, securities)
+    # The fund is the cash; a money-market fund held as an investment is still a holding.
+    assert (figures.cash, [p.symbol for p in figures.positions]) == (D("50.15"), ["ZZZXX"])

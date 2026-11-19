@@ -618,7 +618,10 @@ its accounts are `brokerage_accounts` rows. Rules:
   the record, but never asked of a price source or market data: `live_quotes.quotable` and
   `held_symbols` leave a name out, and `PortalService._place_in_sectors` puts it with the funds
   (no sector, not looked through). Not for an option, cash (`is_cash_equivalent`) or a settlement
-  fund, which is the account's cash. A file names it the same way: use the symbol Plaid reports
+  fund, which is the account's cash (`plaid_reader.is_cash_holding`: Plaid types most settlement funds
+  `cash`, but Vanguard's "CASH DEPOSIT (Settlement Fund)" is a ticker-less mutual fund, so it is read
+  as cash by that name only, never a money-market fund held as an investment; left out, its balance
+  sits in the total with nothing listed and shows as "options"). A file names it the same way: use the symbol Plaid reports
   (`python -m app.cli plaid-securities` shows the name), or one other name and a ticker change
   (`add-ticker-change --from OLD --to "#NAME" --date …`) to read earlier rows under it. `~` is a
   different mark (a security that no longer trades, which is not compared).
