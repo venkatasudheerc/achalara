@@ -15,7 +15,8 @@ until the client repairs it; the other logins carry on.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -43,6 +44,18 @@ SOURCE = "plaid"
 # Investment transactions are read again over this window each day: a trade
 # can reach Plaid a few days after it happened.
 REFRESH_DAYS = 30
+# Only an early-morning balance is where the day before ended: from the open
+# on, and on a Sunday or Monday morning (the weekend's movements), it is not.
+RECORD_BEFORE = time(9, 30)
+EASTERN = ZoneInfo("America/New_York")
+
+
+def records_a_day(now: Optional[datetime] = None) -> bool:
+    """Whether a refresh made at ``now`` may record the day before: Tuesday to
+    Saturday, before the market opens, as the morning job does. A refresh at
+    any other time brings transactions and balances in and records nothing."""
+    eastern = (now or datetime.now(EASTERN)).astimezone(EASTERN)
+    return eastern.weekday() in (1, 2, 3, 4, 5) and eastern.time() < RECORD_BEFORE
 # Plaid's word that the login needs the client to sign in again.
 NEEDS_SIGN_IN = {
     "ITEM_LOGIN_REQUIRED",

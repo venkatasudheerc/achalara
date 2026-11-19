@@ -641,9 +641,15 @@ its accounts are `brokerage_accounts` rows. Rules:
   since an evening balance is not where the day before ended. Only the morning run records. A
   run missed is not worth more than the next one; the grace only covers a short outage.
 - **Refresh now** (`PlaidLinkService.refresh_mine`, `POST /portal/links/plaid/refresh`): the
-  morning refresh for the viewer's own logins only, never a spouse's or a shared one; a login
+  refresh for the viewer's own logins only, recording the day before **only where the morning job
+  would** (`plaid_refresh_service.records_a_day`: Tuesday to Saturday, before 9:30 AM Eastern;
+  the same test applies after a repair); at any other time it brings transactions and balances in
+  and records no day, never a spouse's or a shared one; a login
   checked in the last ten minutes (`REFRESH_AFTER`) or one that needs signing in again is left as
-  it is. Plaid updates investment accounts about once a day, so it often brings nothing newer.
+  it is. It records the day before **only where the morning job would**
+  (`plaid_refresh_service.records_a_day`: Tuesday to Saturday, before 9:30 AM Eastern; the same
+  test applies after a repair); at any other time it brings transactions and balances in and
+  records no day. Plaid updates investment accounts about once a day, so it often brings nothing newer.
 - **Repairing a login** (`PlaidLinkService.repair_start` / `repaired`, routes
   `/portal/links/plaid/{id}/repair` and `/repaired`): Plaid Link opens in update mode for the
   same login (a link token made with its access key), so no new place on the plan is used and its
