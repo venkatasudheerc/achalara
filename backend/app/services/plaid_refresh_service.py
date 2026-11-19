@@ -15,7 +15,8 @@ until the client repairs it; the other logins carry on.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -43,6 +44,18 @@ SOURCE = "plaid"
 # Investment transactions are read again over this window each day: a trade
 # can reach Plaid a few days after it happened.
 REFRESH_DAYS = 30
+# Only an early-morning balance is where the day before ended: from the open
+# on, and on a Sunday or Monday morning (the weekend's movements), it is not.
+RECORD_BEFORE = time(9, 30)
+EASTERN = ZoneInfo("America/New_York")
+
+
+def records_a_day(now: Optional[datetime] = None) -> bool:
+    """Whether a refresh made at ``now`` may record the day before: Tuesday to
+    Saturday, before the market opens, as the morning job does. A refresh at
+    any other time brings transactions and balances in and records nothing."""
+    eastern = (now or datetime.now(EASTERN)).astimezone(EASTERN)
+    return eastern.weekday() in (1, 2, 3, 4, 5) and eastern.time() < RECORD_BEFORE
 # Plaid's word that the login needs the client to sign in again.
 NEEDS_SIGN_IN = {
     "ITEM_LOGIN_REQUIRED",
@@ -61,9 +74,11 @@ class PlaidRefreshService:
         self.client = self.links.client
         self.connections = self.links.connections
 
-    def refresh_all(self, today: Optional[date] = None) -> Dict[str, str]:
+    def refresh_all(self, today: Optional[date] = None, record: bool = True) -> Dict[str, str]:
         """Refresh every Plaid login with an account in use. One failing does
-        not stop the rest. Returns each login's outcome by id."""
+        not stop the rest. Returns each login's outcome by id. With ``record``
+        false only the transactions, balances and card details are brought up
+        to date; no day is recorded (the evening run)."""
         if not configured():
             return {}
         logins = (
@@ -77,15 +92,19 @@ class PlaidRefreshService:
         outcomes: Dict[str, str] = {}
         for login in logins:
             try:
-                outcomes[login.id] = self.refresh(login, today)
+                outcomes[login.id] = self.refresh(login, today, record)
             except Exception as exc:  # noqa: BLE001
                 self.db.rollback()
                 logger.error("Plaid refresh failed for login %s: %s", login.id, type(exc).__name__)
                 outcomes[login.id] = "failed"
         return outcomes
 
-    def refresh(self, login: BrokerageConnection, today: Optional[date] = None) -> str:
-        """Bring one login's accounts up to date and record yesterday."""
+    def refresh(
+        self, login: BrokerageConnection, today: Optional[date] = None, record: bool = True
+    ) -> str:
+        """Bring one login's accounts up to date and record yesterday (unless
+        ``record`` is false: later in the day a balance is no longer where
+        yesterday ended, so that run records nothing)."""
         today = today or date.today()
         day = last_market_day(today - timedelta(days=1))
         links = [l for l in login.brokerage_accounts if l.status == "mapped" and l.account_id]
@@ -167,10 +186,11 @@ class PlaidRefreshService:
             link.transactions_synced_through = today
             link.last_synced_at = datetime.now(timezone.utc)
             self.db.commit()
-            DailyCaptureService(self.db, self.connections).record(
-                link, record_day, figures.positions, figures.cash, figures.total,
-                valuation_adjustment=Decimal(0),
-            )
+            if record:
+                DailyCaptureService(self.db, self.connections).record(
+                    link, record_day, figures.positions, figures.cash, figures.total,
+                    valuation_adjustment=Decimal(0),
+                )
         if synced is not None:
             # Only once everything it handed back is on file.
             login.transactions_cursor = synced.get("next_cursor") or login.transactions_cursor
@@ -214,6 +234,6 @@ class PlaidRefreshService:
         self.db.flush()
 
 
-def run_plaid_refresh(db: Session) -> Dict[str, str]:
-    """Called by the scheduler job."""
-    return PlaidRefreshService(db).refresh_all()
+def run_plaid_refresh(db: Session, record: bool = True) -> Dict[str, str]:
+    """Called by the scheduler jobs: the morning one records, the evening one does not."""
+    return PlaidRefreshService(db).refresh_all(record=record)

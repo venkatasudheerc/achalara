@@ -63,6 +63,18 @@ def _plaid_refresh_wrapper() -> None:
         db.close()
 
 
+@run_log.tracked("plaid_refresh_evening")
+def _plaid_evening_wrapper() -> None:
+    """Bring every Plaid login's transactions and balances up to date; record no day."""
+    db = SessionLocal()
+    try:
+        run_plaid_refresh(db, record=False)
+    except Exception as exc:
+        logger.error(f"Unhandled error in Plaid evening refresh job: {type(exc).__name__}")
+    finally:
+        db.close()
+
+
 @run_log.tracked("ticker_changes")
 def _ticker_changes_wrapper() -> None:
     """Record the ticker changes market data saw, and rebuild what they touch."""
@@ -153,6 +165,17 @@ def _schedule() -> list:
             _plaid_refresh_wrapper,
             CronTrigger(
                 day_of_week="tue-sat", hour=6, minute=30, timezone=MARKET_TIMEZONE
+            ),
+            timedelta(hours=3),
+        ),
+        # Plaid again in the evening, Monday to Saturday: new bank and card
+        # transactions and late trades, and fresh balances. It records no day
+        # (the morning run does); a day missed is not made up, the next run is soon.
+        (
+            "plaid_refresh_evening",
+            _plaid_evening_wrapper,
+            CronTrigger(
+                day_of_week="mon-sat", hour=19, minute=30, timezone=MARKET_TIMEZONE
             ),
             timedelta(hours=3),
         ),

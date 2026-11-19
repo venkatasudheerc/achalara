@@ -87,6 +87,39 @@ def test_the_refresh_applies_what_changed_and_was_removed_and_keeps_the_cursor(d
     assert (monday.basis, monday.total_value) == ("observed", D("2449.58"))
 
 
+def test_the_evening_refresh_brings_changes_in_but_records_no_day(db, owner, plaid_keys):
+    account, login = _link_checking(db, owner)
+
+    fake = NextDay()
+    assert PlaidRefreshService(db, fake).refresh(login, TUESDAY, record=False) == "refreshed"
+
+    # Transactions and the cursor are brought up to date ...
+    assert set(_cash_rows(db, account)) == {"plaid:b1", "plaid:b3"}
+    assert login.transactions_cursor == "c2" and login.status_checked_at is not None
+    # ... but no day is observed: an evening balance is not where Monday ended.
+    assert (
+        db.query(DailyValuation)
+        .filter(
+            DailyValuation.account_id == account.id,
+            DailyValuation.basis == "observed",
+            DailyValuation.as_of_date == date(2026, 11, 16),
+        )
+        .count()
+        == 0
+    )
+
+
+def test_the_evening_job_runs_monday_to_saturday_at_half_past_seven_eastern():
+    from app.services import scheduler
+
+    jobs = {entry[0]: entry for entry in scheduler._schedule()}
+    trigger = jobs["plaid_refresh_evening"][2]
+    fields = {f.name: str(f) for f in trigger.fields}
+    assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("mon-sat", "19", "30")
+    assert str(trigger.timezone) == "America/New_York"
+    assert jobs["plaid_refresh"][2] is not trigger  # the morning run is its own job
+
+
 def test_a_login_that_needs_signing_in_is_marked_and_left_alone(db, owner, plaid_keys):
     _, login = _link_checking(db, owner)
 
@@ -261,3 +294,51 @@ def test_refresh_now_reaches_only_the_viewers_own_logins(db, owner, plaid_keys):
     db.commit()
     outcome = Links(db, NextDay()).refresh_mine(stranger.id, TUESDAY)
     assert outcome["refreshed"] + outcome["up_to_date"] + outcome["failed"] == 0
+
+
+def _eastern(day, hour, minute=0):
+    from zoneinfo import ZoneInfo
+    from datetime import datetime as dt
+
+    return dt(day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo("America/New_York"))
+
+
+def test_only_an_early_weekday_morning_may_record_the_day_before():
+    from app.services.plaid_refresh_service import records_a_day
+
+    assert records_a_day(_eastern(date(2026, 11, 17), 6, 30))      # Tuesday morning
+    assert records_a_day(_eastern(date(2026, 11, 21), 9, 29))      # Saturday, just before the open
+    assert not records_a_day(_eastern(date(2026, 11, 17), 9, 30))  # the market opens
+    assert not records_a_day(_eastern(date(2026, 11, 17), 19, 30))  # the evening
+    assert not records_a_day(_eastern(date(2026, 11, 16), 7, 0))   # Monday morning: the weekend
+    assert not records_a_day(_eastern(date(2026, 11, 22), 7, 0))   # Sunday
+
+
+def _observed_on(db, account, day):
+    return (
+        db.query(DailyValuation)
+        .filter(DailyValuation.account_id == account.id, DailyValuation.basis == "observed",
+                DailyValuation.as_of_date == day)
+        .count()
+    )
+
+
+def test_refresh_now_in_the_evening_brings_changes_in_and_records_no_day(db, owner, plaid_keys):
+    from app.services.plaid_link_service import PlaidLinkService as Links
+
+    account, login = _link_checking(db, owner)
+    login.status_checked_at = None
+    db.commit()
+    Links(db, NextDay()).refresh_mine(owner.id, TUESDAY, now=_eastern(TUESDAY, 19, 30))
+    assert login.transactions_cursor == "c2"
+    assert _observed_on(db, account, date(2026, 11, 16)) == 0
+
+
+def test_refresh_now_in_the_morning_records_the_day_before(db, owner, plaid_keys):
+    from app.services.plaid_link_service import PlaidLinkService as Links
+
+    account, login = _link_checking(db, owner)
+    login.status_checked_at = None
+    db.commit()
+    Links(db, NextDay()).refresh_mine(owner.id, TUESDAY, now=_eastern(TUESDAY, 7, 0))
+    assert _observed_on(db, account, date(2026, 11, 16)) == 1

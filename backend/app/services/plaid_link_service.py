@@ -149,13 +149,18 @@ class PlaidLinkService:
     # investment accounts about once a day, and each call is counted.
     REFRESH_AFTER = timedelta(minutes=10)
 
-    def refresh_mine(self, client_id: str, today: Optional[date] = None) -> Dict:
-        """The morning refresh now, for the client's own logins only (never a
-        spouse's or a shared one). A login checked in the last few minutes, or
-        one that needs signing in again, is left as it is."""
-        from app.services.plaid_refresh_service import PlaidRefreshService
+    def refresh_mine(
+        self, client_id: str, today: Optional[date] = None, now: Optional[datetime] = None
+    ) -> Dict:
+        """The refresh now, for the client's own logins only (never a spouse's
+        or a shared one). A login checked in the last few minutes, or one that
+        needs signing in again, is left as it is. It records the day before
+        only where the morning job would (``records_a_day``): later, a balance
+        is not where that day ended."""
+        from app.services.plaid_refresh_service import PlaidRefreshService, records_a_day
 
-        now = datetime.now(timezone.utc)
+        now = now or datetime.now(timezone.utc)
+        record = records_a_day(now)
         outcome = {"refreshed": 0, "up_to_date": 0, "needs_sign_in": 0, "failed": 0}
         logins = (
             self.db.query(BrokerageConnection)
@@ -174,7 +179,7 @@ class PlaidLinkService:
                 outcome["up_to_date"] += 1
                 continue
             try:
-                result = refresher.refresh(login, today)
+                result = refresher.refresh(login, today, record)
             except Exception:  # noqa: BLE001 - one login never stops the rest
                 self.db.rollback()
                 outcome["failed"] += 1
@@ -185,7 +190,11 @@ class PlaidLinkService:
     def repaired(self, client_id: str, connection_id: str, today: Optional[date] = None) -> Dict:
         """After the client signed in again: ask Plaid whether the login reads
         once more, and if so mark it active and bring its accounts up to date."""
-        from app.services.plaid_refresh_service import NEEDS_SIGN_IN, PlaidRefreshService
+        from app.services.plaid_refresh_service import (
+            NEEDS_SIGN_IN,
+            PlaidRefreshService,
+            records_a_day,
+        )
 
         connection = self._connection(client_id, connection_id)
         now = datetime.now(timezone.utc)
@@ -204,7 +213,9 @@ class PlaidLinkService:
             connection.consent_expires_at = item["consent_expiration_time"]
         self.db.commit()
         try:
-            PlaidRefreshService(self.db, self.client).refresh(connection, today)
+            PlaidRefreshService(self.db, self.client).refresh(
+                connection, today, records_a_day()
+            )
         except Exception:  # noqa: BLE001 - the morning refresh tries again
             self.db.rollback()
         return {"status": "active"}
