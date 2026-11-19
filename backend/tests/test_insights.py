@@ -284,3 +284,90 @@ def test_the_route_answers_for_the_viewer_only_and_a_preview_sees_what_the_clien
     # An advisor cannot ask about someone else's client.
     assert _browser("ben@example.com").get(
         "/api/v1/portal/insights", params={"as_client": people["lee"].id}).status_code == 404
+
+
+# -- the cash nudge: where it is, how long, and what the market has done ----
+
+def _nudge(accounts, **more):
+    return run(Stub(accounts, **more))["nudges"][0]
+
+
+def test_cash_held_in_one_invested_account_opens_that_accounts_holdings():
+    """Already inside the one account or looking at everything: the button goes
+    to where the cash is, not to a list of one."""
+    finding = _nudge([account("Brk", "taxable", 60000, cash=12000), account("Chk", "checking", 500),
+                      account("Ira", "retirement", 40000, cash=0)])
+    assert finding["detail"].startswith("Held in 2 accounts.")  # Chk has money, so two
+    only = _nudge([account("Brk", "taxable", 60000, cash=12000), account("Ira", "retirement", 40000, cash=0)])
+    assert only["detail"].startswith("Held in 1 account.")
+    assert only["action"] == {"kind": "view", "label": "See holdings", "view": "holdings", "sel": "account:Brk"}
+
+
+def test_cash_in_several_accounts_names_the_biggest_and_lists_the_accounts():
+    finding = _nudge([account("Brk", "taxable", 60000, cash=3000, number_last4="1111"),
+                      account("Chk", "checking", 9000, number_last4="2222"),
+                      account("Ira", "retirement", 40000, cash=0)])
+    assert "Held in 2 accounts. Most of it in Chk ··2222." in finding["detail"]
+    assert finding["action"]["view"] == "accounts" and finding["action"]["label"] == "See accounts"
+
+
+def test_cash_in_a_lone_cash_account_has_nothing_more_to_open():
+    finding = _nudge([account("Chk", "checking", 12000), account("Brk", "taxable", 88000, cash=0)])
+    assert finding["action"] is None
+
+
+def test_the_nudge_states_the_markets_past_record_and_says_it_is_not_a_forecast():
+    market = {
+        "name": "S&P 500", "first_year": 2006, "last_year": 2025, "week_key": [2026, 46], "month_key": [2026, 11],
+        "week": {"years": [{"up": True}] * 12 + [{"up": False}] * 8, "median": 0.01, "best": 0.05, "worst": -0.04},
+        "month": {"years": [{"up": True}] * 15 + [{"up": False}] * 5, "median": 0.02, "best": 0.08, "worst": -0.07},
+    }
+    service = InsightService(Stub([account("Chk", "checking", 12000), account("Brk", "taxable", 88000, cash=0)]),
+                             lambda ids: None, today=TODAY, market=lambda: market)
+    nudge = next(n for n in service.respond()["nudges"] if n["rule"] == "idle_cash")
+    assert "The S&P 500 rose in 15 of the last 20 Novembers. That is what happened, not what will." in nudge["detail"]
+    # Nothing encourages or advises: no call to invest.
+    assert "invest" not in nudge["detail"].lower().replace("invested", "")
+    # A copy made for another week and month is not used.
+    stale = {**market, "week_key": [2026, 1], "month_key": [2026, 3]}
+    none = InsightService(Stub([account("Chk", "checking", 12000), account("Brk", "taxable", 88000, cash=0)]),
+                          lambda ids: None, today=TODAY, market=lambda: stale)
+    assert "S&P" not in next(n for n in none.respond()["nudges"] if n["rule"] == "idle_cash")["detail"]
+
+
+def test_how_long_cash_has_been_over_a_tenth_is_read_from_the_daily_record(db):
+    from decimal import Decimal as D
+    from types import SimpleNamespace
+
+    from app.models.account import Account
+    from app.models.client import Client
+    from app.models.perf import DailyValuation
+    from app.services.insights.rules.cash import cash_over_since
+
+    owner = Client(name="Pat Example", email="pat@example.com")
+    db.add(owner)
+    db.flush()
+    chk, brk = Account(client_id=owner.id, name="Chk"), Account(client_id=owner.id, name="Brk")
+    db.add_all([chk, brk])
+    db.flush()
+
+    def row(acct, days_ago, cash, total):
+        db.add(DailyValuation(account_id=acct.id, sleeve_id=None, as_of_date=TODAY - timedelta(days=days_ago),
+                              basis="observed", securities_value=D(total - cash), cash_value=D(cash), total_value=D(total)))
+
+    for ago in range(60, -1, -1):
+        row(brk, ago, 0, 90000)
+        row(chk, ago, 5000 if ago > 30 else 15000, 5000 if ago > 30 else 15000)  # over a tenth from 30 days ago
+    db.commit()
+    accounts = [account(chk.id, "checking", 15000), account(brk.id, "taxable", 90000, cash=0)]
+    ctx = SimpleNamespace(portal=SimpleNamespace(db=db), accounts=accounts, today=TODAY)
+    since, from_start = cash_over_since(ctx)
+    assert since == TODAY - timedelta(days=30) and not from_start
+
+    # No daily record, or none over a tenth today: nothing is said about how long.
+    assert cash_over_since(SimpleNamespace(portal=SimpleNamespace(), accounts=accounts, today=TODAY)) is None
+    low = [account(chk.id, "checking", 1000), account(brk.id, "taxable", 99000, cash=0)]
+    db.query(DailyValuation).filter(DailyValuation.account_id == chk.id).delete()
+    row(chk, 0, 1000, 1000)
+    db.commit()
+    assert cash_over_since(SimpleNamespace(portal=SimpleNamespace(db=db), accounts=low, today=TODAY)) is None

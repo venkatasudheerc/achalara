@@ -302,7 +302,15 @@ Live tests must stay **read-only** and never loop a third-party API.
   is. Visuals are a closed set (`meter`, `split`, `countdown`, `figure`): a rule picks one, so a
   new kind of account needs a rule file and no screen. Cash is worth a mention above 10% of what
   the accounts in view hold (`rules/cash.CASH_SHARE`). A card's figures older than three days are
-  not acted on. `Context` reads holdings and tax facts only when a rule asks
+  not acted on. **The cash nudge says where the cash is, how long, and what the market has done**
+  (`rules/cash.IdleCash`): the account holding it (one invested account: its Holdings; several: the
+  list, naming the biggest; a lone cash account: no button), how long cash has been over a tenth of
+  what the accounts in view hold, read from `perf.daily_valuation` (`cash_over_since`, never
+  guessed: "since 12 Aug", "for at least N weeks" when the record begins inside the run, "for more
+  than a year", or nothing), and one sentence of the S&P 500's past record
+  (`market_facts.rose_sentence`, the same words as the market tile) followed by "That is what
+  happened, not what will." **It never says to invest**: seasonality is a weak signal and the
+  rule above is no advice wording. `Context` reads holdings and tax facts only when a rule asks
   (`PortalService.tax_facts` is for taxable accounts only). Nothing in `perf` or `md` reads it.
 - **The market-pattern tile (`rules/markets.CashAndMarket`)** sets cash above a tenth of what is
   held beside the S&P 500's record for this week of the year and this month, a square per year

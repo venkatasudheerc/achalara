@@ -7,10 +7,8 @@ from typing import Dict, List, Optional
 
 from app.services.insights.base import INSIGHT, Finding, Rule, chip, record, view
 from app.services.insights.context import Context, day
+from app.services.insights.market_facts import MIN_YEARS, fresh_patterns, rose_sentence
 from app.services.insights.rules.cash import cash_over_share
-
-# Fewer ended periods than this is not a record worth showing.
-MIN_YEARS = 10
 
 
 def _signed(n: float) -> str:
@@ -52,9 +50,8 @@ class CashAndMarket(Rule):
             return []
         cash, assets = over
         today = ctx.today
-        # The copy names the week and month it was made for: a stale one is not used.
-        week = market["week"] if market["week_key"] == list(today.isocalendar()[:2]) else None
-        month = market["month"] if market["month_key"] == [today.year, today.month] else None
+        found = fresh_patterns(ctx)
+        week, month = found["week"], found["month"]
         spans = [
             s for s in (
                 _span(_week_when(today), "week", week),
@@ -63,14 +60,7 @@ class CashAndMarket(Rule):
         ]
         if not spans:
             return []
-        lead = f"You hold {cash / assets:.0%} in cash."
-        if month and len(month["years"]) >= MIN_YEARS:
-            up = sum(1 for y in month["years"] if y["up"])
-            n = len(month["years"])
-            title = f"{lead} The S&P 500 rose in {up} of the last {n} {calendar.month_name[today.month]}s."
-        else:
-            up = sum(1 for y in week["years"] if y["up"])
-            title = f"{lead} The S&P 500 rose in {up} of the last {len(week['years'])} years in this week."
+        title = f"You hold {cash / assets:.0%} in cash. {rose_sentence(ctx)}"
         pattern = month or week
         latest = max((a["as_of"] for a in ctx.accounts if a.get("as_of")), default=None)
         return [Finding(
