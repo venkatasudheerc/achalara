@@ -93,6 +93,16 @@ def _money(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
+def is_cash_holding(security: Dict) -> bool:
+    """Whether a held security is the account's cash: Plaid types most settlement
+    funds ``cash``, but Vanguard's "CASH DEPOSIT (Settlement Fund)" arrives as a
+    mutual fund with no ticker. Only that name is read as cash here, never a
+    money-market fund an account holds as an investment."""
+    if security.get("type") == "cash":
+        return True
+    return not security.get("ticker_symbol") and "settlement fund" in (security.get("name") or "").lower()
+
+
 def security_symbol(security: Dict) -> Optional[str]:
     """What the app calls a security: its ticker, else (for a holding Plaid names
     but gives no ticker, such as a target-date trust) its name, marked as one
@@ -332,7 +342,7 @@ def read_holdings(account: Dict, holdings: List[Dict], securities: Dict[str, Dic
     listed_cash = [
         _money(h.get("institution_value"))
         for h in held
-        if securities.get(h["security_id"], {}).get("type") == "cash"
+        if is_cash_holding(securities.get(h["security_id"], {}))
     ]
     positions: List[NormalizedPosition] = []
     days: List[date] = []
@@ -340,7 +350,7 @@ def read_holdings(account: Dict, holdings: List[Dict], securities: Dict[str, Dic
     others = Decimal(0)
     for h in held:
         security = securities.get(h["security_id"], {})
-        if security.get("type") == "cash":
+        if is_cash_holding(security):
             continue
         quantity = _money(h.get("quantity"))
         price = _money(h.get("institution_price"))
