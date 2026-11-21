@@ -1,0 +1,38 @@
+meta {
+  name: Create Second Strategy
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/strategies/
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "{{secondStrategyName}}",
+    "description": "A second strategy, to move a symbol into"
+  }
+}
+
+script:pre-request {
+  bru.setVar("secondStrategyName", "Income " + Date.now());
+}
+
+vars:post-response {
+  targetStrategyId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  A second firm-wide strategy, so the account can have a second sleeve to move a symbol into.
+}

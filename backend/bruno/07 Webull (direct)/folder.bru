@@ -20,10 +20,11 @@ script:pre-request {
   const appKey = bru.getEnvVar('webullAppKey');
   const appSecret = bru.getEnvVar('webullAppSecret');
   if (!appKey || !appSecret) {
-    throw new Error(
-      'Set webullAppKey and webullAppSecret in the Local.private Bruno ' +
-      'environment (copy WEBULL_APP_KEY and WEBULL_APP_SECRET from backend/.env).'
-    );
+    // No keys: skip these requests (they call Webull itself), so a run on a machine
+    // without them stays green. Set webullAppKey and webullAppSecret in the Local.private
+    // Bruno environment (copy WEBULL_APP_KEY and WEBULL_APP_SECRET from backend/.env).
+    bru.runner.skipRequest();
+    return;
   }
 
   // Bruno expands {{vars}} after this script runs, so the URL is interpolated

@@ -1,0 +1,22 @@
+meta {
+  name: Availability
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/links/plaid?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.available: eq true
+  res.body.logins_left: gte 1
+}
+
+docs {
+  Whether linking with Plaid is offered (the backend has its keys) and how many logins the
+  plan has left. `available: false` is a server setting, not an error.
+}

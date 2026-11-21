@@ -1,0 +1,20 @@
+meta {
+  name: Overview
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/overview?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.total_value: isNumber
+}
+
+docs {
+  Totals by account and by strategy.
+}

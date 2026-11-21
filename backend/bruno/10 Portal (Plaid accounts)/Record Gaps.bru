@@ -1,0 +1,22 @@
+meta {
+  name: Record Gaps
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/accounts/{{plaidInvestedAccountId}}/record-gaps?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.account_id: eq {{plaidInvestedAccountId}}
+  res.body.holdings: isDefined
+  res.body.opening: isDefined
+}
+
+docs {
+  What is behind the account's record health: holdings that differ from the institution's, cash that differs, and what the start of the history could not be worked back from. Asked for only when the viewer opens the details.
+}

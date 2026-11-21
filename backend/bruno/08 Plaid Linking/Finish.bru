@@ -1,0 +1,49 @@
+meta {
+  name: Finish
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/finish?as_client={{clientId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "public_token": "{{plaidLinkPublicToken}}"
+  }
+}
+
+vars:post-response {
+  plaidConnectionId: res.body.connection_id
+}
+
+script:post-response {
+  // One choice per account found: add what is new, leave the rest. Nothing is linked
+  // until Confirm.
+  const found = res.body.accounts || [];
+  bru.setVar('plaidChoices', JSON.stringify(
+    found.map((a) => ({ link_id: a.link_id, action: a.proposal === 'new' ? 'new' : 'skip' }))
+  ));
+}
+
+assert {
+  res.status: eq 200
+  res.body.connection_id: isString
+  res.body.institution: isString
+  res.body.accounts.length: gte 8
+  res.body.logins_left: gte 0
+}
+
+docs {
+  Exchanges the public token (the access key is stored only encrypted, never returned) and
+  proposes what to do with each account Plaid shares: `same` (an account here, with the
+  evidence), `choose` (several might be) or `new`. An account another login already feeds
+  says so in `fed_by`.
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Repair Start
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/{{plaidConnectionId}}/repair?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.link_token: isString
+}
+
+docs {
+  Opens Plaid Link in update mode for the same login, for when it needs signing in again:
+  no new place on the plan is used, and its history carries on. Add
+  `&select_accounts=true` to also share accounts the institution did not share at first.
+  Only the login's owner can repair it.
+}

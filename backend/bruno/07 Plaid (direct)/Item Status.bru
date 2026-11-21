@@ -1,0 +1,27 @@
+meta {
+  name: Item Status
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{plaidBaseUrl}}/item/get
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.item.item_id: eq {{plaidItemId}}
+}
+
+docs {
+  Whether the login still reads. An `error` here with `ITEM_LOGIN_REQUIRED` is what the
+  backend turns into "needs signing in again" (`NEEDS_SIGN_IN`).
+}

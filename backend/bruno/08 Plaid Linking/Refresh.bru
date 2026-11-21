@@ -1,0 +1,23 @@
+meta {
+  name: Refresh
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/refresh?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.failed: eq 0
+  res.body.needs_sign_in: eq 0
+}
+
+docs {
+  The morning refresh, now, for the client's own logins only. A login checked in the last
+  ten minutes is left as it is (`up_to_date`), and Plaid updates investment accounts about
+  once a day, so it often brings nothing newer.
+}

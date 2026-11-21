@@ -1,0 +1,29 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{plaidBaseUrl}}/accounts/get
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.accounts: isDefined
+  res.body.accounts.length: gte 8
+}
+
+docs {
+  Every account the login shares, with its `type`, `subtype`, `mask` and balances: what
+  the backend's link proposals are built from (`kind` is read from the subtype: a 401(k)
+  is retirement, a credit card is owed).
+}

@@ -1,0 +1,22 @@
+meta {
+  name: Start Link
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/start?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.link_token: isString
+  res.body.logins_left: gte 1
+}
+
+docs {
+  The token that opens Plaid Link for this client. It asks Plaid for two years of
+  transactions, which can only be asked for when a login is linked.
+}

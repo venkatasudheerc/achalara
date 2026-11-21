@@ -1,0 +1,21 @@
+meta {
+  name: Performance
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/performance?account_id={{plaidInvestedAccountId}}&as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.benchmarks: isDefined
+  res.body.benchmark: isString
+}
+
+docs {
+  Returns over time for the account, against a benchmark chosen from the response's own list. A record that is incomplete is held back, not guessed.
+}

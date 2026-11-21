@@ -1,0 +1,37 @@
+meta {
+  name: 08 Plaid Linking
+  seq: 9
+}
+
+script:pre-request {
+  // Linking an account is a client's own act, so these are the client's portal routes.
+  // The collection signs in as staff, who see a client's portal with `as_client`:
+  // every request here carries `?as_client={{clientId}}` (the client Create Client made,
+  // or ClientId from the environment).
+  //
+  // The first two ask only the backend, which holds the Plaid keys. The rest need a
+  // sandbox public token (the "Sandbox Public Token" request calls Plaid itself, so it
+  // needs plaidClientId and plaidSecret in the environment). Without one, they are
+  // skipped, not failed.
+  const alone = ['Availability', 'Start Link', 'Sandbox Public Token'];
+  if (!alone.includes(req.getName()) && !bru.getVar('plaidLinkPublicToken')) {
+    bru.runner.skipRequest();
+  }
+}
+
+docs {
+  The whole of a client linking their accounts through Plaid, as the backend serves it,
+  against Plaid's **sandbox**:
+
+  ```
+  Availability → Start Link → Sandbox Public Token → Finish → Found → Confirm
+  → Connections → Accounts → Refresh → Discover (all, one) → Repair
+  ```
+
+  Plaid Link's own window is the one step Bruno cannot do: the sandbox public token
+  stands in for what Link hands back after a person signs in.
+
+  Point `baseUrl` at a backend whose own `PLAID_ENV` is `sandbox` with the sandbox secret,
+  never at one linked to production Plaid: Finish and Confirm add real rows. Run it
+  against a database you can throw away.
+}

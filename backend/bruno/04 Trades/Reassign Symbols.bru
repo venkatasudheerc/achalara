@@ -1,0 +1,34 @@
+meta {
+  name: Reassign Symbols
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/trades/reassign
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "from_sleeve_id": "{{sleeveId}}",
+    "to_sleeve_id": "{{targetSleeveId}}",
+    "symbols": ["MSFT"]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.trades_moved: gte 1
+}
+
+docs {
+  Moves every trade and cash activity for the symbols, and the holdings recorded for them,
+  to another sleeve of the same account. A symbol is never in two sleeves of one account.
+  Moves MSFT (bought and sold above) into the second sleeve.
+}

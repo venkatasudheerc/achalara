@@ -1,0 +1,24 @@
+meta {
+  name: Connections
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/connections?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.connections.length: gte 1
+  res.body.connections[0].state: eq sharing
+  res.body.needs_sign_in: eq 0
+}
+
+docs {
+  Where the figures come from: each login with its state in plain words (`sharing`,
+  `needs_sign_in`, `consent_ending`, `stopped`), its last refresh and the accounts it feeds.
+  Never the access key.
+}

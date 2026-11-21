@@ -24,11 +24,11 @@ body:json {
 
 assert {
   res.status: eq 200
-  res.body.role: eq advisor
+  res.body.role: in admin, advisor
 }
 
 docs {
-  Signs in as an advisor. The session comes back as an http-only cookie, which Bruno
+  Signs in as staff (an admin or an advisor). The session comes back as an http-only cookie, which Bruno
   keeps and sends on every later request, so run this once before anything else.
   
   Set `advisorEmail` and `advisorPassword` in your private environment

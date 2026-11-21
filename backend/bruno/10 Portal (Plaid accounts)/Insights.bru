@@ -1,0 +1,21 @@
+meta {
+  name: Insights
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/insights?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.nudges: isDefined
+  res.body.insights: isDefined
+}
+
+docs {
+  Next best action and the insights: what is worth a look, worked out on each read from what the viewer may see. Nothing is stored.
+}

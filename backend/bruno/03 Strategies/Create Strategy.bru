@@ -16,9 +16,14 @@ headers {
 
 body:json {
   {
-    "name": "Growth",
+    "name": "{{strategyName}}",
     "description": "Long-only US equity growth strategy"
   }
+}
+
+script:pre-request {
+  // Names are unique, so each run makes its own: re-running never answers 409.
+  bru.setVar("strategyName", "Growth " + Date.now());
 }
 
 vars:post-response {
@@ -27,12 +32,13 @@ vars:post-response {
 
 assert {
   res.status: eq 201
-  res.body.name: eq Growth
+  res.body.name: eq {{strategyName}}
 }
 
 docs {
   Creates a firm-wide (global) strategy DEFINITION. Apply it to an account by creating a
   Sleeve (next request). Trades, positions and performance live at the sleeve level.
 
-  Names are unique case-insensitively — re-posting "Growth" (or "growth") returns 409.
+  Names are unique case-insensitively, so a repeat returns 409; each run adds a timestamp to
+  the name so that re-running never does.
 }

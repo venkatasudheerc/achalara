@@ -1,0 +1,29 @@
+meta {
+  name: Ticker Change Proposals
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/v1/admin/ticker-changes
+  body: none
+  auth: none
+}
+
+tests {
+  test("a list, each with the old and new ticker", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.be.an("array");
+    res.body.forEach((p) => {
+      expect(p).to.have.property("old");
+      expect(p).to.have.property("new");
+    });
+  });
+}
+
+docs {
+  Renames the app proposes from an account's own record (a symbol the opening cannot work
+  back, no longer held, whose last trade comes before the first appearance of one held
+  symbol of the same company). Nothing is recorded by reading this: confirming one is a
+  POST (not part of this run), or `python -m app.cli add-ticker-change`.
+}

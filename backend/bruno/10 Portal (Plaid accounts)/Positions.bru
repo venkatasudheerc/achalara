@@ -1,0 +1,21 @@
+meta {
+  name: Positions
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/positions?account_id={{plaidInvestedAccountId}}&as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.positions: isDefined
+  res.body.count: isNumber
+}
+
+docs {
+  The 401(k)'s open positions at the custodian's quantity and cost, with each holding's sector placement. A holding Plaid names but gives no ticker is kept under its name behind a `#` and is placed with the funds.
+}
