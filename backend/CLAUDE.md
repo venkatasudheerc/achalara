@@ -802,6 +802,13 @@ separate from client data in `public` and `perf`. Plan, design, operation and li
   `md_refresh_returns`). `md/performance.py` answers the API (`/api/v1/research/returns`,
   `seasonality`, `consistent-months`, `movers`), reading `md.month_return` on Postgres for questions
   across many stocks. A group's figures use today's members and say so (`survivorship`).
+- **What moved an index** (`insights.index_contributors`, `GET /api/v1/research/index-contributors`):
+  each member's weight at the start of the week times its return, for the indices whose fund's
+  weights are stored (`md.index_weight_hist`: SP500, R1000, R2000; others answer 404). A stored day
+  on or before the week's start is used (`weights_basis: "stored"`); otherwise the nearest later
+  one is worked back by each member's return (`"worked_back"`, an approximation the notes say).
+  The weights are the fund's, a close stand-in for the index's own. `python -m app.cli
+  md-index-weights` stores them from the files already kept; each membership run stores the day's.
 - **Index data is never pruned.** A history limit may apply only to stock and ETF prices in `md`.
 - **The app and `md` spell tickers differently** (`BRK B`, `BRK.B`). Convert through
   `utils/symbols.py`; Webull answers `INVALID_SYMBOL` to `BRK.B`. Once `symbol_aliases` exists,

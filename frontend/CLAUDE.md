@@ -296,7 +296,7 @@ Each feature directory contains its page component(s). Implemented:
   shown and sent with a leading `^` (`^NSEI`) so the server always reads them as indices;
   the look-up keeps its own (stocks and funds).
   Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
-  fractions. It describes the past: no advice or forecast wording. The luck estimate
+  fractions. It describes the past: no advice or forecast wording. Under This week, `IndexContributors` shows what moved the S&P 500, Russell 1000 or Russell 2000 (weight at the week's start times return, from `/research/index-contributors`; the Nasdaq-100 and the Dow have no weights and say so): the top 10 with Show all, as one list ranked by size (Biggest movers) or as Added / Subtracted columns. The luck estimate
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
   members found it confusing, so `/home/research`, previews included, leaves it out.
 - `home/AddAccountDialog` ("+ Add an account" on the rail, and on the empty landing page; clients

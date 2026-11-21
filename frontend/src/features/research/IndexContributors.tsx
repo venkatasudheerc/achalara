@@ -13,6 +13,11 @@ const INDICES = [
   { value: 'R2000', label: 'Russell 2000' },
 ] as const
 
+const VIEWS = [
+  { value: 'ranked', label: 'Biggest movers' },
+  { value: 'split', label: 'Added / subtracted' },
+] as const
+
 const TOP = 10
 
 /** A member's share of the index's move, in percentage points. */
@@ -45,15 +50,41 @@ function Row({ row, max, onLookup }: { row: RsContributor; max: number; onLookup
   )
 }
 
+/** One side of the split view: the members that added, or took away, most. */
+function SideList({ title, rows, all, onLookup }: {
+  title: string; rows: RsContributor[]; all: boolean; onLookup: (symbol: string) => void
+}) {
+  const shown = all ? rows : rows.slice(0, TOP)
+  return (
+    <div className="flex flex-col min-w-0">
+      <span className="text-[13px] text-stone mb-[4px]">{title}</span>
+      {shown.length === 0 && <span className="text-[14px] text-stone py-[7px]">None this week.</span>}
+      {shown.map((r) => (
+        <button key={r.symbol} type="button" onClick={() => onLookup(r.symbol)}
+          className="flex justify-between items-baseline gap-[12px] py-[7px] border-b border-stone/15 text-left hover:bg-mist/40 rounded-[4px] px-[4px]">
+          <span className="min-w-0 truncate">
+            <span className="font-mono text-[14px] text-summit-ink">{r.symbol}</span>{' '}
+            <span className="text-[13px] text-stone">{displayName(r.name, r.symbol)}</span>
+          </span>
+          <span className={`font-mono text-[14px] shrink-0 ${tone(r.contribution)}`}>{points(r.contribution)}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** What moved an index over the week: the members that added or took away most,
  *  one list ranked by size so the biggest movers come first whichever way they went. */
 export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => void }) {
   const [index, setIndex] = useState<string>('SP500')
   const [all, setAll] = useState(false)
+  const [view, setView] = useState<string>('ranked')
   const { data, isLoading, isError, error, refetch } = useIndexContributors(index)
   const name = INDICES.find((i) => i.value === index)?.label ?? index
   const rows = data?.contributors ?? []
   const shown = all ? rows : rows.slice(0, TOP)
+  const added = rows.filter((r) => r.contribution > 0).sort((a, b) => b.contribution - a.contribution)
+  const subtracted = rows.filter((r) => r.contribution < 0).sort((a, b) => a.contribution - b.contribution)
   const max = Math.max(...rows.map((r) => Math.abs(r.contribution)), 0.0001)
   const topShare = rows.slice(0, TOP).reduce((s, r) => s + Math.abs(r.contribution), 0)
   const allShare = rows.reduce((s, r) => s + Math.abs(r.contribution), 0)
@@ -67,7 +98,10 @@ export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => 
             Each member&rsquo;s weight at the start of the week times its return, in points of the index&rsquo;s move.
           </p>
         </div>
-        <Segmented label="Index" options={INDICES} value={index} onChange={(v) => { setIndex(v); setAll(false) }} />
+        <div className="flex flex-wrap gap-[12px]">
+          <Segmented label="View" options={VIEWS} value={view} onChange={setView} />
+          <Segmented label="Index" options={INDICES} value={index} onChange={(v) => { setIndex(v); setAll(false) }} />
+        </div>
       </div>
       {isLoading ? <Loading rows={6} /> : isError && notFound(error) ? (
         <p className="text-[15px] text-stone">Not available for {name}: its members&rsquo; weights are not on file yet.</p>
@@ -80,9 +114,16 @@ export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => 
             moved {name} <span className={`font-mono ${tone(data.members_return)}`}>{points(data.members_return)}</span>.
             {allShare > 0 && <> The {Math.min(TOP, rows.length)} largest movers account for {Math.round((topShare / allShare) * 100)}% of the movement, up or down.</>}
           </p>
-          <div className="flex flex-col gap-[12px]">
-            {shown.map((r) => <Row key={r.symbol} row={r} max={max} onLookup={onLookup} />)}
-          </div>
+          {view === 'ranked' ? (
+            <div className="flex flex-col gap-[12px]">
+              {shown.map((r) => <Row key={r.symbol} row={r} max={max} onLookup={onLookup} />)}
+            </div>
+          ) : (
+            <div className="grid gap-[24px] [grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))]">
+              <SideList title="Added most" rows={added} all={all} onLookup={onLookup} />
+              <SideList title="Subtracted most" rows={subtracted} all={all} onLookup={onLookup} />
+            </div>
+          )}
           {rows.length > TOP && (
             <button type="button" onClick={() => setAll((v) => !v)} aria-expanded={all}
               className="self-start h-[40px] px-[16px] rounded-[8px] border border-stone/40 text-[14px] font-medium text-summit-ink hover:bg-mist/40">
