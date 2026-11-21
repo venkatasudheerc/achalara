@@ -296,7 +296,7 @@ Each feature directory contains its page component(s). Implemented:
   shown and sent with a leading `^` (`^NSEI`) so the server always reads them as indices;
   the look-up keeps its own (stocks and funds).
   Reads only `/api/v1/research/*` through `useResearch.ts`; percentages there are decimal
-  fractions. It describes the past: no advice or forecast wording. The luck estimate
+  fractions. It describes the past: no advice or forecast wording. In This week, a stock in the biggest moves and a fund in Other markets open the look-up profile, and an index opens Months by year (with the `^` added). The luck estimate
   (`expected_by_luck`) shows only where the route passes `forAdvisor` (`/app/markets`); family
   members found it confusing, so `/home/research`, previews included, leaves it out.
 - `home/AddAccountDialog` ("+ Add an account" on the rail, and on the empty landing page; clients
