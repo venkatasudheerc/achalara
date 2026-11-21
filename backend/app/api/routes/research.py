@@ -17,6 +17,7 @@ from app.api.schemas.market_data import (
 )
 from app.api.schemas.research import (
     RsCalendarResponse,
+    RsContributorsResponse,
     RsIndicesResponse,
     RsMonthGridResponse,
     RsMonthResponse,
@@ -49,6 +50,12 @@ def _answer(call, *args, **kwargs):
 def research_this_week():
     """The latest week that has ended: indices, funds, sectors, best and worst."""
     return _answer(md_read.research, "this_week")
+
+
+@router.get("/index-contributors", response_model=RsContributorsResponse)
+def research_index_contributors(index: str = Query("SP500")):
+    """What moved an index over the latest week, member by member (404 where no weights are on file)."""
+    return _answer(md_read.research, "index_contributors", index=index)
 
 
 @router.get("/this-month", response_model=RsMonthResponse)

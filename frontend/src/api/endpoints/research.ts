@@ -1,11 +1,13 @@
 import { apiClient } from '../client'
 import type {
-  RsCalendar, RsIndices, RsMonth, RsMonthGrid, RsOutlook, RsProfile, RsSearch, RsSectors, RsTopPerformers, RsWeek,
+  RsCalendar, RsContributors, RsIndices, RsMonth, RsMonthGrid, RsOutlook, RsProfile, RsSearch, RsSectors, RsTopPerformers, RsWeek,
 } from '../types'
 
 /** Market insights: read-only, the same for every signed-in user. */
 export const researchApi = {
   thisWeek: () => apiClient.get<RsWeek>('/api/v1/research/this-week').then((r) => r.data),
+  indexContributors: (index: string) =>
+    apiClient.get<RsContributors>('/api/v1/research/index-contributors', { params: { index } }).then((r) => r.data),
   thisMonth: () => apiClient.get<RsMonth>('/api/v1/research/this-month').then((r) => r.data),
   outlook: (month?: number) =>
     apiClient.get<RsOutlook>('/api/v1/research/outlook', { params: { month } }).then((r) => r.data),

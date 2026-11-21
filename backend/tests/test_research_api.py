@@ -378,3 +378,63 @@ def test_a_family_member_reads_the_list_of_indices(as_family_member, market, db)
     assert by_code["NSEI"]["display"] == "^NSEI" and by_code["NSEI"]["currency"] == "INR"
     assert by_code["NSEI"]["group"] == "India: broad market" and by_code["NSEI"]["first_day"]
     assert by_code["SPX"]["group"] == "Indices (US)" and by_code["INDIAVIX"]["volatility"]
+
+
+# -- what moved an index ------------------------------------------------------------
+
+
+def _weights(db, as_of, shares):
+    from app.md.models import IndexWeightHist, SecuritySymbol as Sym
+
+    for symbol, weight in shares.items():
+        sid = db.query(Sym.security_id).filter(Sym.symbol == symbol).scalar()
+        db.add(
+            IndexWeightHist(
+                index_code="SP500", security_id=sid, as_of=as_of, weight=weight
+            )
+        )
+    db.flush()
+
+
+def test_contributions_are_weight_at_the_start_times_return_and_add_up(db, market):
+    _weights(db, date(2026, 10, 30), {"AAA": 60.0, "BBB": 40.0})
+    out = insights.index_contributors(db, "SP500", TODAY)
+    assert out["weights_basis"] == "stored"
+    assert out["basis"] == "total"
+    by = {c["symbol"]: c for c in out["contributors"]}
+    assert by["AAA"]["weight"] == pytest.approx(0.6)
+    assert by["AAA"]["contribution"] == pytest.approx(0.6 * by["AAA"]["ret"])
+    assert out["members_return"] == pytest.approx(
+        sum(c["contribution"] for c in out["contributors"])
+    )
+    sizes = [abs(c["contribution"]) for c in out["contributors"]]
+    assert sizes == sorted(sizes, reverse=True)
+
+
+def test_weights_after_the_start_are_worked_back_and_say_so(db, market):
+    _weights(db, date(2026, 11, 6), {"AAA": 60.0, "BBB": 40.0})
+    out = insights.index_contributors(db, "SP500", TODAY)
+    assert out["weights_basis"] == "worked_back"
+    assert any("approximation" in n for n in out["notes"])
+    by = {c["symbol"]: c for c in out["contributors"]}
+    # AAA rose more than BBB during the week, so it weighed less at the start.
+    assert by["AAA"]["weight"] < 0.6
+    assert sum(c["weight"] for c in out["contributors"]) == pytest.approx(1.0)
+
+
+def test_an_index_without_weights_is_not_available(db, market):
+    with pytest.raises(insights.perf.UnknownSubject):
+        insights.index_contributors(db, "SP500", TODAY)  # none stored
+    with pytest.raises(insights.perf.UnknownSubject):
+        insights.index_contributors(db, "NDX", TODAY)
+
+
+def test_the_route_answers_and_refuses_an_index_with_no_weights(
+    as_family_member, db, market
+):
+    refused = as_family_member.get("/api/v1/research/index-contributors?index=NDX")
+    assert refused.status_code == 404
+    _weights(db, date(2026, 10, 30), {"AAA": 60.0, "BBB": 40.0})
+    ok = as_family_member.get("/api/v1/research/index-contributors")
+    assert ok.status_code == 200, ok.text[:200]
+    assert ok.json()["count"] == 2

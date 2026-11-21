@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { tone } from '@/features/portal/ui'
 import type { RsMonthRow, RsReturnRow, RsWeek } from '@/api/types'
+import { IndexContributors } from './IndexContributors'
 import type { Choice } from './SymbolPicker'
 import { DivergingRows, HowToRead, Loading, MONTHS, Section, UNIVERSE_LABEL, pct1, unavailable } from './ui'
 
@@ -137,6 +138,7 @@ function ThisWeek({ onLookup, onOpenMonths }: {
           </div>
         )}
       </div>
+      <IndexContributors onLookup={onLookup} />
     </Section>
   )
 }
