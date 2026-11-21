@@ -6,12 +6,9 @@ import { ErrorState } from '@/components/ErrorState'
 import type { RsContributor } from '@/api/types'
 import { Loading, Segmented, displayName, notFound, unavailable } from './ui'
 
-// Only indices whose members' weights are on file (the server says 404 for the rest).
-const INDICES = [
-  { value: 'SP500', label: 'S&P 500' },
-  { value: 'R1000', label: 'Russell 1000' },
-  { value: 'R2000', label: 'Russell 2000' },
-] as const
+/** The indices whose members' weights can be on file, by the symbol Market patterns knows them
+ *  by (the server says 404 where none are stored yet). The Nasdaq-100 and the Dow have none. */
+export const CONTRIBUTOR_INDEX: Record<string, string> = { SPX: 'SP500', RUI: 'R1000', RUT: 'R2000' }
 
 const VIEWS = [
   { value: 'ranked', label: 'Biggest movers' },
@@ -75,12 +72,12 @@ function SideList({ title, rows, all, onLookup }: {
 
 /** What moved an index over the week: the members that added or took away most,
  *  one list ranked by size so the biggest movers come first whichever way they went. */
-export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => void }) {
-  const [index, setIndex] = useState<string>('SP500')
+export function IndexContributors({ index, name, onLookup }: {
+  index: string; name: string; onLookup: (symbol: string) => void
+}) {
   const [all, setAll] = useState(false)
   const [view, setView] = useState<string>('ranked')
   const { data, isLoading, isError, error, refetch } = useIndexContributors(index)
-  const name = INDICES.find((i) => i.value === index)?.label ?? index
   const rows = data?.contributors ?? []
   const shown = all ? rows : rows.slice(0, TOP)
   const added = rows.filter((r) => r.contribution > 0).sort((a, b) => b.contribution - a.contribution)
@@ -90,18 +87,15 @@ export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => 
   const allShare = rows.reduce((s, r) => s + Math.abs(r.contribution), 0)
 
   return (
-    <div className="flex flex-col gap-[16px] border-t border-stone/20 pt-[24px] min-w-0">
+    <div className="flex flex-col gap-[14px] min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-[16px]">
         <div className="flex flex-col gap-[4px] min-w-0">
-          <h3 className="text-[16px] font-semibold">What moved the index</h3>
+          <h3 className="text-[18px] font-semibold">What moved {name} this week</h3>
           <p className="text-[14px] text-stone">
             Each member&rsquo;s weight at the start of the week times its return, in points of the index&rsquo;s move.
           </p>
         </div>
-        <div className="flex flex-wrap gap-[12px]">
-          <Segmented label="View" options={VIEWS} value={view} onChange={setView} />
-          <Segmented label="Index" options={INDICES} value={index} onChange={(v) => { setIndex(v); setAll(false) }} />
-        </div>
+        <Segmented label="View" options={VIEWS} value={view} onChange={setView} />
       </div>
       {isLoading ? <Loading rows={6} /> : isError && notFound(error) ? (
         <p className="text-[15px] text-stone">Not available for {name}: its members&rsquo; weights are not on file yet.</p>
@@ -132,7 +126,6 @@ export function IndexContributors({ onLookup }: { onLookup: (symbol: string) => 
           )}
           <ul className="text-[13px] text-stone list-disc pl-[18px] flex flex-col gap-[2px]">
             {data.notes.map((n) => <li key={n}>{n}</li>)}
-            <li>Not available for the Nasdaq-100, the Dow or the Russell 3000: no member weights are on file for them.</li>
           </ul>
         </>
       )}
