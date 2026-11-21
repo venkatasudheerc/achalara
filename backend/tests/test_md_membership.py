@@ -413,3 +413,29 @@ def test_a_run_stores_each_stocks_weight_once_per_day(db, indices, files):
     assert first > 0
     run_index_membership(db)
     assert db.query(IndexWeightHist).filter_by(index_code="SP500").count() == first
+
+
+def test_a_backfill_stores_every_kept_day_and_says_why_a_file_added_nothing(db, indices, files):
+    from app.md.membership import backfill_index_weights
+    from app.md.models import IndexWeightHist
+
+    run_index_membership(db)  # Oct 15, with weights
+    # The next day's file arrives with no weights in it.
+    files["IVV"] = ishares_csv(
+        "Oct 16, 2026", [stock("AAA"), stock("BBB"), stock("CCC", "Financials")]
+    ).replace(b'"1,000.00","1.00","1,000.00"', b'"1,000.00","-","1,000.00"')
+    run_index_membership(db)
+    db.query(IndexWeightHist).delete()
+    db.commit()
+
+    added, skipped = backfill_index_weights(db)
+
+    assert added["SP500"] == 3  # Oct 15 only: Oct 16's file carries no weights
+    days = {r.as_of for r in db.query(IndexWeightHist).filter_by(index_code="SP500")}
+    assert days == {date(2026, 10, 15)}
+    (line,) = [s for s in skipped if s.startswith("SP500")]
+    assert "2026-10-16" in line and "3 stocks, 0 with a weight" in line
+    # Run again: nothing new, and the Oct 15 file now says it was already stored.
+    again, skipped_again = backfill_index_weights(db)
+    assert again["SP500"] == 0
+    assert any("2026-10-15" in s and "3 already stored" in s for s in skipped_again)

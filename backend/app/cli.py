@@ -324,8 +324,11 @@ def md_index_weights() -> int:
 
     db = MdSession()
     try:
-        for code, added in backfill_index_weights(db).items():
-            print(f"{code}: {added} weights added")
+        added, skipped = backfill_index_weights(db)
+        for code, count in added.items():
+            print(f"{code}: {count} weights added")
+        for line in skipped:  # a file that added nothing says why
+            print(f"  {line}")
     finally:
         db.close()
     return 0
