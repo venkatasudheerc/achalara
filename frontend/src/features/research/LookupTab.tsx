@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/formatters'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
 import { Select, tone } from '@/features/portal/ui'
+import { CONTRIBUTOR_INDEX, IndexContributors } from './IndexContributors'
 import { SymbolPicker, choiceLabel, type Choice } from './SymbolPicker'
 import {
   Bars, Controls, HowToRead, Loading, MONTHS, MONTHS_SHORT, Section, UNIVERSE_LABEL,
@@ -237,6 +238,10 @@ export function LookupTab({ choice, onChoice, onOpenMonths }: {
               <Bars height={150} ariaLabel={`${p.symbol}'s return in each of the last 12 months`}
                 bars={p.last_12_months.map((m) => ({ key: m.period, label: MONTHS_SHORT[Number(m.period.slice(5, 7)) - 1], value: m.ret, note: m.period.slice(0, 4) }))} />
             </div>
+
+            {p.kind === 'index' && (CONTRIBUTOR_INDEX[p.symbol]
+              ? <IndexContributors index={CONTRIBUTOR_INDEX[p.symbol]} name={nameOf(p, ix)} onLookup={(s) => onChoice({ symbol: s, label: s })} />
+              : <p className="text-[14px] text-stone">What moved {nameOf(p, ix)} each week is not shown: the weights of its members are not on file.</p>)}
 
             <div className="flex flex-col gap-[14px]">
               <h3 className="text-[18px] font-semibold">{p.sector ? `Each month, ${nameOf(p, ix)} beside its sector` : `${nameOf(p, ix)}, month by month`}</h3>

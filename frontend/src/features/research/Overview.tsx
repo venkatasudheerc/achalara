@@ -5,7 +5,6 @@ import { Skeleton } from '@/components/Skeleton'
 import { ErrorState } from '@/components/ErrorState'
 import { tone } from '@/features/portal/ui'
 import type { RsMonthRow, RsReturnRow, RsWeek } from '@/api/types'
-import { IndexContributors } from './IndexContributors'
 import type { Choice } from './SymbolPicker'
 import { DivergingRows, HowToRead, Loading, MONTHS, Section, UNIVERSE_LABEL, pct1, unavailable } from './ui'
 
@@ -87,9 +86,9 @@ function weekHeadline(rows: RsReturnRow[], running: boolean): { title: string; s
   return { title, sub }
 }
 
-function ThisWeek({ onLookup, onOpenMonths }: {
+function ThisWeek({ onLookup, onLookupIndex }: {
   onLookup: (symbol: string) => void
-  onOpenMonths: (choice: Choice) => void
+  onLookupIndex: (choice: Choice) => void
 }) {
   const { data, isLoading, isError, error, refetch } = useResearchWeek()
   if (isLoading) return <Section title="This week"><Loading rows={8} /></Section>
@@ -103,12 +102,12 @@ function ThisWeek({ onLookup, onOpenMonths }: {
       <div className="grid gap-[32px] [grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))]">
         <div className="flex flex-col gap-[12px] min-w-0">
           <h3 className="text-[16px] font-semibold">Stock indices</h3>
-          {/* An index has no profile of its own: its record is Months by year, which takes it with a leading ^. */}
+          {/* An index opens in the look-up, which takes it with a leading ^. */}
           <DivergingRows
             rows={data.indices.map((r) => ({ key: r.symbol, label: r.label, sub: r.symbol, value: r.ret }))}
             onPick={(symbol) => {
               const index = data.indices.find((r) => r.symbol === symbol)
-              if (index) onOpenMonths({ symbol: `^${symbol}`, label: `${index.label} · ^${symbol}` })
+              if (index) onLookupIndex({ symbol: `^${symbol}`, label: `${index.label} · ^${symbol}` })
             }} />
           {others.length > 0 && <>
             <h3 className="text-[16px] font-semibold mt-[12px]">Other markets</h3>
@@ -138,7 +137,6 @@ function ThisWeek({ onLookup, onOpenMonths }: {
           </div>
         )}
       </div>
-      <IndexContributors onLookup={onLookup} />
     </Section>
   )
 }
@@ -243,17 +241,17 @@ function NextMonth({ forAdvisor }: { forAdvisor: boolean }) {
   )
 }
 
-export function OverviewTab({ forAdvisor, onLookup, onOpenMonths }: {
+export function OverviewTab({ forAdvisor, onLookup, onLookupIndex }: {
   forAdvisor: boolean
   onLookup: (symbol: string) => void
-  onOpenMonths: (choice: Choice) => void
+  onLookupIndex: (choice: Choice) => void
 }) {
   const week = useResearchWeek()
   const month = useResearchMonth()
   const outlook = useResearchOutlook(nextMonth())
   return (
     <div className="flex flex-col gap-[24px]">
-      <ThisWeek onLookup={onLookup} onOpenMonths={onOpenMonths} />
+      <ThisWeek onLookup={onLookup} onLookupIndex={onLookupIndex} />
       <ThisMonth />
       <NextMonth forAdvisor={forAdvisor} />
       <HowToRead notes={[...(week.data?.notes ?? []), ...(month.data?.notes ?? []), ...(outlook.data?.notes ?? [])]} />

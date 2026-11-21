@@ -272,6 +272,7 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
   const [choice, setChoice] = useState<Choice | null>(null)
   // Choosing a name elsewhere on the page is a decision, so it opens the profile at once.
   const openLookup = (s: string) => { setChoice({ symbol: s, label: s }); setTab('lookup') }
+  const openChoice = (c: Choice) => { setChoice(c); setTab('lookup') }
   const openMonths = (c: Choice) => { setSeries(c); setTab('months') }
   return (
     <div className="max-w-[1280px] w-full mx-auto flex flex-col gap-[32px]">
@@ -284,7 +285,7 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
       <GlanceCards />
       <div className="flex flex-col gap-[24px]">
         <Tabs tabs={TABS} value={tab} onChange={setTab} />
-        {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} onOpenMonths={openMonths} />}
+        {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} onLookupIndex={openChoice} />}
         {tab === 'months' && <MonthsTab choice={series} onChoice={setSeries} />}
         {tab === 'calendar' && <CalendarTab choice={series} onChoice={setSeries} />}
         {tab === 'top' && <TopTab forAdvisor={forAdvisor} onLookup={openLookup} />}
