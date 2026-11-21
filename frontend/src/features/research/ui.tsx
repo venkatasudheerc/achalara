@@ -1,5 +1,4 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { isAxiosError } from 'axios'
 import { Skeleton } from '@/components/Skeleton'
 import { formatPercent } from '@/lib/formatters'
 import { useIndices } from '@/hooks/useResearch'
@@ -94,12 +93,17 @@ export function Pct({ value, decimals = 2 }: { value: number | null | undefined;
   return <span className={`font-mono ${tone(value)}`}>{formatPercent(value, decimals)}</span>
 }
 
+/** The HTTP status of a failed request (`api/client.ts` keeps the response on the error). */
+function statusOf(error: unknown): number | undefined {
+  return (error as { response?: { status?: number } } | null)?.response?.status
+}
+
 export function notFound(error: unknown) {
-  return isAxiosError(error) && error.response?.status === 404
+  return statusOf(error) === 404
 }
 
 export function unavailable(error: unknown) {
-  return isAxiosError(error) && error.response?.status === 503
+  return statusOf(error) === 503
     ? 'Market data cannot be reached just now.'
     : 'Could not load this part of the market data.'
 }

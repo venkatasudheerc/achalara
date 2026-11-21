@@ -27,6 +27,8 @@ apiClient.interceptors.response.use(
     } else {
       message = detail ?? err.message ?? 'Unknown error'
     }
-    return Promise.reject(new Error(String(message)))
+    // Keep the response on the error: screens tell a 404 (nothing there) or a 503 (cannot be
+    // reached) from other failures by its status, and the form pages read the reply's detail.
+    return Promise.reject(Object.assign(new Error(String(message)), { response: err.response }))
   }
 )
