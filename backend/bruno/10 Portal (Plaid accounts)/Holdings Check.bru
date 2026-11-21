@@ -1,0 +1,19 @@
+meta {
+  name: Holdings Check
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/accounts/{{plaidInvestedAccountId}}/imports/check?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Whether the account's holdings agree with the institution's record, and from which date to download if not. Null when the account has no trades on file and gives only holdings: those holdings are the record.
+}

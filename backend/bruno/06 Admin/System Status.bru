@@ -1,0 +1,29 @@
+meta {
+  name: System Status
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/v1/admin/status
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.attention: isDefined
+  res.body.jobs: isDefined
+  res.body.brokerage_links: isDefined
+  res.body.brokerage_accounts: isDefined
+  res.body.capture: isDefined
+}
+
+docs {
+  What the System status page shows, admin only: what needs a look in plain words, the
+  daily jobs, each Plaid login with its state, each linked account with whose login brought
+  it in, and how many accounts have a record for the last market day.
+
+  After "08 Plaid Linking" the new login is in `brokerage_links` and its accounts in
+  `brokerage_accounts`. An account whose record is incomplete is a line in `attention`.
+}

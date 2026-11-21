@@ -1,0 +1,20 @@
+meta {
+  name: 10 Portal (Plaid accounts)
+  seq: 11
+}
+
+script:pre-request {
+  // What the client sees over the accounts that "08 Plaid Linking" added. They need
+  // those accounts, so without them they are skipped, not failed.
+  if (!bru.getVar('plaidInvestedAccountId')) {
+    bru.runner.skipRequest();
+  }
+}
+
+docs {
+  The portal's own views over the linked sandbox accounts, as staff see a client's
+  portal (`as_client`). Run "08 Plaid Linking" first: it stores `plaidInvestedAccountId`
+  (the 401(k)) and `plaidCashAccountId` (the checking account).
+
+  Percentages in these responses are decimal fractions (0.05 is 5%).
+}

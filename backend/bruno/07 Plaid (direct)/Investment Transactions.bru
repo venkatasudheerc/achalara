@@ -1,0 +1,38 @@
+meta {
+  name: Investment Transactions
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{plaidBaseUrl}}/investments/transactions/get
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}",
+    "start_date": "{{plaidStartDate}}",
+    "end_date": "{{plaidEndDate}}",
+    "options": { "count": 100 }
+  }
+}
+
+script:pre-request {
+  const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  bru.setVar('plaidStartDate', day(-730));
+  bru.setVar('plaidEndDate', day(0));
+}
+
+assert {
+  res.status: eq 200
+  res.body.investment_transactions: isDefined
+  res.body.total_investment_transactions: isNumber
+}
+
+docs {
+  Up to two years of buys, sales, dividends and transfers, as Plaid dates them: a trade by
+  its settlement, which the backend moves back to the trade day. The first call after a
+  link can answer `PRODUCT_NOT_READY` for a few seconds in the sandbox: send it again.
+}

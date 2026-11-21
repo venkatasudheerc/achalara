@@ -1,0 +1,31 @@
+meta {
+  name: Accounts
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/accounts?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  // The accounts the later requests look at: the 401(k) (investments) and the checking account (cash).
+  const accounts = (res.body && res.body.accounts) || [];
+  const retirement = accounts.find((a) => a.kind === 'retirement');
+  const checking = accounts.find((a) => a.kind === 'checking');
+  bru.setVar('plaidInvestedAccountId', retirement ? retirement.id : '');
+  bru.setVar('plaidCashAccountId', checking ? checking.id : '');
+}
+
+assert {
+  res.status: eq 200
+  res.body.accounts.length: gte 8
+  res.body.viewer.client_id: eq {{clientId}}
+}
+
+docs {
+  The accounts in view: each with its kind (read from Plaid's subtype), value, health and
+  where its figures come from.
+}

@@ -1,0 +1,20 @@
+meta {
+  name: Activity
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/activity?account_id={{plaidInvestedAccountId}}&as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.rows: isDefined
+}
+
+docs {
+  Trades and cash movements together, newest first. The custodian's moves between the cash and margin sides of one account are left out.
+}

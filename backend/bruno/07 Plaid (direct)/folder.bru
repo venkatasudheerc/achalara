@@ -1,0 +1,40 @@
+meta {
+  name: 07 Plaid (direct)
+  seq: 8
+}
+
+headers {
+  PLAID-CLIENT-ID: {{plaidClientId}}
+  PLAID-SECRET: {{plaidSecret}}
+  Content-Type: application/json
+}
+
+script:pre-request {
+  // These requests call Plaid itself, not the Achalara backend, and need no
+  // Achalara sign-in. They create their own throwaway sandbox login, so they never
+  // touch a real one.
+  //
+  // With no keys they are skipped, not failed, so a run on a machine without
+  // Plaid keys stays green. They never run against production: the sandbox calls
+  // (/sandbox/...) do not exist there, and a production login holds real accounts.
+  const base = bru.getEnvVar('plaidBaseUrl') || '';
+  if (!bru.getEnvVar('plaidClientId') || !bru.getEnvVar('plaidSecret')) {
+    bru.runner.skipRequest();
+  } else if (!base.includes('sandbox')) {
+    throw new Error('plaidBaseUrl must be https://sandbox.plaid.com: these requests create and remove test logins.');
+  }
+}
+
+docs {
+  Plaid's sandbox, called directly: the quickest way to see exactly what Plaid sends
+  before the backend reads it (the shape `plaid_reader.py` works from).
+
+  Set `plaidBaseUrl` (https://sandbox.plaid.com), `plaidClientId` and `plaidSecret`
+  (the **sandbox** secret, `PLAID_SECRET_SANDBOX` in `backend/.env`) in your private
+  environment. Run them in order: each one uses what the one before it stored
+  (`plaidPublicToken`, `plaidAccessToken`).
+
+  The sandbox login is Plaid's `user_good` at First Platypus Bank: a checking and a
+  savings account, a CD, a credit card, a money market, an IRA, a 401(k), a student
+  loan and a mortgage.
+}

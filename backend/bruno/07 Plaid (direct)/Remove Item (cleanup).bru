@@ -1,0 +1,26 @@
+meta {
+  name: Remove Item (cleanup)
+  type: http
+  seq: 99
+}
+
+post {
+  url: {{plaidBaseUrl}}/item/remove
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Removes the throwaway sandbox login made by this folder. It touches nothing the backend
+  holds: a login linked through the backend is removed by the backend, not from here.
+}

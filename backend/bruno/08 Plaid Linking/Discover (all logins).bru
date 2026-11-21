@@ -1,0 +1,22 @@
+meta {
+  name: Discover (all logins)
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/discover?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.checked: gte 1
+  res.body.failed: eq 0
+}
+
+docs {
+  Asks each of the client's logins whether it shares accounts not added yet. A known
+  account is never touched; repeating is safe.
+}

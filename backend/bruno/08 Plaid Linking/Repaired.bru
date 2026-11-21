@@ -1,0 +1,22 @@
+meta {
+  name: Repaired
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/{{plaidConnectionId}}/repaired?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq active
+}
+
+docs {
+  After Link closes: Plaid is asked whether the login reads again, and if so it is active
+  again and refreshed at once. A login that still needs signing in answers
+  `needs signing in`.
+}

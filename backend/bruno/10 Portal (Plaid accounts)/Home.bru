@@ -1,0 +1,21 @@
+meta {
+  name: Home
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/home?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.total_value: isNumber
+  res.body.allocation: isDefined
+}
+
+docs {
+  The Dashboard's figures over every account in view: value, the day's change, the allocation and the largest holdings (live prices), with the year's return, cash and income from the daily record.
+}

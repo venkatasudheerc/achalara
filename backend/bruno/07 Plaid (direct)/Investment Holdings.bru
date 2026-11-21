@@ -1,0 +1,31 @@
+meta {
+  name: Investment Holdings
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{plaidBaseUrl}}/investments/holdings/get
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.holdings: isDefined
+  res.body.securities: isDefined
+}
+
+docs {
+  The holdings and the securities they refer to. Look at each security's `ticker_symbol`:
+  Plaid sends some funds with a name and **no ticker** (a target-date trust, a 529
+  portfolio), and a settlement fund as a ticker-less mutual fund. The backend keeps those
+  under their name behind a `#`, and reads the settlement fund as cash
+  (`plaid_reader.security_symbol`, `is_cash_holding`).
+}

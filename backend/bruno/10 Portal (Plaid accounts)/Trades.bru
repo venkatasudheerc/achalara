@@ -1,0 +1,20 @@
+meta {
+  name: Trades
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/trades?account_id={{plaidInvestedAccountId}}&as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.trades: isDefined
+}
+
+docs {
+  Trades only, with their account and strategy.
+}

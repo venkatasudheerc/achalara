@@ -1,0 +1,35 @@
+meta {
+  name: Create Target Sleeve
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "strategy_id": "{{targetStrategyId}}"
+  }
+}
+
+vars:post-response {
+  targetSleeveId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+  res.body.strategy_id: eq {{targetStrategyId}}
+}
+
+docs {
+  The second sleeve of the same account. A symbol can only be moved between sleeves of one
+  account.
+}

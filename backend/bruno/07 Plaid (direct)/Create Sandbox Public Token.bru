@@ -1,0 +1,37 @@
+meta {
+  name: Create Sandbox Public Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{plaidBaseUrl}}/sandbox/public_token/create
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "institution_id": "ins_109508",
+    "initial_products": ["transactions", "investments", "liabilities"],
+    "options": {
+      "transactions": { "days_requested": 730 }
+    }
+  }
+}
+
+vars:post-response {
+  plaidPublicToken: res.body.public_token
+}
+
+assert {
+  res.status: eq 200
+  res.body.public_token: isString
+}
+
+docs {
+  A sandbox login without Plaid Link's window: what Link would hand back after a person
+  signs in. Two years of transactions are asked for, as the backend does
+  (`TRANSACTION_DAYS`). Exchange it in the next request, or give it to the backend's
+  `finish` (folder 08) instead: a public token is used once.
+}

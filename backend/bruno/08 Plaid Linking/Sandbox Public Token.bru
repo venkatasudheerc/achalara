@@ -1,0 +1,55 @@
+meta {
+  name: Sandbox Public Token
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{plaidBaseUrl}}/sandbox/public_token/create
+  body: json
+  auth: none
+}
+
+headers {
+  PLAID-CLIENT-ID: {{plaidClientId}}
+  PLAID-SECRET: {{plaidSecret}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "institution_id": "ins_109508",
+    "initial_products": ["transactions", "investments", "liabilities"],
+    "options": {
+      "transactions": { "days_requested": 730 }
+    }
+  }
+}
+
+script:pre-request {
+  const base = bru.getEnvVar('plaidBaseUrl') || '';
+  if (!bru.getEnvVar('plaidClientId') || !bru.getEnvVar('plaidSecret')) {
+    bru.setVar('plaidLinkPublicToken', '');
+    bru.runner.skipRequest();
+  } else if (!base.includes('sandbox')) {
+    throw new Error('plaidBaseUrl must be https://sandbox.plaid.com: this makes a test login.');
+  }
+}
+
+vars:post-response {
+  plaidLinkPublicToken: res.body.public_token
+}
+
+assert {
+  res.status: eq 200
+  res.body.public_token: isString
+}
+
+docs {
+  What Plaid Link would hand back after someone signs in, made without the window. Finish
+  uses it once. Plaid's `user_good` at First Platypus Bank: a checking, a savings, a CD, a
+  credit card, a money market, an IRA, a 401(k), a student loan and a mortgage.
+
+  This request calls **Plaid**, so it sends the Plaid keys to Plaid only; every other
+  request in this folder goes to the backend and carries no Plaid key.
+}

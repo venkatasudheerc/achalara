@@ -1,0 +1,21 @@
+meta {
+  name: Realized Gains
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/realized?account_id={{plaidInvestedAccountId}}&as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.positions: isDefined
+  res.body.net_realized: isNumber
+}
+
+docs {
+  Closed lots as the custodian reports them: cost, proceeds, wash-sale loss, short- and long-term gain.
+}

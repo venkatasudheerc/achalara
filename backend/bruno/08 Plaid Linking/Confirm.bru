@@ -1,0 +1,36 @@
+meta {
+  name: Confirm
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/{{plaidConnectionId}}/confirm?as_client={{clientId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "choices": []
+  }
+}
+
+script:pre-request {
+  req.setBody({ choices: JSON.parse(bru.getVar('plaidChoices') || '[]') });
+}
+
+assert {
+  res.status: eq 200
+  res.body.added: gte 8
+  res.body.skipped: gte 0
+}
+
+docs {
+  Adds the accounts chosen in Finish: each gets its sleeves and its first pull of
+  holdings, balances and transactions. Nothing is added without this.
+}

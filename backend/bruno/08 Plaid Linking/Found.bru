@@ -1,0 +1,21 @@
+meta {
+  name: Found
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/{{plaidConnectionId}}?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.connection_id: eq {{plaidConnectionId}}
+  res.body.accounts.length: gte 8
+}
+
+docs {
+  The same proposals again, for a dialog that was closed before Confirm.
+}

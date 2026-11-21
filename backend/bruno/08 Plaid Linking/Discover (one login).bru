@@ -1,0 +1,29 @@
+meta {
+  name: Discover (one login)
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/v1/portal/links/plaid/{{plaidConnectionId}}/discover?as_client={{clientId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.connection_id: eq {{plaidConnectionId}}
+  res.body.accounts.length: gte 8
+}
+
+tests {
+  test("every account the login shares is already added", function () {
+    expect(res.body.accounts.every((a) => a.status === "mapped")).to.equal(true);
+  });
+}
+
+docs {
+  The same check for the one login, answering as the link flow does: its accounts with
+  what is proposed for each. With every account already added, none is waiting
+  (`status` is `mapped` for all); a known account is never touched.
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Reset Login (sandbox)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{plaidBaseUrl}}/sandbox/item/reset_login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "access_token": "{{plaidAccessToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.reset_login: eq true
+}
+
+docs {
+  Makes the sandbox login need signing in again, so the next call answers
+  `ITEM_LOGIN_REQUIRED`: the case Plaid's update mode repairs. Send "Item Status" after it to see
+  the error. Only the throwaway login made above is affected.
+}
