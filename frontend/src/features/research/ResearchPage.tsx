@@ -284,7 +284,7 @@ export function ResearchPage({ forAdvisor = false }: { forAdvisor?: boolean }) {
       <GlanceCards />
       <div className="flex flex-col gap-[24px]">
         <Tabs tabs={TABS} value={tab} onChange={setTab} />
-        {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} />}
+        {tab === 'overview' && <OverviewTab forAdvisor={forAdvisor} onLookup={openLookup} onOpenMonths={openMonths} />}
         {tab === 'months' && <MonthsTab choice={series} onChoice={setSeries} />}
         {tab === 'calendar' && <CalendarTab choice={series} onChoice={setSeries} />}
         {tab === 'top' && <TopTab forAdvisor={forAdvisor} onLookup={openLookup} />}
