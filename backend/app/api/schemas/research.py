@@ -43,6 +43,32 @@ class RsWeekResponse(BaseModel):
     notes: List[str]
 
 
+class RsContributor(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    # Share of the index at the start of the period, a decimal fraction.
+    weight: float
+    ret: float
+    # weight x ret: the member's share of the index's move, a decimal fraction.
+    contribution: float
+
+
+class RsContributorsResponse(BaseModel):
+    index: str
+    period: str
+    start: date
+    end: date
+    running: bool = False
+    basis: str
+    weights_as_of: date
+    # stored: a day on or before the period's start; worked_back: a later day, an approximation.
+    weights_basis: str
+    count: int
+    members_return: float
+    contributors: List[RsContributor]
+    notes: List[str]
+
+
 class RsMonthRow(BaseModel):
     symbol: str
     label: str

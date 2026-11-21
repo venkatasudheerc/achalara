@@ -8,6 +8,13 @@ export function useResearchWeek() {
   return useQuery({ queryKey: ['research', 'week'], queryFn: researchApi.thisWeek, staleTime: FRESH })
 }
 
+export function useIndexContributors(index: string) {
+  return useQuery({
+    queryKey: ['research', 'contributors', index], queryFn: () => researchApi.indexContributors(index),
+    staleTime: FRESH, retry: false, placeholderData: keepPreviousData,
+  })
+}
+
 export function useResearchMonth() {
   return useQuery({ queryKey: ['research', 'month'], queryFn: researchApi.thisMonth, staleTime: FRESH })
 }

@@ -293,6 +293,29 @@ class IndexMemberHist(MdModel):
     __table_args__ = ({"schema": SCHEMA},)
 
 
+class IndexWeightHist(MdModel):
+    """A member's weight in an index on one day, as the index's fund held it
+    (percent of the fund's holdings file). Stored from each membership run
+    onward and from files already kept; a fund's weight is the index's weight
+    to within the fund's tracking."""
+
+    __tablename__ = "index_weight_hist"
+
+    index_code = Column(
+        String(12), ForeignKey(f"{SCHEMA}.index_def.code"), primary_key=True
+    )
+    security_id = Column(
+        String(36),
+        ForeignKey(f"{SCHEMA}.security.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    as_of = Column(Date, primary_key=True)
+    weight = Column(Numeric(10, 6), nullable=False)  # percent of the fund
+    source_file_id = Column(String(36), ForeignKey(f"{SCHEMA}.source_file.id"))
+
+    __table_args__ = ({"schema": SCHEMA},)
+
+
 # ---------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------

@@ -1730,6 +1730,47 @@ paths:
         '503':
           description: Market data could not be read
           content: *id001
+  /api/v1/research/index-contributors:
+    get:
+      tags:
+      - research
+      summary: Research Index Contributors
+      description: What moved an index over the latest week, member by member (404 where no weights are on file).
+      operationId: research_index_contributors_api_v1_research_index_contributors_get
+      parameters:
+      - name: index
+        in: query
+        required: false
+        schema:
+          type: string
+          default: SP500
+          title: Index
+      - name: achalara_session
+        in: cookie
+        required: false
+        schema:
+          type: string
+          nullable: true
+          title: Achalara Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RsContributorsResponse'
+        '422':
+          description: A choice that is not allowed
+          content: *id001
+        '401':
+          description: Not signed in
+          content: *id001
+        '404':
+          description: No prices on file for a subject
+          content: *id001
+        '503':
+          description: Market data could not be read
+          content: *id001
   /api/v1/research/this-month:
     get:
       tags:
@@ -9957,6 +9998,95 @@ components:
       - years
       - mean
       title: RsMonthToDate
+    RsContributor:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        name:
+          type: string
+          nullable: true
+          title: Name
+        weight:
+          type: number
+          title: Weight
+          description: Share of the index at the start of the period, a decimal fraction
+        ret:
+          type: number
+          title: Ret
+        contribution:
+          type: number
+          title: Contribution
+          description: 'weight x ret: the member''s share of the index''s move, a decimal fraction'
+      type: object
+      required:
+      - symbol
+      - name
+      - weight
+      - ret
+      - contribution
+      title: RsContributor
+    RsContributorsResponse:
+      properties:
+        index:
+          type: string
+          title: Index
+        period:
+          type: string
+          title: Period
+        start:
+          type: string
+          format: date
+          title: Start
+        end:
+          type: string
+          format: date
+          title: End
+        running:
+          type: boolean
+          title: Running
+        basis:
+          type: string
+          title: Basis
+        weights_as_of:
+          type: string
+          format: date
+          title: Weights As Of
+        weights_basis:
+          type: string
+          title: Weights Basis
+          description: 'stored: a day on or before the period''s start; worked_back: a later day, an approximation'
+        count:
+          type: integer
+          title: Count
+        members_return:
+          type: number
+          title: Members Return
+        contributors:
+          items:
+            $ref: '#/components/schemas/RsContributor'
+          type: array
+          title: Contributors
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - index
+      - period
+      - start
+      - end
+      - running
+      - basis
+      - weights_as_of
+      - weights_basis
+      - count
+      - members_return
+      - contributors
+      - notes
+      title: RsContributorsResponse
     RsMover:
       properties:
         symbol:

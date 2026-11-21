@@ -317,6 +317,20 @@ def load_index_file(symbol: str, path: str, source: str, replace: bool) -> int:
     return 0
 
 
+def md_index_weights() -> int:
+    """Store the weights in the index fund files already kept (safe to repeat)."""
+    from app.md.database import MdSession
+    from app.md.membership import backfill_index_weights
+
+    db = MdSession()
+    try:
+        for code, added in backfill_index_weights(db).items():
+            print(f"{code}: {added} weights added")
+    finally:
+        db.close()
+    return 0
+
+
 def md_index_membership() -> int:
     """Fetch the index funds' holdings now and bring membership up to date."""
     from app.md.database import MdSession
@@ -729,6 +743,10 @@ def main(argv=None) -> int:
         "md-index-membership",
         help="market data: fetch index holdings now and update membership",
     )
+    commands.add_parser(
+        "md-index-weights",
+        help="market data: store the weights in the fund files already kept",
+    )
     identifiers = commands.add_parser(
         "md-identifiers", help="market data: Webull ids, SEC companies, FIGIs now"
     )
@@ -867,6 +885,8 @@ def main(argv=None) -> int:
         return md_classification(args.refresh)
     if args.command == "md-set-sector":
         return md_set_sector(args.symbol, args.sector, args.industry)
+    if args.command == "md-index-weights":
+        return md_index_weights()
     if args.command == "md-index-membership":
         return md_index_membership()
     if args.command == "create-admin":

@@ -26,6 +26,7 @@ from app.md.models import (
     IndexDef,
     IndexMember,
     IndexMemberHist,
+    IndexWeightHist,
     Security,
     SecuritySymbol,
     SecuritySymbolHist,
@@ -107,6 +108,81 @@ class MembershipService:
             if h.kind == "stock"
         }
         self._apply(index, members, as_of, stored.id, outcome)
+        if index.code in outcome.applied:
+            self._store_weights(index.code, as_of, stored.id, holdings, outcome)
+
+    def _store_weights(
+        self,
+        index_code: str,
+        as_of: date,
+        file_id: Optional[str],
+        holdings: List[Holding],
+        outcome: Optional[Outcome] = None,
+    ) -> int:
+        """Keep each stock's weight in the fund for this day (once per day: a
+        run repeated on the same file changes nothing)."""
+        weights: Dict[str, float] = {}
+        for h in holdings:
+            if h.kind != "stock" or not h.weight or h.weight <= 0:
+                continue
+            known = (
+                self.db.query(SecuritySymbol.security_id)
+                .filter(
+                    SecuritySymbol.market_code == US_MARKET,
+                    SecuritySymbol.symbol == h.symbol,
+                )
+                .first()
+            )
+            if known is not None:
+                weights[known[0]] = weights.get(known[0], 0.0) + h.weight
+        have = {
+            row[0]
+            for row in self.db.query(IndexWeightHist.security_id).filter(
+                IndexWeightHist.index_code == index_code,
+                IndexWeightHist.as_of == as_of,
+            )
+        }
+        added = 0
+        for security_id, weight in weights.items():
+            if security_id in have:
+                continue
+            self.db.add(
+                IndexWeightHist(
+                    index_code=index_code,
+                    security_id=security_id,
+                    as_of=as_of,
+                    weight=weight,
+                    source_file_id=file_id,
+                )
+            )
+            added += 1
+        self.db.commit()
+        if outcome is not None:
+            outcome.rows_written += added
+        return added
+
+    def backfill_weights(self) -> Dict[str, int]:
+        """Read the fund files already kept in ``source_file`` and store their
+        weights; safe to repeat. Index code -> rows added."""
+        added: Dict[str, int] = {}
+        for index in self.db.query(IndexDef).filter(IndexDef.method == "fund_file"):
+            source, name = index.source.split(":", 1)
+            added[index.code] = 0
+            files = (
+                self.db.query(SourceFile)
+                .filter(SourceFile.source == source, SourceFile.name == name)
+                .order_by(SourceFile.as_of)
+            )
+            for stored in files:
+                try:
+                    _, holdings = READERS[source](gzip.decompress(stored.content))
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not read kept file %s: %s", stored.id, exc)
+                    continue
+                added[index.code] += self._store_weights(
+                    index.code, stored.as_of, stored.id, holdings
+                )
+        return added
 
     def _from_parts(self, index: IndexDef, outcome: Outcome) -> None:
         parts = [p.strip() for p in (index.parts or "").split(",") if p.strip()]
@@ -282,6 +358,10 @@ class MembershipService:
                 f"S&P 500: iShares and State Street ({as_of}) differ — "
                 f"only iShares {only_ours[:10]}, only State Street {only_theirs[:10]}"
             )
+
+
+def backfill_index_weights(db: Session) -> Dict[str, int]:
+    return MembershipService(db).backfill_weights()
 
 
 def run_index_membership(db: Session) -> Outcome:

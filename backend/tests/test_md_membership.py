@@ -403,3 +403,13 @@ def test_a_run_left_running_by_a_stopped_process_is_closed(db):
     closed = db.query(JobRun).filter(JobRun.outcome == "failed").one()
     assert closed.note.startswith("Interrupted") and closed.finished_at is not None
     assert close_abandoned(db) == 0
+
+
+def test_a_run_stores_each_stocks_weight_once_per_day(db, indices, files):
+    from app.md.models import IndexWeightHist
+
+    run_index_membership(db)
+    first = db.query(IndexWeightHist).filter_by(index_code="SP500").count()
+    assert first > 0
+    run_index_membership(db)
+    assert db.query(IndexWeightHist).filter_by(index_code="SP500").count() == first

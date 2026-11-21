@@ -27,7 +27,9 @@ from app.md.models import (
     Company,
     IndexLevelHist,
     IndexMember,
+    IndexWeightHist,
     Industry,
+    PriceAdjDaily,
     Security,
     SecurityClassification,
     SecuritySymbol,
@@ -237,6 +239,131 @@ def this_week(db: Session, today: Optional[date] = None) -> Dict:
             if week.partial
             else []
         ),
+    }
+
+
+# Indices whose members' weights are on file: the weights come from the index's own
+# fund holdings (IVV, IWB, IWM). Nasdaq-100, the Dow and the Russell 3000 have none.
+CONTRIBUTOR_INDICES = ("SP500", "R1000", "R2000")
+
+
+def index_contributors(
+    db: Session, index: str = "SP500", today: Optional[date] = None
+) -> Dict:
+    """What moved an index over the latest week: each member's weight at the start of
+    the week times its return, in percentage points of the index's move, largest first
+    by size (up or down). Weights are the fund's, stored by day; where no day on or
+    before the week's start is stored, the nearest later one is worked back by the
+    members' own returns (``weights_basis`` says which)."""
+    if index not in CONTRIBUTOR_INDICES:
+        raise perf.UnknownSubject(
+            f"Contributions are not available for {index}: no member weights on file"
+        )
+    today = today or date.today()
+    anchor = _try_series(db, "SPY") or _try_series(db, "SPX")
+    if anchor is None:
+        raise perf.UnknownSubject("No prices on file yet")
+    weeks = {r.key: r for r in period_returns(anchor[2], "week", as_of=today)}
+    if not weeks:
+        raise perf.UnknownSubject("No week on file yet")
+    key = max(weeks)
+    week = weeks[key]
+    days = [
+        row[0]
+        for row in db.query(IndexWeightHist.as_of)
+        .filter(IndexWeightHist.index_code == index)
+        .distinct()
+    ]
+    if not days:
+        raise perf.UnknownSubject(
+            f"Contributions are not available for {index}: no member weights on file yet"
+        )
+    before = [d for d in days if d <= week.start]
+    stored = bool(before)
+    snapshot = max(before) if stored else min(days)
+    weights = {
+        sid: float(w)
+        for sid, w in db.query(IndexWeightHist.security_id, IndexWeightHist.weight)
+        .filter(IndexWeightHist.index_code == index, IndexWeightHist.as_of == snapshot)
+    }
+    since = date.fromordinal(week.start.toordinal() - 10)
+    last = max(week.end, snapshot)
+    closes: Dict[str, List] = defaultdict(list)
+    for sid, day, close in db.query(
+        PriceAdjDaily.security_id, PriceAdjDaily.price_date, PriceAdjDaily.adj_close
+    ).filter(
+        PriceAdjDaily.security_id.in_(list(weights)),
+        PriceAdjDaily.price_date >= since,
+        PriceAdjDaily.price_date <= last,
+    ):
+        closes[sid].append((day, float(close)))
+
+    def at(series, limit, strictly_before=False):
+        found = [
+            c
+            for d, c in sorted(series)
+            if (d < limit if strictly_before else d <= limit)
+        ]
+        return found[-1] if found else None
+
+    rows = []
+    for sid, weight in weights.items():
+        series = closes.get(sid, [])
+        base, end = at(series, week.start, True), at(series, week.end)
+        if not base or not end:
+            continue
+        start_weight = weight
+        if not stored:
+            grown = at(series, snapshot)
+            if not grown:
+                continue
+            start_weight = weight / (grown / base)
+        rows.append((sid, start_weight, end / base - 1))
+    total = sum(w for _, w, _ in rows)
+    if not rows or total <= 0:
+        raise perf.UnknownSubject("No member prices on file for this week")
+    names = _labels(db, [sid for sid, _, _ in rows])
+    contributors = [
+        {
+            "symbol": names.get(sid, {}).get("symbol", sid),
+            "name": names.get(sid, {}).get("name"),
+            "weight": w / total,
+            "ret": ret,
+            "contribution": w / total * ret,
+        }
+        for sid, w, ret in rows
+    ]
+    contributors.sort(key=lambda r: abs(r["contribution"]), reverse=True)
+    notes = [
+        "Contribution is a member's weight at the start of the week times its return, "
+        "in percentage points of the index's move; together the members add up to the "
+        "index's move, apart from dividends and the fund's small differences from the index.",
+        "Weights are those of the fund that tracks the index, a close but not exact "
+        "stand-in for the index's own. Returns include dividends.",
+    ]
+    if not stored:
+        notes.append(
+            f"Weights on file for the week's start were not stored; they are the "
+            f"{snapshot:%d %b %Y} weights worked back by each member's return since, "
+            "an approximation."
+        )
+    if week.partial:
+        notes.append(
+            "The week is not over: these are its returns so far, to the latest close."
+        )
+    return {
+        "index": index,
+        "period": perf.label(key, "week"),
+        "start": week.start,
+        "end": week.end,
+        "running": week.partial,
+        "basis": "total",
+        "weights_as_of": snapshot,
+        "weights_basis": "stored" if stored else "worked_back",
+        "count": len(contributors),
+        "members_return": sum(c["contribution"] for c in contributors),
+        "contributors": contributors,
+        "notes": notes,
     }
 
 
@@ -961,6 +1088,15 @@ TOOLS: Tuple[Tool, ...] = (
         "S&P 500's best and worst members.",
         _schema({}),
         this_week,
+    ),
+    Tool(
+        "index_contributors",
+        "What moved the S&P 500, Russell 1000 or Russell 2000 over the latest week: each "
+        "member's weight at the start times its return, in percentage points of the index.",
+        _schema(
+            {"index": {"type": "string", "enum": list(CONTRIBUTOR_INDICES)}},
+        ),
+        index_contributors,
     ),
     Tool(
         "this_month",
