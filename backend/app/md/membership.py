@@ -122,9 +122,14 @@ class MembershipService:
         """Keep each stock's weight in the fund for this day (once per day: a
         run repeated on the same file changes nothing)."""
         weights: Dict[str, float] = {}
+        stocks = weighted = 0
         for h in holdings:
-            if h.kind != "stock" or not h.weight or h.weight <= 0:
+            if h.kind != "stock":
                 continue
+            stocks += 1
+            if not h.weight or h.weight <= 0:
+                continue
+            weighted += 1
             known = (
                 self.db.query(SecuritySymbol.security_id)
                 .filter(
@@ -141,6 +146,14 @@ class MembershipService:
                 IndexWeightHist.index_code == index_code,
                 IndexWeightHist.as_of == as_of,
             )
+        }
+        # What this file gave, for a backfill that adds nothing to explain itself.
+        self.last_weights = {
+            "holdings": len(holdings),
+            "stocks": stocks,
+            "weighted": weighted,
+            "known": len(weights),
+            "already": len(have),
         }
         added = 0
         for security_id, weight in weights.items():
@@ -165,6 +178,7 @@ class MembershipService:
         """Read the fund files already kept in ``source_file`` and store their
         weights; safe to repeat. Index code -> rows added."""
         added: Dict[str, int] = {}
+        self.skipped: List[str] = []  # one line for each kept file that added nothing
         for index in self.db.query(IndexDef).filter(IndexDef.method == "fund_file"):
             source, name = index.source.split(":", 1)
             added[index.code] = 0
@@ -178,10 +192,21 @@ class MembershipService:
                     _, holdings = READERS[source](gzip.decompress(stored.content))
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Could not read kept file %s: %s", stored.id, exc)
+                    self.skipped.append(
+                        f"{index.code} {stored.as_of}: could not be read ({type(exc).__name__}: {exc})"
+                    )
                     continue
-                added[index.code] += self._store_weights(
+                stored_now = self._store_weights(
                     index.code, stored.as_of, stored.id, holdings
                 )
+                added[index.code] += stored_now
+                if stored_now == 0:
+                    g = self.last_weights
+                    self.skipped.append(
+                        f"{index.code} {stored.as_of}: nothing added: {g['holdings']} holdings, "
+                        f"{g['stocks']} stocks, {g['weighted']} with a weight, "
+                        f"{g['known']} known securities, {g['already']} already stored"
+                    )
         return added
 
     def _from_parts(self, index: IndexDef, outcome: Outcome) -> None:
@@ -360,8 +385,11 @@ class MembershipService:
             )
 
 
-def backfill_index_weights(db: Session) -> Dict[str, int]:
-    return MembershipService(db).backfill_weights()
+def backfill_index_weights(db: Session) -> Tuple[Dict[str, int], List[str]]:
+    """Index code -> weights added, and a line for each kept file that added nothing."""
+    service = MembershipService(db)
+    added = service.backfill_weights()
+    return added, service.skipped
 
 
 def run_index_membership(db: Session) -> Outcome:
