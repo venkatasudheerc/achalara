@@ -439,3 +439,18 @@ def test_a_backfill_stores_every_kept_day_and_says_why_a_file_added_nothing(db, 
     again, skipped_again = backfill_index_weights(db)
     assert again["SP500"] == 0
     assert any("2026-10-15" in s and "3 already stored" in s for s in skipped_again)
+
+
+def test_a_file_whose_weight_column_is_market_weight_is_read():
+    """iShares renamed 'Weight (%)' to 'Market Weight' (alongside 'Notional Weight')."""
+    text = (
+        "iShares Example ETF\n"
+        'Fund Holdings as of,"Nov 19, 2026"\n'
+        "\n"
+        "Ticker,Name,Type,Sector,Asset Class,Market Value,Notional Value,Quantity,Price,"
+        "Location,Exchange,Currency,FX Rate,Market Currency,Accrual Date,Market Weight,Notional Weight\n"
+        '"AAA","EXAMPLE A","EQUITY","Information Technology","Equity","1,000.00","1,000.00",'
+        '"10.00","100.00","United States","NASDAQ","USD","1.00","USD","-","8.23","8.22"\n'
+    )
+    _, rows = read_ishares_csv(text.encode())
+    assert [(r.symbol, r.weight) for r in rows] == [("AAA", 8.23)]

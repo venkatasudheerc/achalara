@@ -79,7 +79,7 @@ def read_ishares_csv(content: bytes) -> Tuple[date, List[Holding]]:
                 kind="stock" if _SHARE.match(symbol) else "other",
                 sector=(row.get("Sector") or "").strip() or None,
                 exchange=(row.get("Exchange") or "").strip() or None,
-                weight=_number(row.get("Weight (%)")),
+                weight=_number(row.get("Weight (%)") or row.get("Market Weight")),
             )
         )
     return as_of, holdings
