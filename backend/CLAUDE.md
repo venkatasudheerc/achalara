@@ -48,6 +48,9 @@ python -m app.cli split-into-strategies [--account 5678] [--apply]
 # A split recorded twice (same symbol within three days) makes shares never held: shows them; --apply removes the later copies and rebuilds
 python -m app.cli repair-duplicate-splits [--apply]
 
+# Copy market data's sector for each held symbol into the app now (the 6:20 AM job does it daily)
+python -m app.cli sector-copy
+
 # A company now trades under a new ticker: read its earlier trades under it (rebuilds what traded it)
 python -m app.cli add-ticker-change --from OLD --to NEW --date 2025-06-02
 
@@ -874,7 +877,12 @@ must never change anything. Two independent layers hold this; keep both.
 `GET /api/v1/admin/status` (`StatusService`) is what the advisor's System status page shows.
 Its `attention` list is the plain-language summary of what needs a person; add a new check
 there, not on the screen. A scheduled job must be wrapped in `run_log.tracked("<job id>")` and
-listed in `status_service.JOBS`, or the page cannot show it. Each finished run is also kept in
+listed in `status_service.JOBS` with its name and its times in plain words (`schedule`, shown in the
+Runs column; a test fails when the scheduler and the list differ), or the page cannot show it. A job
+with no run on record shows "No run on record yet": a job that has never run is not "missed" and is
+not made up at start-up, so a new job, or one whose days have not come since runs began to be kept,
+waits for its next scheduled time (the Plaid refresh runs Tuesday to Saturday only). Run one by hand
+with `python -m app.cli plaid-refresh` or `sector-copy`; neither writes a run to the record. Each finished run is also kept in
 `job_runs` (`services/job_history.py`), so the page still knows a job's last run after a restart;
 recent warnings are in memory only and start empty at each restart. **A run missed while the
 server was down is made up at start-up** (`scheduler.catch_up`, two minutes after start): a job

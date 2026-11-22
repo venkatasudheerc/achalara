@@ -290,3 +290,13 @@ def test_a_server_without_plaid_says_so(db, monkeypatch):
     monkeypatch.setattr(settings, "scheduler_enabled", True)
     monkeypatch.setattr(settings, "plaid_client_id", "")
     assert any("Plaid is not set up" in line for line in StatusService(db).status()["attention"])
+
+
+def test_every_scheduled_job_is_listed_with_its_times():
+    """A job added to the scheduler must appear on System status, with its
+    times in words."""
+    from app.services import scheduler, status_service
+
+    scheduled = {job_id for job_id, *_ in scheduler._schedule()}
+    assert {job_id for job_id, _, _ in status_service.JOBS} == scheduled
+    assert all(schedule.strip() for _, _, schedule in status_service.JOBS)

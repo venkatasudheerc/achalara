@@ -121,6 +121,20 @@ def repair_duplicate_splits(apply: bool) -> int:
     return 0
 
 
+def sector_copy() -> int:
+    """Copy market data's sector for each held symbol into the app now (the
+    morning job does this at 6:20 AM Eastern). Safe to repeat."""
+    from app.services.sector_copy import refresh
+
+    db = SessionLocal()
+    try:
+        changed = refresh(db)
+    finally:
+        db.close()
+    print(f"Sector copy: {changed} row(s) added or changed.")
+    return 0
+
+
 def plaid_refresh(client: Optional[str]) -> int:
     """The morning's Plaid refresh, now: every active login, or one client's.
     Safe to repeat (rows are matched by Plaid's ids; the cursor only moves
@@ -743,6 +757,10 @@ def main(argv=None) -> int:
         "--replace", action="store_true", help="remove the index's stored days first"
     )
     commands.add_parser(
+        "sector-copy",
+        help="copy market data's sector for each held symbol into the app now",
+    )
+    commands.add_parser(
         "md-index-membership",
         help="market data: fetch index holdings now and update membership",
     )
@@ -862,6 +880,8 @@ def main(argv=None) -> int:
         return repair_duplicate_splits(args.apply)
     if args.command == "add-ticker-change":
         return add_ticker_change(args.old, args.new, args.date)
+    if args.command == "sector-copy":
+        return sector_copy()
     if args.command == "plaid-refresh":
         return plaid_refresh(args.client)
     if args.command == "compare-feeds":

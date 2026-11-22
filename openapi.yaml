@@ -9179,6 +9179,9 @@ components:
           type: string
         label:
           type: string
+        schedule:
+          type: string
+          description: When the job runs, in plain words (US Eastern)
         next_run_at:
           type: string
           format: date-time
@@ -9205,6 +9208,7 @@ components:
       required:
       - id
       - label
+      - schedule
       - next_run_at
       - last_started_at
       - last_finished_at

@@ -25,8 +25,11 @@ class StatusDisk(BaseModel):
 class StatusJob(BaseModel):
     id: str
     label: str
+    # When it runs, in plain words (US Eastern).
+    schedule: str = ""
     next_run_at: Optional[datetime] = None
-    # The last run since the app started; empty until the job has run once.
+    # The latest run on record (kept across restarts); empty until the job has
+    # had a turn since runs began to be kept.
     last_started_at: Optional[datetime] = None
     last_finished_at: Optional[datetime] = None
     last_ok: Optional[bool] = None
