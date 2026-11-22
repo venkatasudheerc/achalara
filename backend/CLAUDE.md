@@ -672,7 +672,7 @@ its accounts are `brokerage_accounts` rows. Rules:
   it and none is guessed. A refusal of liabilities (not offered, not ready) never fails a refresh:
   the balance-based figures are kept. `PortalAccount.card` carries them for an account in view (so a
   shared account's card is seen by exactly who sees the account); a card with nothing owed has no
-  due date. APRs and the statement date are not kept (the institution tested sends neither). Nothing
+  due date. The payment-due nudge names the **statement balance** (`last_statement_balance`, what the due date asks for) and says "owed now" for the balance, which also holds what was charged since; with no statement balance it says only "owed now". APRs and the statement date are not kept (the institution tested sends neither). Nothing
   in `perf` reads it.
 - **Checking a login for accounts not seen before** (`PlaidLinkService.discover_new` /
   `discover` / `discover_mine`, routes `POST /portal/links/plaid/discover` for every one of the
