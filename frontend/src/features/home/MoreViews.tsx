@@ -202,6 +202,7 @@ function CardTile({ account }: { account: PortalAccount }) {
           <dt className={label}>Due</dt>
           <dd className={days != null && days <= 7 ? 'text-loss font-medium' : ''}>
             {due ? (days != null && days >= 0 && days <= 30 ? (days === 0 ? 'Today' : `In ${days} day${days === 1 ? '' : 's'}`) : formatDate(due)) : <span className="text-stone">Nothing</span>}
+            {due && card.last_statement_balance != null && card.last_statement_balance > 0 && <span className="block text-[13px] text-stone tabular-nums">statement {formatCurrency(card.last_statement_balance)}</span>}
             {due && card.minimum_payment != null && <span className="block text-[13px] text-stone tabular-nums">min {formatCurrency(card.minimum_payment)}</span>}
           </dd>
         </div>

@@ -129,9 +129,16 @@ def test_a_payment_due_this_week_names_the_minimum_and_what_checking_holds():
     due = out[0]
     assert due["title"] == "A card payment is due in 4 days"
     assert due["visual"]["type"] == "countdown" and due["visual"]["days"] == 4
-    assert "$1,240 owed, minimum $35" in due["detail"] and "hold $912" in due["detail"]
+    assert "$1,240 owed now, minimum $35" in due["detail"] and "hold $912" in due["detail"]
     # One account has no Accounts tab: the card is read on its own Dashboard.
     assert due["action"]["sel"] == "account:Visa" and due["action"]["view"] == "dashboard"
+
+
+def test_a_payment_due_names_the_statement_balance_when_the_institution_sends_it():
+    visa = card("Visa", 906, next_payment_due_date=TODAY + timedelta(days=2),
+                minimum_payment=25, last_statement_balance=612.40)
+    due = run(Stub([visa]))["nudges"][0]
+    assert "statement balance $612.40, minimum $25. $906 owed now." in due["detail"]
 
 
 def test_an_overdue_card_is_said_once_and_a_stale_figure_is_not_acted_on():

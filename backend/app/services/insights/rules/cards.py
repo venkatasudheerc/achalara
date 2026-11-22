@@ -65,7 +65,16 @@ class CardDueSoon(Rule):
             if not 0 <= days <= DUE_WITHIN_DAYS:
                 continue
             minimum = card.get("minimum_payment")
-            line = f"{name_of(a)}: {money(owed)} owed" + (f", minimum {money(minimum)}." if minimum else ".")
+            # What the due date asks for is the statement's balance, not what is
+            # owed now (which also holds what was charged since). Said only when
+            # the institution sends it; otherwise the figure is "owed now".
+            statement = card.get("last_statement_balance")
+            if statement is not None and statement > 0:
+                line = f"{name_of(a)}: statement balance ${statement:,.2f}"
+                line += f", minimum {money(minimum)}" if minimum else ""
+                line += f". {money(owed)} owed now."
+            else:
+                line = f"{name_of(a)}: {money(owed)} owed now" + (f", minimum {money(minimum)}." if minimum else ".")
             if checking:
                 line += f" The checking accounts here hold {money(sum(c['value'] or 0 for c in checking))}."
             when = "today" if days == 0 else "in 1 day" if days == 1 else f"in {days} days"
