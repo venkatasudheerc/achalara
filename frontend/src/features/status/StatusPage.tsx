@@ -15,17 +15,18 @@ function Jobs({ status, now }: { status: SystemStatusResponse; now: number }) {
   return (
     <Section title="Daily jobs"
       sub={status.app.scheduler_enabled
-        ? 'Last runs are those since the app last started.'
+        ? 'The latest run of each job, kept across restarts. A job shows no run until its first turn since runs began to be kept.'
         : 'The daily jobs are switched off here.'}>
-      <table className="w-full min-w-[640px] border-collapse">
-        <thead><tr><th className={th}>Job</th><th className={th}>Last run</th><th className={th}>Result</th><th className={th}>Next run</th></tr></thead>
+      <table className="w-full min-w-[820px] border-collapse">
+        <thead><tr><th className={th}>Job</th><th className={th}>Runs</th><th className={th}>Last run</th><th className={th}>Result</th><th className={th}>Next run</th></tr></thead>
         <tbody>
           {status.jobs.map((job) => (
             <tr key={job.id} className="border-t border-stone/10">
-              <td className={td}><span className="flex items-center gap-2"><Dot tone={jobTone(job)} />{job.label}</span></td>
+              <td className={`${td} whitespace-nowrap`}><span className="flex items-center gap-2"><Dot tone={jobTone(job)} />{job.label}</span></td>
+              <td className={`${td} text-stone`}>{job.schedule}</td>
               <td className={mono}>{when(job.last_finished_at)}</td>
-              <td className={td}>
-                {job.last_ok == null ? <span className="text-stone">Not run yet</span>
+              <td className={`${td} whitespace-nowrap`}>
+                {job.last_ok == null ? <span className="text-stone">No run on record yet</span>
                   : job.last_ok ? (job.last_skipped ? <span className="text-stone">Skipped: {job.last_skipped}</span> : 'Completed')
                   : <span className="text-loss">Failed{job.last_error ? `: ${job.last_error}` : ''}</span>}
               </td>
@@ -95,21 +96,26 @@ function TickerChanges() {
   )
 }
 
+/** A source as a person reads it: "plaid" is Plaid. */
+function sourceName(source: string): string {
+  return source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Unknown'
+}
+
 function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
   return (
     <section className="bg-surface border border-stone/20 rounded-card">
       <div className="px-6 py-4 border-b border-stone/15">
-        <h2 className="text-sm font-medium text-summit-ink">Brokerage links</h2>
+        <h2 className="text-sm font-medium text-summit-ink">External connections</h2>
         <p className="text-xs text-stone mt-0.5">
-          Whether each Plaid login is still sharing data, as of its last morning refresh.
+          Each login to a bank, card or brokerage, and whether its source is still sharing data, as of its last check.
         </p>
       </div>
       <div className="overflow-x-auto">
-        {status.brokerage_links.length === 0 ? <p className="px-6 py-6 text-sm text-stone">No brokerage is linked yet.</p> : (
-          <table className="w-full min-w-[720px] border-collapse">
+        {status.brokerage_links.length === 0 ? <p className="px-6 py-6 text-sm text-stone">Nothing is connected yet.</p> : (
+          <table className="w-full min-w-[800px] border-collapse">
             <thead>
               <tr>
-                <th className={th}>Brokerage</th><th className={th}>State</th><th className={th}>Last checked</th>
+                <th className={th}>Institution</th><th className={th}>Source</th><th className={th}>State</th><th className={th}>Last checked</th>
                 <th className={th}>Accounts</th><th className={th}>Managed from</th>
               </tr>
             </thead>
@@ -119,6 +125,7 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
                 return (
                   <tr key={link.id} className="border-t border-stone/10">
                     <td className={td}>{link.institution}</td>
+                    <td className={td}>{sourceName(link.source)}</td>
                     <td className={td}>
                       <span className="flex items-center gap-2">
                         <Dot tone={active ? 'ok' : 'attention'} />
@@ -154,9 +161,9 @@ function Links({ status, now }: { status: SystemStatusResponse; now: number }) {
 function Accounts({ status, now }: { status: SystemStatusResponse; now: number }) {
   const rows = status.brokerage_accounts
   return (
-    <Section title="Brokerage accounts"
+    <Section title="Connected accounts"
       sub={`Daily record checked for ${formatDate(status.capture.market_day)}, the last finished market day.`}>
-      {rows.length === 0 ? <p className="px-6 py-6 text-sm text-stone">No brokerage accounts are linked yet.</p> : (
+      {rows.length === 0 ? <p className="px-6 py-6 text-sm text-stone">No accounts are connected yet.</p> : (
         <table className="w-full min-w-[860px] border-collapse">
           <thead>
             <tr>

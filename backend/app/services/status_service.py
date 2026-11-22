@@ -28,14 +28,29 @@ from app.md.schedule import MD_JOBS
 from app.services.account_health import account_health
 from app.services.performance_build_service import last_market_day
 
+# Each scheduled job: its id, its name, and when it runs in plain words (US
+# Eastern). ``tests/test_status.py`` checks the ids against ``scheduler._schedule``,
+# so a job added there cannot be left off this page or go without its times.
 JOBS = (
-    ("plaid_refresh", "Plaid refresh"),
-    ("plaid_refresh_evening", "Plaid evening refresh"),
-    ("ticker_changes", "Ticker changes"),
-    ("sector_copy", "Sector copy"),
-    ("market_pattern_copy", "Market pattern copy"),
-    ("price_history", "Price history"),
-    ("index_history", "Index history"),
+    (
+        "plaid_refresh",
+        "Plaid refresh",
+        "Tuesday to Saturday, 6:30 AM (records the day before)",
+    ),
+    (
+        "plaid_refresh_evening",
+        "Plaid evening refresh",
+        "Monday to Saturday, 7:30 PM (brings the day in, records nothing)",
+    ),
+    ("ticker_changes", "Ticker changes", "Every day, 6:15 AM"),
+    ("sector_copy", "Sector copy", "Every day, 6:20 AM"),
+    ("market_pattern_copy", "Market pattern copy", "Every day, 6:25 AM"),
+    ("price_history", "Price history", "Monday to Friday, 6:30 PM (7:30 PM in summer)"),
+    (
+        "index_history",
+        "Index history",
+        "Monday to Friday, 10:00 PM; Tuesday to Saturday, 6:00 AM",
+    ),
 )
 # A backup older than this, or transactions further behind than this, is pointed out.
 BACKUP_MAX_AGE = timedelta(hours=36)
@@ -150,7 +165,7 @@ class StatusService:
     def _jobs(self, attention: List[str]) -> List[Dict]:
         times = scheduler.job_times()
         jobs = []
-        for job_id, label in JOBS:
+        for job_id, label, schedule in JOBS:
             # Since this start, else the last run on file from before it.
             run = (
                 run_log.last_run(job_id) or job_history.last_run(self.db, job_id) or {}
@@ -161,6 +176,7 @@ class StatusService:
                 {
                     "id": job_id,
                     "label": label,
+                    "schedule": schedule,
                     "next_run_at": times.get(job_id),
                     "last_started_at": run.get("started_at"),
                     "last_finished_at": run.get("finished_at"),
